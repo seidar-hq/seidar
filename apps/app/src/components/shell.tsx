@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requestAccess, getAddress } from "@stellar/freighter-api";
 import { shortAddress } from "@/lib/chain";
 
@@ -94,6 +94,38 @@ export function Shell({
   const [wallet, setWallet] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [balance, setBalance] = useState<{ xlm: number; usd: number | null }>({
+    xlm: 0,
+    usd: 0,
+  });
+
+  useEffect(() => {
+    if (!wallet) {
+      setBalance({ xlm: 0, usd: 0 });
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch(`/api/balance?address=${wallet}`);
+        const d = await r.json();
+        if (!cancelled) {
+          setBalance({
+            xlm: Number(d.xlm ?? 0),
+            usd: d.usd === null || d.usd === undefined ? null : Number(d.usd),
+          });
+        }
+      } catch {
+        if (!cancelled) setBalance({ xlm: 0, usd: null });
+      }
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [wallet]);
 
   async function connectWallet() {
     setWalletError(null);
@@ -136,6 +168,10 @@ export function Shell({
           </div>
         </div>
         <div className="shell-topbar-right">
+          <span className="shell-balance" title={wallet ? "Connected wallet balance (testnet)" : "Connect a wallet to see its balance"}>
+            {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM ·{" "}
+            {balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+          </span>
           <div className="seg-group">
             <button className="seg-main" type="button" onClick={connectWallet} title={walletError ?? "Connect Freighter (testnet)"}>
               {wallet ? `${shortAddress(wallet)} · Testnet` : "Connect wallet"}
