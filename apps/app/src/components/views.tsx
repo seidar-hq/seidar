@@ -171,9 +171,6 @@ function DiscoverSection() {
     <div className="pf-card" style={{ marginTop: 12 }}>
       <div className="dz-head">
         <div className="dz-tabs" role="tablist" aria-label="Discover feeds">
-          <span className="dz-chev" aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-          </span>
           {(["getting", "trending"] as const).map((t) => (
             <button
               key={t}
@@ -262,6 +259,67 @@ function DiscoverSection() {
   );
 }
 
+/* ------------------------------ Donut chart ----------------------------- */
+
+type DonutItem = { label: string; value: number; color: string };
+
+function Donut({ items, total }: { items: DonutItem[]; total: number }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const R = 60;
+  const C = 2 * Math.PI * R;
+  const denom = Math.max(1, items.reduce((a, i) => a + Math.max(0, i.value), 0));
+  let acc = 0;
+  const segs = items
+    .filter((i) => i.value > 0)
+    .map((item) => {
+      const frac = item.value / denom;
+      const seg = { ...item, frac, offset: acc };
+      acc += frac;
+      return seg;
+    });
+  const active = hover != null ? segs[hover] ?? null : null;
+  return (
+    <div className="pf-donut">
+      <svg width="150" height="150" viewBox="0 0 150 150" role="img" aria-label="Portfolio allocation">
+        <circle cx="75" cy="75" r={R} fill="none" stroke="#1c1c20" strokeWidth="18" />
+        {segs.map((s, i) => (
+          <circle
+            key={s.label}
+            cx="75"
+            cy="75"
+            r={R}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={i === hover ? 22 : 18}
+            strokeDasharray={`${Math.max(0, s.frac * C - 2)} ${C}`}
+            strokeDashoffset={-s.offset * C}
+            strokeLinecap="butt"
+            transform="rotate(-90 75 75)"
+            opacity={hover == null || i === hover ? 1 : 0.35}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+            style={{ cursor: "pointer", transition: "opacity .15s, stroke-width .15s" }}
+          >
+            <title>{`${s.label}: $${Math.round(s.value).toLocaleString()} (${(s.frac * 100).toFixed(1)}%)`}</title>
+          </circle>
+        ))}
+        <text x="75" y={active ? 70 : 72} textAnchor="middle" fill="#8a8a91" fontSize="10.5" fontWeight="700">
+          {active ? active.label : "Net worth"}
+        </text>
+        <text x="75" y={active ? 88 : 90} textAnchor="middle" fill="#fff" fontSize="16" fontWeight="800">
+          $
+          {Math.round(active ? active.value : total).toLocaleString()}
+        </text>
+        {active && (
+          <text x="75" y="102" textAnchor="middle" fill="#8a8a91" fontSize="10.5" fontWeight="700">
+            {(active.frac * 100).toFixed(1)}%
+          </text>
+        )}
+      </svg>
+    </div>
+  );
+}
+
 /* ------------------------------- Portfolio ------------------------------ */
 
 function Portfolio() {
@@ -335,7 +393,14 @@ function Portfolio() {
   const vaultValue = POSITIONS.filter((p) => p.kind === "vault").reduce((a, p) => a + p.collateralValue, 0);
   const tokensValue = walletBal.usd ?? 0;
   const netWorth = supplied - borrowed + tokensValue;
-  const barTotal = Math.max(1, supplied + borrowed);
+  const alloc = [
+    { label: "Tokens", value: tokensValue, color: "#2dd4bf" },
+    { label: "Supplied", value: supplied, color: "#57c36b" },
+    { label: "Claimable", value: 0, color: "#8a8a91" },
+    { label: "Staked", value: 0, color: "#f5a524" },
+    { label: "Borrowed", value: borrowed, color: "#e5484d" },
+    { label: "Vaults", value: vaultValue, color: "#3b82f6" },
+  ];
   const rows = POSITIONS.filter((p) => tab === "all" || (tab === "lending" ? p.kind === "lending" : p.kind === "vault"));
   const tokenRows = [
     { symbol: "XLM", amount: walletBal.xlm, usd: walletBal.usd },
@@ -372,17 +437,16 @@ function Portfolio() {
             </div>
             <p className="pf-net-label">Net worth</p>
             <p className="pf-net">${Math.round(netWorth).toLocaleString()}</p>
-            <div className="pf-break">
-              <div><small>Tokens</small><b className="pos">${Math.round(tokensValue).toLocaleString()}</b></div>
-              <div><small>Supplied</small><b className="pos">${Math.round(supplied).toLocaleString()}</b></div>
-              <div><small>Claimable</small><b className="pos">$0</b></div>
-              <div><small>Staked</small><b className="warn">$0</b></div>
-              <div><small>Borrowed</small><b className="neg">${borrowed.toLocaleString()}</b></div>
-              <div><small>Vaults</small><b className="pos">${Math.round(vaultValue).toLocaleString()}</b></div>
-            </div>
-            <div className="pf-bar" aria-hidden="true">
-              <span style={{ width: `${(supplied / barTotal) * 100}%` }} className="seg-supplied" />
-              <span style={{ width: `${(borrowed / barTotal) * 100}%` }} className="seg-borrowed" />
+            <div className="pf-split">
+              <div className="pf-break">
+                {alloc.map((a) => (
+                  <div key={a.label}>
+                    <small>{a.label}</small>
+                    <b style={{ color: a.color }}>${Math.round(a.value).toLocaleString()}</b>
+                  </div>
+                ))}
+              </div>
+              <Donut items={alloc} total={netWorth} />
             </div>
           </div>
           <div className="pf-card">
