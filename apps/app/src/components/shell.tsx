@@ -170,6 +170,51 @@ export function Shell({
   );
   const [walletError, setWalletError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (searchOpen) {
+      setQuery("");
+      const t = setTimeout(() => searchInputRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSearchOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [searchOpen]);
+
+  type QuickAction = { label: string; hint: string; view: AppView };
+  const QUICK_ACTIONS: QuickAction[] = [
+    { label: "Boost / Repay on Blend", hint: "Leverage", view: "blend" },
+    { label: "Open a leveraged position", hint: "Blend", view: "blend" },
+    { label: "Arm liquidation protection", hint: "Automation", view: "automate" },
+    { label: "Set a stop-loss", hint: "Automation", view: "automate" },
+    { label: "Shift a position", hint: "Shifter", view: "shifter" },
+    { label: "Build a recipe", hint: "Recipes", view: "recipes" },
+    { label: "View savings vaults", hint: "Savings", view: "savings" },
+    { label: "Browse XOXNO markets", hint: "XOXNO", view: "xoxno" },
+    { label: "Browse Peridot markets", hint: "Peridot", view: "peridot" },
+    { label: "Portfolio overview", hint: "Portfolio", view: "portfolio" },
+    { label: "Settings & multisig", hint: "Settings", view: "settings" },
+  ];
+
+  const sq = query.trim().toLowerCase();
+  const matchedSections = NAV.filter((item) => item.label.toLowerCase().includes(sq));
+  const matchedActions = QUICK_ACTIONS.filter(
+    (a) => a.label.toLowerCase().includes(sq) || a.hint.toLowerCase().includes(sq)
+  );
+
+  function go(view: AppView) {
+    setView(view);
+    setSearchOpen(false);
+  }
   const [balance, setBalance] = useState<{ xlm: number; usd: number | null }>({
     xlm: 0,
     usd: 0,
@@ -252,16 +297,20 @@ export function Shell({
     }
   }
 
-  /** Load DB notifications when a wallet is present (fallback: local copy). */
+  /** Load DB notifications when a wallet is present (union with local — never wipe). */
   useEffect(() => {
     if (!wallet) return;
     let cancelled = false;
     fetch(`/api/notifications?wallet=${wallet}`)
       .then((r) => r.json())
       .then((d) => {
-        if (!cancelled && d?.ok && Array.isArray(d.notes)) {
-          setNotes(d.notes.map((n: Note) => ({ ...n, at: String(n.at) })));
-        }
+        if (cancelled || !d?.ok || !Array.isArray(d.notes)) return;
+        const server = d.notes.map((n: Note) => ({ ...n, at: String(n.at) }));
+        setNotes((prev) => {
+          const seen = new Set(server.map((n: Note) => n.id));
+          const localOnly = prev.filter((n) => n.id < 0 || !seen.has(n.id));
+          return [...server, ...localOnly].slice(0, 20);
+        });
       })
       .catch(() => {
         /* offline DB — keep localStorage mirror */
@@ -342,8 +391,10 @@ export function Shell({
 
   function pushNotification(text: string) {
     noteId.current += 1;
+    // Negative ids = local-only (never collide with DB serials).
+    const id = -Math.abs(noteId.current);
     const note: Note = {
-      id: noteId.current,
+      id,
       text,
       at: new Date().toLocaleString(),
       read: false,
@@ -367,34 +418,16 @@ export function Shell({
     }
   }
 
-  const q = query.trim().toLowerCase();
-  const visibleNav = q
-    ? NAV.filter((item) => item.label.toLowerCase().includes(q))
-    : NAV;
-
-  function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && visibleNav.length > 0) {
-      setView(visibleNav[0].id);
-      setQuery("");
-    }
-    if (e.key === "Escape") setQuery("");
-  }
   return (
     <>
       <header className="shell-topbar">
         <div className="shell-topbar-left">
           <img src="/logo.png" alt="Seidar" className="shell-logo" />
           <span className="shell-name">Seidar</span>
-          <div className="shell-search">
+          <button className="shell-search" type="button" onClick={() => setSearchOpen(true)} aria-label="Search">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onSearchKey}
-              placeholder="Search positions, pools, actions…"
-              aria-label="Search"
-            />
-          </div>
+            <span>Search positions, pools, actions…</span>
+          </button>
         </div>
         <div className="shell-topbar-right" ref={rightRef}>
           <div className="notif-wrap">
@@ -439,7 +472,9 @@ export function Shell({
                     <b>{shortAddress(wallet)}</b>
                     <small>Testnet</small>
                   </span>
-                  <img src="/freighter-logo.svg" alt="Freighter" className="wallet-logo" />
+                  <span className="wallet-logo" title="Freighter">
+                    <img src="/freighter-logo.svg" alt="" />
+                  </span>
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -477,10 +512,65 @@ export function Shell({
           )}
         </div>
       </header>
+      {searchOpen && (
+        <div
+          className="search-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSearchOpen(false);
+          }}
+        >
+          <div className="search-modal" role="dialog" aria-label="Search">
+            <div className="search-input-row">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <input
+                ref={searchInputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (matchedSections[0]) go(matchedSections[0].id);
+                    else if (matchedActions[0]) go(matchedActions[0].view);
+                  }
+                }}
+                placeholder="Search sections and actions…"
+                aria-label="Search sections and actions"
+              />
+              <button type="button" className="search-esc" onClick={() => setSearchOpen(false)} aria-label="Close search">
+                esc
+              </button>
+            </div>
+            {matchedSections.length > 0 && (
+              <>
+                <p className="search-group">Sections</p>
+                {matchedSections.map((item) => (
+                  <button key={item.id} type="button" className="search-row" onClick={() => go(item.id)}>
+                    <span className="nav-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {matchedActions.length > 0 && (
+              <>
+                <p className="search-group">Actions</p>
+                {matchedActions.map((a) => (
+                  <button key={a.label} type="button" className="search-row" onClick={() => go(a.view)}>
+                    <span>{a.label}</span>
+                    <small>{a.hint}</small>
+                  </button>
+                ))}
+              </>
+            )}
+            {matchedSections.length === 0 && matchedActions.length === 0 && (
+              <p className="notif-empty" style={{ padding: "12px 10px" }}>No matches for “{query}”.</p>
+            )}
+          </div>
+        </div>
+      )}
       <div className="shell-layout">
         <aside className="shell-sidebar">
           <nav className="side-nav">
-            {visibleNav.map((item) => (
+            {NAV.map((item) => (
               <button
                 key={item.id}
                 type="button"
