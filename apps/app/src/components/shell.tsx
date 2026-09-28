@@ -4,7 +4,29 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { requestAccess, getAddress } from "@stellar/freighter-api";
 import { shortAddress } from "@/lib/chain";
 
-/** Deterministic blockie identicon from a Stellar address (cool + unique). */
+/** localStorage helpers (client-only; guarded for SSR). */
+function readStorage<T>(key: string, fallback: T): T {
+  try {
+    if (typeof window === "undefined") return fallback;
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(key: string, value: unknown) {
+  try {
+    if (typeof window === "undefined") return;
+    if (value === null || value === undefined) {
+      window.localStorage.removeItem(key);
+    } else {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    }
+  } catch {
+    /* private mode etc — session-only fallback */
+  }
+}
 function makeIdenticon(seed: string) {
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;
@@ -143,7 +165,9 @@ export function Shell({
   setView: (v: AppView) => void;
   children: React.ReactNode;
 }) {
-  const [wallet, setWallet] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<string | null>(() =>
+    readStorage<string | null>("seidar.wallet", null)
+  );
   const [walletError, setWalletError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [balance, setBalance] = useState<{ xlm: number; usd: number | null }>({
@@ -182,27 +206,71 @@ export function Shell({
   async function connectWallet() {
     setWalletError(null);
     try {
-      await requestAccess();
-      const { address } = await getAddress();
+      const access = await requestAccess();
+      let address = access?.address ?? "";
+      if (!address) {
+        const g = await getAddress();
+        address = g?.address ?? "";
+      }
+      if (!address) {
+        showError(
+          typeof access?.error === "string" && access.error
+            ? `Freighter: ${access.error}`
+            : "Connect approved but no address returned — unlock Freighter and retry"
+        );
+        return;
+      }
       setWallet(address);
       if (!welcomedRef.current) {
         welcomedRef.current = true;
+        writeStorage("seidar.welcomed", true);
         pushNotification(
           `Welcome to Seidar, ${shortAddress(address)} — your positions, keepers and gas credits live here. Start with a testnet Boost to see automation in action.`
         );
       }
     } catch {
-      setWalletError("Freighter not found — install it to connect");
+      showError("Freighter not found — install it to connect");
     }
   }
 
   type Note = { id: number; text: string; at: string; read: boolean };
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<Note[]>(() => readStorage<Note[]>("seidar.notes", []));
   const [notifOpen, setNotifOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const welcomedRef = useRef(false);
   const noteId = useRef(0);
+
+  // Restore session + persist wallet/notes across refreshes.
+  useEffect(() => {
+    welcomedRef.current = readStorage("seidar.welcomed", false);
+    const stored = readStorage<Note[]>("seidar.notes", []);
+    noteId.current = stored.reduce((m, n) => Math.max(m, n.id || 0), 0);
+    let cancelled = false;
+    getAddress()
+      .then(({ address }) => {
+        if (!cancelled && address) setWallet(address);
+      })
+      .catch(() => {
+        /* locked/missing Freighter — keep stored address for display */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    writeStorage("seidar.wallet", wallet);
+  }, [wallet]);
+
+  useEffect(() => {
+    writeStorage("seidar.notes", notes.slice(0, 20));
+  }, [notes]);
+
+  function showError(msg: string) {
+    setWalletError(msg);
+    setTimeout(() => setWalletError(null), 6000);
+  }
   const rightRef = useRef<HTMLDivElement>(null);
 
   // Click-outside dismisses open dropdowns.
@@ -313,6 +381,7 @@ export function Shell({
             <b>{balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</b>
             <small>{balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</small>
           </span>
+          {walletError && <span className="wallet-error" role="alert">{walletError}</span>}
           <div className={`seg-group wallet${wallet ? " connected" : ""}`}>
             {wallet ? (
               <>
