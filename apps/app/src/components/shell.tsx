@@ -281,15 +281,34 @@ export function Shell({
           </div>
         </div>
         <div className="shell-topbar-right" ref={rightRef}>
-          <button
-            className="notif-btn"
-            type="button"
-            aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
-            onClick={() => setNotifOpen((o) => !o)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-            {unread > 0 && <span className="notif-badge">{unread}</span>}
-          </button>
+          <div className="notif-wrap">
+            <button
+              className="notif-btn"
+              type="button"
+              aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
+              onClick={() => setNotifOpen((o) => !o)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              {unread > 0 && <span className="notif-badge">{unread}</span>}
+            </button>
+            {notifOpen && (
+              <div className="notif-drop" role="dialog" aria-label="Notifications">
+                <div className="notif-head">
+                  <b>Notifications</b>
+                  <button type="button" onClick={markAllRead} disabled={unread === 0}>
+                    Mark as read
+                  </button>
+                </div>
+                {notes.length === 0 && <p className="notif-empty">Nothing yet — connect a wallet to get started.</p>}
+                {notes.map((n) => (
+                  <div key={n.id} className={`notif-row${n.read ? "" : " unread"}`}>
+                    <p>{n.text}</p>
+                    <small>{n.at}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="shell-balance" title={wallet ? "Connected wallet balance (testnet)" : "Connect a wallet to see its balance"}>
             <b>{balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</b>
             <small>{balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</small>
@@ -336,23 +355,6 @@ export function Shell({
               <button type="button" className="danger" onClick={disconnectWallet}>
                 Disconnect
               </button>
-            </div>
-          )}
-          {notifOpen && (
-            <div className="notif-drop" role="dialog" aria-label="Notifications">
-              <div className="notif-head">
-                <b>Notifications</b>
-                <button type="button" onClick={markAllRead} disabled={unread === 0}>
-                  Mark as read
-                </button>
-              </div>
-              {notes.length === 0 && <p className="notif-empty">Nothing yet — connect a wallet to get started.</p>}
-              {notes.map((n) => (
-                <div key={n.id} className={`notif-row${n.read ? "" : " unread"}`}>
-                  <p>{n.text}</p>
-                  <small>{n.at}</small>
-                </div>
-              ))}
             </div>
           )}
         </div>

@@ -247,6 +247,11 @@
 .wallet-drop button.danger {
   color: var(--red);
 }
+.notif-wrap {
+  position: relative;
+  display: flex;
+  margin-right: 8px;
+}
 .notif-btn {
   position: relative;
   width: 33px;
@@ -283,8 +288,8 @@
 }
 .notif-drop {
   position: absolute;
-  top: 44px;
-  right: 10px;
+  top: 41px;
+  right: 0;
   width: 330px;
   max-height: 380px;
   overflow-y: auto;
