@@ -9,6 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@seidar/automation-sdk": "0.1.0",
+    "@seidar/positions-sdk": "0.1.0",
+    "@seidar/sdk": "0.1.0",
+    "@seidar/tokens": "0.1.0",
+    "@seidar/ui": "0.1.0",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"

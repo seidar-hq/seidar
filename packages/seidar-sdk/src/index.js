@@ -29,11 +29,11 @@ export class Recipe {
   }
 
   flashLoan(asset, amount) { return this.add(ActionKind.FlashLoan, asset, amount); }
-  supply(asset, amount) { return this.add(ActionKind.Supply, asset, amount); }
-  borrow(asset, amount) { return this.add(ActionKind.Borrow, asset, amount); }
-  repay(asset, amount) { return this.add(ActionKind.Repay, asset, amount); }
-  withdraw(asset, amount) { return this.add(ActionKind.Withdraw, asset, amount); }
-  swap(asset, amount) { return this.add(ActionKind.Swap, asset, amount); }
+  supply(asset, amount, paramSrcIndex = null) { return this.add(ActionKind.Supply, asset, amount, paramSrcIndex); }
+  borrow(asset, amount, paramSrcIndex = null) { return this.add(ActionKind.Borrow, asset, amount, paramSrcIndex); }
+  repay(asset, amount, paramSrcIndex = null) { return this.add(ActionKind.Repay, asset, amount, paramSrcIndex); }
+  withdraw(asset, amount, paramSrcIndex = null) { return this.add(ActionKind.Withdraw, asset, amount, paramSrcIndex); }
+  swap(asset, amount, paramSrcIndex = null) { return this.add(ActionKind.Swap, asset, amount, paramSrcIndex); }
 
   /** Enforce executor rules: non-empty, flash-loan first and at most once. */
   validate() {
