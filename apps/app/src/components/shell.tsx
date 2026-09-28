@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requestAccess, getAddress } from "@stellar/freighter-api";
 import { shortAddress } from "@/lib/chain";
 
@@ -133,9 +133,38 @@ export function Shell({
       await requestAccess();
       const { address } = await getAddress();
       setWallet(address);
+      if (!welcomedRef.current) {
+        welcomedRef.current = true;
+        pushNotification(
+          `Welcome to Seidar, ${shortAddress(address)} — your positions, keepers and gas credits live here. Start with a testnet Boost to see automation in action.`
+        );
+      }
     } catch {
       setWalletError("Freighter not found — install it to connect");
     }
+  }
+
+  type Note = { id: number; text: string; at: string; read: boolean };
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const welcomedRef = useRef(false);
+  const noteId = useRef(0);
+
+  function pushNotification(text: string) {
+    noteId.current += 1;
+    const note: Note = {
+      id: noteId.current,
+      text,
+      at: new Date().toLocaleString(),
+      read: false,
+    };
+    setNotes((prev) => [note, ...prev].slice(0, 20));
+  }
+
+  const unread = notes.filter((n) => !n.read).length;
+
+  function markAllRead() {
+    setNotes((prev) => prev.map((n) => ({ ...n, read: true })));
   }
 
   const q = query.trim().toLowerCase();
@@ -172,14 +201,37 @@ export function Shell({
             {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM ·{" "}
             {balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
           </span>
-          <div className="seg-group">
+          <button
+            className="notif-btn"
+            type="button"
+            aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
+            onClick={() => setNotifOpen((o) => !o)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+            {unread > 0 && <span className="notif-badge">{unread}</span>}
+          </button>
+          <div className="seg-group wallet">
             <button className="seg-main" type="button" onClick={connectWallet} title={walletError ?? "Connect Freighter (testnet)"}>
               {wallet ? `${shortAddress(wallet)} · Testnet` : "Connect wallet"}
             </button>
-            <button className="seg-chev" type="button" aria-label="Wallets" onClick={connectWallet}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-            </button>
           </div>
+          {notifOpen && (
+            <div className="notif-drop" role="dialog" aria-label="Notifications">
+              <div className="notif-head">
+                <b>Notifications</b>
+                <button type="button" onClick={markAllRead} disabled={unread === 0}>
+                  Mark as read
+                </button>
+              </div>
+              {notes.length === 0 && <p className="notif-empty">Nothing yet — connect a wallet to get started.</p>}
+              {notes.map((n) => (
+                <div key={n.id} className={`notif-row${n.read ? "" : " unread"}`}>
+                  <p>{n.text}</p>
+                  <small>{n.at}</small>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </header>
       <div className="shell-layout">

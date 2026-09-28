@@ -120,12 +120,114 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  position: relative;
 }
 .shell-balance {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
+}
+.seg-group.wallet {
+  border-color: var(--green);
+  background: var(--green);
+}
+.seg-group.wallet .seg-main {
+  color: #04120a;
+}
+.seg-group.wallet .seg-main:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+.notif-btn {
+  position: relative;
+  width: 33px;
+  height: 33px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: #000;
+  color: #c9c9cf;
+  cursor: pointer;
+}
+.notif-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.notif-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #000;
+}
+.notif-drop {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 330px;
+  max-height: 380px;
+  overflow-y: auto;
+  background: #0a0a0a;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  z-index: 60;
+  padding: 8px;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 10px;
+}
+.notif-head b {
+  font-size: 13px;
+}
+.notif-head button {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--blue);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.notif-head button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.notif-empty {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 8px;
+}
+.notif-row {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.notif-row.unread {
+  background: #111;
+  border-color: var(--border);
+}
+.notif-row p {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.notif-row small {
+  color: var(--muted);
+  font-size: 11px;
 }
 .seg-group {
   display: flex;
