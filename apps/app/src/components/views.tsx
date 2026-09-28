@@ -52,15 +52,22 @@ const PROTOCOL_ICONS: Record<string, string> = {
   peridot: "/protocol-peridot.svg",
 };
 
-function ProtoIcon({ protocol, size = 18 }: { protocol: string; size?: number }) {
+const PROTOCOL_ICON_SIZE: Record<string, number> = {
+  blend: 24,
+  xoxno: 22,
+  peridot: 18,
+};
+
+function ProtoIcon({ protocol, size }: { protocol: string; size?: number }) {
   const [failed, setFailed] = useState(false);
   const src = PROTOCOL_ICONS[protocol];
+  const px = size ?? PROTOCOL_ICON_SIZE[protocol] ?? 18;
   if (!src || failed) {
     return (
       <span
         className="token-fallback"
         aria-label={protocol}
-        style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.42)), background: "#232329" }}
+        style={{ width: px, height: px, fontSize: Math.max(8, Math.round(px * 0.42)), background: "#232329" }}
       >
         {protocol.slice(0, 1).toUpperCase()}
       </span>
@@ -70,8 +77,8 @@ function ProtoIcon({ protocol, size = 18 }: { protocol: string; size?: number })
     <img
       src={src}
       alt=""
-      width={size}
-      height={size}
+      width={px}
+      height={px}
       className="token-icon"
       onError={() => setFailed(true)}
       loading="eager"
