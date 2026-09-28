@@ -107,7 +107,8 @@ function Portfolio() {
   return (
     <>
       <div className="pf-grid">
-        <div className="pf-card">
+        <div className="pf-col">
+          <div className="pf-card">
           <div className="pf-head">
             <span className="pf-title">Portfolio</span>
             <div className="pf-actions">
@@ -140,25 +141,6 @@ function Portfolio() {
           </div>
         </div>
         <div className="pf-card">
-          <div className="pf-head">
-            <span className="pf-title">Tokens</span>
-          </div>
-          {tokenRows.length === 0 ? (
-            <p className="pf-empty">This account currently doesn&apos;t own any tokens</p>
-          ) : (
-            <div className="token-list">
-              {tokenRows.map((t) => (
-                <div className="token-row" key={t.symbol}>
-                  <span><b>{t.symbol}</b> <small>· {t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</small></span>
-                  <span>${t.usd === null ? "—" : Math.round(t.usd).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="pf-card" style={{ marginTop: 12 }}>
         <div className="pf-head">
           <span className="pf-title">Positions</span>
           <div className="tabs" role="tablist" aria-label="Position filters">
@@ -202,7 +184,26 @@ function Portfolio() {
             ))}
           </div>
         )}
+        </div>
       </div>
+      <div className="pf-card tokens-rail">
+        <div className="pf-head">
+          <span className="pf-title">Tokens</span>
+        </div>
+        {tokenRows.length === 0 ? (
+          <p className="pf-empty">This account currently doesn&apos;t own any tokens</p>
+        ) : (
+          <div className="token-list">
+            {tokenRows.map((t) => (
+              <div className="token-row" key={t.symbol}>
+                <span><b>{t.symbol}</b> <small>· {t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</small></span>
+                <span>${t.usd === null ? "—" : Math.round(t.usd).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
     </>
   );
 }
