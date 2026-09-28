@@ -560,7 +560,7 @@ export function Shell({
                     <em>No Smart Account</em>
                   </span>
                   <span className="wallet-logo" title="Freighter">
-                    <img src="/freighter-logo.svg" alt="" />
+                    <img src="/freighter-logo.svg" alt="" width={10} height={10} />
                   </span>
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
@@ -573,12 +573,12 @@ export function Shell({
               </button>
             )}
           </div>
-          <img src="/stellar-logo.png" alt="Stellar" className="stellar-logo" title="Built on Stellar" />
+          <img src="/stellar-logo.png" alt="Stellar" width={22} height={22} className="stellar-logo" title="Built on Stellar" />
           {walletMenuOpen && wallet && (
             <div className="wallet-drop dfs" role="menu" aria-label="Wallet menu">
               <div className="wdrop-head">
                 <span className="identicon-wrap lg">
-                  <Identicon address={wallet} size={36} square />
+                    <Identicon address={wallet} size={32} square />
                   <span className="provider-badge" title="Connected wallet">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5" /><circle cx="17" cy="12.5" r="1.2" fill="currentColor" stroke="none" /></svg>
                   </span>
