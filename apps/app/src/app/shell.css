@@ -134,6 +134,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #2c2c31 transparent;
 }
@@ -1007,7 +1008,7 @@
   justify-content: space-between;
   gap: 10px;
   margin: 0 -18px;
-  padding: 0 18px 8px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--border);
 }
 .pf-title {
@@ -1065,7 +1066,7 @@
   }
 }
 .pos-rows {
-  height: 188px;
+  height: 232px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -1085,6 +1086,16 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+.pos-names {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.35;
+}
+.pos-names small {
+  color: #8a8a91;
+  font-size: 11.5px;
 }
 .pair-icons {
   display: inline-flex;

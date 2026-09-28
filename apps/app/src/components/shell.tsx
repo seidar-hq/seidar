@@ -175,8 +175,13 @@ export function Shell({
   useEffect(() => {
     if (searchOpen) {
       setQuery("");
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
       const t = setTimeout(() => searchInputRef.current?.focus(), 30);
-      return () => clearTimeout(t);
+      return () => {
+        clearTimeout(t);
+        document.body.style.overflow = prev;
+      };
     }
   }, [searchOpen]);
 

@@ -205,7 +205,7 @@ function Portfolio() {
                 <div className="row" key={p.id}>
                   <span className="pos-market">
                     <PairIcons a={p.collateralSymbol} b={p.debtSymbol} />
-                    <span><b>{p.market}</b> <span style={{ color: "#8a8a91" }}>· {p.leverage}</span></span>
+                    <span className="pos-names"><b>{p.market}</b><small>· {p.leverage}</small></span>
                   </span>
                   <span>{p.collateralLabel}</span>
                   <span>{p.debtLabel}</span>
