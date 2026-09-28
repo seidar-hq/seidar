@@ -1,8 +1,60 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requestAccess, getAddress } from "@stellar/freighter-api";
 import { shortAddress } from "@/lib/chain";
+
+/** Deterministic blockie identicon from a Stellar address (cool + unique). */
+function makeIdenticon(seed: string) {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (const c of seed) {
+    h1 = Math.imul(h1 ^ c.charCodeAt(0), 16777619);
+    h2 = Math.imul(h2 + c.charCodeAt(0), 31);
+  }
+  const rand = () => {
+    h1 = Math.imul(h1 ^ (h1 >>> 15), 2246822519);
+    h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489917);
+    return (h1 ^ h2) >>> 0;
+  };
+  const hue = rand() % 360;
+  const cells: boolean[] = [];
+  for (let y = 0; y < 5; y++) {
+    const a = rand() % 2 === 0;
+    const b = rand() % 2 === 0;
+    const c = rand() % 2 === 0;
+    cells.push(a, b, c, b, a);
+  }
+  return { hue, cells };
+}
+
+function Identicon({ address, size = 26 }: { address: string; size?: number }) {
+  const { hue, cells } = useMemo(() => makeIdenticon(address), [address]);
+  const cell = size / 5;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="identicon"
+      aria-hidden="true"
+    >
+      <rect width={size} height={size} fill={`hsl(${hue} 55% 13%)`} />
+      {cells.map((on, i) =>
+        on ? (
+          <rect
+            key={i}
+            x={(i % 5) * cell}
+            y={Math.floor(i / 5) * cell}
+            width={cell}
+            height={cell}
+            fill={`hsl(${hue} 85% 60%)`}
+          />
+        ) : null
+      )}
+    </svg>
+  );
+}
 
 export type AppView =
   | "portfolio"
@@ -147,8 +199,27 @@ export function Shell({
   type Note = { id: number; text: string; at: string; read: boolean };
   const [notes, setNotes] = useState<Note[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const welcomedRef = useRef(false);
   const noteId = useRef(0);
+
+  function disconnectWallet() {
+    setWallet(null);
+    setWalletMenuOpen(false);
+  }
+
+  async function copyAddress() {
+    if (!wallet) return;
+    try {
+      await navigator.clipboard.writeText(wallet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+    setWalletMenuOpen(false);
+  }
 
   function pushNotification(text: string) {
     noteId.current += 1;
@@ -197,10 +268,6 @@ export function Shell({
           </div>
         </div>
         <div className="shell-topbar-right">
-          <span className="shell-balance" title={wallet ? "Connected wallet balance (testnet)" : "Connect a wallet to see its balance"}>
-            {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM ·{" "}
-            {balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-          </span>
           <button
             className="notif-btn"
             type="button"
@@ -210,11 +277,54 @@ export function Shell({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
             {unread > 0 && <span className="notif-badge">{unread}</span>}
           </button>
+          <span className="shell-balance" title={wallet ? "Connected wallet balance (testnet)" : "Connect a wallet to see its balance"}>
+            {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM ·{" "}
+            {balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+          </span>
           <div className="seg-group wallet">
-            <button className="seg-main" type="button" onClick={connectWallet} title={walletError ?? "Connect Freighter (testnet)"}>
-              {wallet ? `${shortAddress(wallet)} · Testnet` : "Connect wallet"}
-            </button>
+            {wallet ? (
+              <>
+                <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
+                  <span className="wallet-text">
+                    <b>{shortAddress(wallet)}</b>
+                    <small>Testnet</small>
+                  </span>
+                  <Identicon address={wallet} />
+                </button>
+                <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                </button>
+              </>
+            ) : (
+              <button className="seg-main" type="button" onClick={connectWallet} title={walletError ?? "Connect Freighter (testnet)"}>
+                Connect wallet
+              </button>
+            )}
           </div>
+          {walletMenuOpen && wallet && (
+            <div className="wallet-drop" role="menu" aria-label="Wallet menu">
+              <div className="wallet-drop-head">
+                <Identicon address={wallet} size={32} />
+                <div>
+                  <b>{shortAddress(wallet)}</b>
+                  <small>Stellar Testnet</small>
+                </div>
+              </div>
+              <button type="button" onClick={copyAddress}>
+                {copied ? "Copied ✓" : "Copy address"}
+              </button>
+              <a
+                href={`https://stellar.expert/explorer/testnet/account/${wallet}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View on explorer ↗
+              </a>
+              <button type="button" className="danger" onClick={disconnectWallet}>
+                Disconnect
+              </button>
+            </div>
+          )}
           {notifOpen && (
             <div className="notif-drop" role="dialog" aria-label="Notifications">
               <div className="notif-head">

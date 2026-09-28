@@ -138,6 +138,91 @@
 .seg-group.wallet .seg-main:hover {
   background: rgba(0, 0, 0, 0.12);
 }
+.wallet-main {
+  gap: 9px;
+  height: auto;
+  padding: 5px 5px 5px 12px;
+}
+.wallet-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.3;
+}
+.wallet-text b {
+  font-size: 12.5px;
+}
+.wallet-text small {
+  font-size: 10.5px;
+  color: rgba(4, 18, 10, 0.65);
+  font-weight: 700;
+}
+.wallet-chev {
+  border-left-color: rgba(4, 18, 10, 0.25);
+  color: #04120a;
+}
+.wallet-chev:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #04120a;
+}
+.identicon {
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 2px rgba(4, 18, 10, 0.25);
+}
+.wallet-drop {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 250px;
+  background: #0a0a0a;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  z-index: 60;
+  padding: 8px;
+}
+.wallet-drop-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.wallet-drop-head div {
+  display: flex;
+  flex-direction: column;
+}
+.wallet-drop-head b {
+  font-size: 13px;
+}
+.wallet-drop-head small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.wallet-drop button,
+.wallet-drop a {
+  display: flex;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: left;
+}
+.wallet-drop button:hover,
+.wallet-drop a:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.wallet-drop button.danger {
+  color: var(--red);
+}
 .notif-btn {
   position: relative;
   width: 33px;
