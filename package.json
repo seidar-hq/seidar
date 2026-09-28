@@ -7,6 +7,8 @@
   "scripts": {
     "dev:web": "npm run dev --workspace apps/web",
     "dev:app": "npm run dev --workspace apps/app",
+    "dev:docs": "npm run dev --workspace apps/docs",
+    "test:sdk": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
   }
 }

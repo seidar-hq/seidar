@@ -1,0 +1,43 @@
+# Seidar — llms.txt (docs.seidar.xyz)
+
+Seidar is a DeFi position manager on Stellar (Soroban): create, leverage,
+shift and automate Blend V2 / XOXNO / Peridot positions in one atomic tx.
+
+## Domains
+- seidar.xyz -> apps/web (landing)
+- app.seidar.xyz -> apps/app (dashboard: portfolio, blend, xoxno, peridot,
+  savings, shifter, recipes, automate, settings)
+- docs.seidar.xyz -> apps/docs (this site)
+
+## Contracts (contracts/)
+- recipe_executor: execute_recipe(user, recipe). Rules: non-empty, FlashLoan
+  first and at most once, user.require_auth, reentrancy guard, events.
+- guardian: add_rule / execute / remove_rule / get_rule / list_known.
+  Triggers: HealthBelow(bps) | PriceBelow(scaled). One-shot fire, cooldowns,
+  persistent() subs with TTL bumps.
+- adapters: Blend maxLtv 7500, XOXNO 8000, Peridot 7000 (bps).
+- flash_receiver: exec_op(pool, from, asset, amount) with pool.require_auth.
+
+## SDKs (packages/)
+- @seidar/sdk: Recipe, boostRecipe, repayRecipe, quoteFee, feeTierBps
+  (1 stable / 10 correlated / 25 uncorrelated, +5 automation).
+- @seidar/positions-sdk: healthBps, healthStatus, borrowLimit, netApy,
+  aggregatePortfolio.
+- @seidar/automation-sdk: shouldFire, offCooldown, evaluateRule.
+- @seidar/tokens: ASSETS, PROTOCOLS, toStroops/fromStroops.
+- @seidar/ui: theme (black #000000 canonical).
+
+## Services (services/)
+- keeper: polls health/prices, calls guardian.execute when evaluateRule fires.
+- credits: gas-credit ledger (sponsored bucket, then user-pays USDC).
+- indexer: RPC events -> portfolio/history DB.
+
+## MCP (mcp/)
+Read + quote + build tools returning unsigned intents. No key custody.
+
+## Key invariants for agents
+- Never invent pool addresses; read contracts/configs/networks.json.
+- Soroban tx = exactly 1 InvokeHostFunction; batch via recipe_executor.
+- SDEX/Classic ops are NOT callable from contracts; automated legs use
+  Soroban AMMs (Soroswap pools, Aqua, Phoenix) only.
+- Health < trigger does not act alone; guardian re-checks on-chain.
