@@ -7,9 +7,7 @@ import {
   healthStatus,
   aggregatePortfolio,
 } from "@seidar/positions-sdk";
-import { boostRecipe, quoteFee, feeTierBps } from "@seidar/sdk";
 import { evaluateRule } from "@seidar/automation-sdk";
-import { CONTRACTS, EXPERT_TX, type ChainEvent } from "@/lib/chain";
 
 // Mock pool snapshot (USD values). RPC snapshots replace this in services/.
 type Position = {
@@ -46,69 +44,7 @@ function healthPill(collateralValue: number, debtValue: number) {
   return <span className="pill red">Risk · {(Number(bps) / 10000).toFixed(2)}</span>;
 }
 
-function LiveActivity() {
-  const [events, setEvents] = useState<ChainEvent[]>([]);
-  const [live, setLive] = useState<boolean | null>(null);
-  const [ledger, setLedger] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    function load() {
-      fetch("/api/activity")
-        .then((r) => r.json())
-        .then((d) => {
-          if (cancelled) return;
-          setLive(d.live);
-          setLedger(d.ledger ?? 0);
-          setEvents(d.events ?? []);
-        })
-        .catch(() => {
-          if (!cancelled) setLive(false);
-        });
-    }
-    load();
-    window.addEventListener("seidar:refresh", load);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("seidar:refresh", load);
-    };
-  }, []);
-
-  const nameOf = (c: string) =>
-    c === CONTRACTS.guardian ? "guardian" : c === CONTRACTS.recipeExecutor ? "executor" : "unknown";
-
-  return (
-    <div className="leverage">
-      <b>
-        Live testnet activity{" "}
-        <span className={`pill ${live ? "green" : live === false ? "amber" : ""}`} style={{ marginLeft: 6 }}>
-          {live ? `Live · #${ledger}` : live === false ? "Offline — showing last known" : "Connecting…"}
-        </span>
-      </b>
-      <p style={{ color: "#8a8a91", fontSize: 12.5, marginTop: 6 }}>
-        Real guardian + executor events from Soroban testnet. Click through to stellar.expert.
-      </p>
-      <div className="table" style={{ marginTop: 10 }}>
-        <header><span>CONTRACT</span><span>EVENT</span><span>LEDGER</span><span>TX</span><span></span></header>
-        {events.length === 0 && (
-          <div className="row"><span>No events in window</span><span>—</span><span>—</span><span>—</span><span></span></div>
-        )}
-        {events.map((e) => (
-          <div className="row" key={`${e.txHash}-${e.topic}`}>
-            <span>{nameOf(e.contract)}</span>
-            <span>{e.topic}</span>
-            <span>{e.ledger}</span>
-            <span style={{ color: "#8a8a91" }}>{e.txHash.slice(0, 8)}…</span>
-            <span><a href={EXPERT_TX(e.txHash)} target="_blank" rel="noreferrer">View ↗</a></span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function Portfolio() {
-  const [leverage, setLeverage] = useState(3.2);
   const [tab, setTab] = useState<"all" | "lending" | "vaults">("all");
   const [walletAddr, setWalletAddr] = useState<string | null>(null);
   const [walletBal, setWalletBal] = useState<{ xlm: number; usd: number | null }>({ xlm: 0, usd: 0 });
@@ -151,31 +87,6 @@ function Portfolio() {
       window.removeEventListener("seidar:refresh", load);
     };
   }, [walletAddr]);
-
-  const quote = useMemo(() => {
-    // Quote the boost the same way @seidar/sdk + positions math do.
-    const base = POSITIONS[0];
-    const flash = Math.round(base.collateralValue * (leverage - 1));
-    const recipe = boostRecipe({
-      debtAsset: "USDC",
-      collateralAsset: "XLM",
-      flashAmount: Math.round(flash / 0.1),
-      supplyAmount: Math.round(flash / 0.1),
-      borrowAmount: Math.round(flash / 0.1),
-    });
-    recipe.validate();
-    const fee = quoteFee(flash, feeTierBps({}));
-    const health = healthBps(
-      base.collateralValue + flash,
-      base.debtValue + flash
-    );
-    return {
-      flash,
-      fee,
-      steps: recipe.actions.length,
-      health: health === null ? "—" : (health / 10000).toFixed(2),
-    };
-  }, [leverage]);
 
   const supplied = agg.collateral;
   const borrowed = Math.round(agg.debt);
@@ -291,34 +202,6 @@ function Portfolio() {
             ))}
           </div>
         )}
-      </div>
-
-      <div className="leverage" style={{ marginTop: 12 }}>
-        <b>Boost / Repay preview — XLM / USDC · Blend</b>
-        <p style={{ color: "#8a8a91", fontSize: 12.5, marginTop: 6 }}>
-          Quoted live by @seidar/sdk + @seidar/positions-sdk: flash liquidity, 25bps service fee, atomic {quote.steps}-step recipe.
-        </p>
-        <input
-          type="range"
-          min={1}
-          max={5}
-          step={0.1}
-          value={leverage}
-          onChange={(e) => setLeverage(Number(e.target.value))}
-          aria-label="Leverage"
-        />
-        <div className="kv"><span>Leverage</span><b>{leverage.toFixed(1)}x</b></div>
-        <div className="kv"><span>Flash amount</span><b>${quote.flash.toLocaleString()}</b></div>
-        <div className="kv"><span>Service fee (25bps)</span><b>${quote.fee.toLocaleString()}</b></div>
-        <div className="kv"><span>Resulting health</span><b>{quote.health}</b></div>
-        <div className="actions-row">
-          <button className="btn primary" type="button">Boost to {leverage.toFixed(1)}x</button>
-          <button className="btn" type="button">Repay</button>
-          <button className="btn" type="button">Simulate</button>
-        </div>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <LiveActivity />
       </div>
     </>
   );
