@@ -306,6 +306,13 @@
   border-radius: 5px 0 0 5px;
   box-shadow: none;
 }
+.stellar-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+}
 .wallet-drop {
   position: absolute;
   top: 44px;

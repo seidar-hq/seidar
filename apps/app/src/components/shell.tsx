@@ -297,32 +297,49 @@ export function Shell({
     }
   }
 
-  /** Load DB notifications when a wallet is present (union with local — never wipe). */
-  useEffect(() => {
-    if (!wallet) return;
-    let cancelled = false;
-    fetch(`/api/notifications?wallet=${wallet}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled || !d?.ok || !Array.isArray(d.notes)) return;
+  /** Merge server notes with local-only ones (dedupe by id + text). */
+  function mergeNotes(prev: Note[], server: Note[]): Note[] {
+    const seenIds = new Set(server.map((n) => n.id));
+    const seenText = new Set(server.map((n) => n.text));
+    const localOnly = prev.filter(
+      (n) => (n.id < 0 && !seenText.has(n.text)) || (n.id >= 0 && !seenIds.has(n.id))
+    );
+    return [...server, ...localOnly].slice(0, 20);
+  }
+
+  async function fetchNotes(walletAddr: string, why: string) {
+    try {
+      if (process.env.NODE_ENV === "development") {
+        // eslint-disable-next-line no-console
+        console.debug(`[seidar] notes fetch (${why}) for`, shortAddress(walletAddr));
+      }
+      const r = await fetch(`/api/notifications?wallet=${walletAddr}`);
+      const d = await r.json();
+      if (d?.ok && Array.isArray(d.notes)) {
         const server = d.notes.map((n: Note) => ({ ...n, at: String(n.at) }));
-        setNotes((prev) => {
-          const seen = new Set(server.map((n: Note) => n.id));
-          const localOnly = prev.filter((n) => n.id < 0 || !seen.has(n.id));
-          return [...server, ...localOnly].slice(0, 20);
-        });
-      })
-      .catch(() => {
-        /* offline DB — keep localStorage mirror */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet]);
+        setNotes((prev) => mergeNotes(prev, server));
+      }
+    } catch {
+      /* offline DB — keep localStorage mirror */
+    }
+  }
 
   type Note = { id: number; text: string; at: string; read: boolean };
   const [notes, setNotes] = useState<Note[]>(() => readStorage<Note[]>("seidar.notes", []));
   const [notifOpen, setNotifOpen] = useState(false);
+
+  /** Reload server notes whenever a wallet is present. */
+  useEffect(() => {
+    if (!wallet) return;
+    fetchNotes(wallet, "wallet-change");
+  }, [wallet]);
+
+  function toggleNotif() {
+    setNotifOpen((o) => {
+      if (!o && wallet) fetchNotes(wallet, "bell-open");
+      return !o;
+    });
+  }
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const welcomedRef = useRef(false);
@@ -435,7 +452,7 @@ export function Shell({
               className="notif-btn"
               type="button"
               aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
-              onClick={() => setNotifOpen((o) => !o)}
+              onClick={toggleNotif}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
               {unread > 0 && <span className="notif-badge">{unread}</span>}
@@ -486,6 +503,7 @@ export function Shell({
               </button>
             )}
           </div>
+          <img src="/stellar-logo.png" alt="Stellar" className="stellar-logo" title="Built on Stellar" />
           {walletMenuOpen && wallet && (
             <div className="wallet-drop" role="menu" aria-label="Wallet menu">
               <div className="wallet-drop-head">
