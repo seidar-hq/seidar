@@ -241,9 +241,11 @@ export function Shell({
     }
     load();
     const id = setInterval(load, 30000);
+    window.addEventListener("seidar:refresh", load);
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener("seidar:refresh", load);
     };
   }, [wallet]);
 
@@ -721,7 +723,7 @@ export function Shell({
             </button>
           </div>
         </aside>
-        <main className="shell-main">{children}</main>
+        <main className="shell-main"><div className="shell-content">{children}</div></main>
       </div>
     </>
   );

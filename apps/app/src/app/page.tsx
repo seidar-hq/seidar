@@ -8,6 +8,7 @@ import {
   aggregatePortfolio,
 } from "@seidar/positions-sdk";
 import { evaluateRule } from "@seidar/automation-sdk";
+import { PairIcons } from "@/components/token-icon";
 
 // Mock pool snapshot (USD values). RPC snapshots replace this in services/.
 type Position = {
@@ -17,6 +18,8 @@ type Position = {
   kind: "lending" | "vault";
   collateralLabel: string;
   debtLabel: string;
+  collateralSymbol: string;
+  debtSymbol: string | null;
   collateralValue: number;
   debtValue: number;
   leverage: string;
@@ -24,10 +27,10 @@ type Position = {
 };
 
 const POSITIONS: Position[] = [
-  { id: "1", market: "XLM / USDC · Blend", protocol: "Blend", kind: "lending", collateralLabel: "12,400 XLM", debtLabel: "3,100 USDC", collateralValue: 1240, debtValue: 3100 * 0.22, leverage: "3.2x", automation: "Auto-repay" },
-  { id: "2", market: "USDC / XLM · XOXNO", protocol: "XOXNO", kind: "lending", collateralLabel: "8,000 USDC", debtLabel: "41,200 XLM", collateralValue: 8000, debtValue: 4120, leverage: "2.1x", automation: "Stop-loss" },
-  { id: "3", market: "XLM / USDC · Peridot", protocol: "Peridot", kind: "lending", collateralLabel: "5,600 XLM", debtLabel: "900 USDC", collateralValue: 560, debtValue: 900 * 0.22, leverage: "1.8x", automation: "Off" },
-  { id: "4", market: "USDC Vault · DeFindex", protocol: "Vault", kind: "vault", collateralLabel: "10,000 USDC", debtLabel: "—", collateralValue: 10000, debtValue: 0, leverage: "Yield", automation: "Compound" },
+  { id: "1", market: "XLM / USDC · Blend", protocol: "Blend", kind: "lending", collateralLabel: "12,400 XLM", debtLabel: "3,100 USDC", collateralSymbol: "XLM", debtSymbol: "USDC", collateralValue: 1240, debtValue: 3100 * 0.22, leverage: "3.2x", automation: "Auto-repay" },
+  { id: "2", market: "USDC / XLM · XOXNO", protocol: "XOXNO", kind: "lending", collateralLabel: "8,000 USDC", debtLabel: "41,200 XLM", collateralSymbol: "USDC", debtSymbol: "XLM", collateralValue: 8000, debtValue: 4120, leverage: "2.1x", automation: "Stop-loss" },
+  { id: "3", market: "XLM / USDC · Peridot", protocol: "Peridot", kind: "lending", collateralLabel: "5,600 XLM", debtLabel: "900 USDC", collateralSymbol: "XLM", debtSymbol: "USDC", collateralValue: 560, debtValue: 900 * 0.22, leverage: "1.8x", automation: "Off" },
+  { id: "4", market: "USDC Vault · DeFindex", protocol: "Vault", kind: "vault", collateralLabel: "10,000 USDC", debtLabel: "—", collateralSymbol: "USDC", debtSymbol: null, collateralValue: 10000, debtValue: 0, leverage: "Yield", automation: "Compound" },
 ];
 
 function shortAddr(a: string | null) {
@@ -99,9 +102,26 @@ function Portfolio() {
     { symbol: "XLM", amount: walletBal.xlm, usd: walletBal.usd },
   ].filter((t) => t.amount > 0);
 
+  const [spinning, setSpinning] = useState(false);
+
   function refreshAll() {
-    window.dispatchEvent(new Event("seidar:refresh"));
+    if (spinning) return;
+    setSpinning(true);
+    const done = () => setSpinning(false);
+    const minSpin = new Promise((res) => setTimeout(res, 600));
+    const bal =
+      walletAddr != null
+        ? fetch(`/api/balance?address=${walletAddr}`)
+            .then((r) => r.json())
+            .then((d) => {
+              setWalletBal({ xlm: Number(d.xlm ?? 0), usd: d.usd ?? null });
+            })
+            .catch(() => {
+              /* keep last */
+            })
+        : Promise.resolve();
     window.dispatchEvent(new Event("seidar:refresh-notes"));
+    Promise.all([bal, minSpin]).then(done, done);
   }
 
   return (
@@ -121,7 +141,13 @@ function Portfolio() {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7H5a2 2 0 0 1 0-4h13v4" /><path d="M20 7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5" /><circle cx="17.5" cy="13.5" r="1.2" fill="currentColor" stroke="none" /></svg>
                 Wallets
               </button>
-              <button type="button" className="icon-btn" aria-label="Refresh" onClick={refreshAll}>
+              <button
+                type="button"
+                className={`icon-btn${spinning ? " spinning" : ""}`}
+                aria-label="Refresh"
+                onClick={refreshAll}
+                disabled={spinning}
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
               </button>
             </div>
@@ -174,15 +200,20 @@ function Portfolio() {
         ) : (
           <div className="pos-table">
             <header><span>POSITION</span><span>COLLATERAL</span><span>DEBT</span><span>AUTOMATION</span><span>HEALTH</span></header>
-            {rows.map((p) => (
-              <div className="row" key={p.id}>
-                <span><b>{p.market}</b> <span style={{ color: "#8a8a91" }}>· {p.leverage}</span></span>
-                <span>{p.collateralLabel}</span>
-                <span>{p.debtLabel}</span>
-                <span>{p.automation}</span>
-                <span>{healthPill(p.collateralValue, p.debtValue)}</span>
-              </div>
-            ))}
+            <div className="pos-rows">
+              {rows.map((p) => (
+                <div className="row" key={p.id}>
+                  <span className="pos-market">
+                    <PairIcons a={p.collateralSymbol} b={p.debtSymbol} />
+                    <span><b>{p.market}</b> <span style={{ color: "#8a8a91" }}>· {p.leverage}</span></span>
+                  </span>
+                  <span>{p.collateralLabel}</span>
+                  <span>{p.debtLabel}</span>
+                  <span>{p.automation}</span>
+                  <span>{healthPill(p.collateralValue, p.debtValue)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         </div>
