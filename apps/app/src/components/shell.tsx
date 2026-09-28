@@ -423,11 +423,20 @@ export function Shell({
     function onRefreshAll() {
       if (wallet) fetchNotes(wallet, "manual-refresh");
     }
+    function onGotoView(e: Event) {
+      const view = (e as CustomEvent<AppView>).detail;
+      if (view) {
+        setView(view);
+        setWalletMenuOpen(false);
+      }
+    }
     window.addEventListener("seidar:open-wallets", onOpenWallets);
     window.addEventListener("seidar:refresh-notes", onRefreshAll);
+    window.addEventListener("seidar:goto-view", onGotoView);
     return () => {
       window.removeEventListener("seidar:open-wallets", onOpenWallets);
       window.removeEventListener("seidar:refresh-notes", onRefreshAll);
+      window.removeEventListener("seidar:goto-view", onGotoView);
     };
   }, [wallet]);
 
@@ -644,6 +653,7 @@ export function Shell({
                 esc
               </button>
             </div>
+            <div className="search-results">
             {matchedSections.length > 0 && (
               <>
                 <p className="search-group">Sections</p>
@@ -669,6 +679,7 @@ export function Shell({
             {matchedSections.length === 0 && matchedActions.length === 0 && (
               <p className="notif-empty" style={{ padding: "12px 10px" }}>No matches for “{query}”.</p>
             )}
+            </div>
           </div>
         </div>
       )}
