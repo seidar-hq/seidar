@@ -1,0 +1,18 @@
+# Seidar local stack. Start Postgres for DB-backed notifications:
+#   docker compose up -d db
+# Apps fall back to localStorage when DATABASE_URL is unset/unreachable.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: seidardev
+      POSTGRES_DB: seidar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

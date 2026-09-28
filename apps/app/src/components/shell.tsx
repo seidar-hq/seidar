@@ -221,6 +221,27 @@ export function Shell({
         return;
       }
       setWallet(address);
+      await ensureWelcome(address);
+    } catch {
+      showError("Freighter not found — install it to connect");
+    }
+  }
+
+  /** Welcome exactly once per wallet (DB-first, localStorage fallback). */
+  async function ensureWelcome(address: string) {
+    try {
+      const r = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: address, welcome: true }),
+      });
+      const d = await r.json();
+      if (d?.ok && d.created && d.note) {
+        setNotes((prev) => [{ ...d.note, at: String(d.note.at) }, ...prev].slice(0, 20));
+      }
+      welcomedRef.current = true;
+      writeStorage("seidar.welcomed", true);
+    } catch {
       if (!welcomedRef.current) {
         welcomedRef.current = true;
         writeStorage("seidar.welcomed", true);
@@ -228,10 +249,27 @@ export function Shell({
           `Welcome to Seidar, ${shortAddress(address)} — your positions, keepers and gas credits live here. Start with a testnet Boost to see automation in action.`
         );
       }
-    } catch {
-      showError("Freighter not found — install it to connect");
     }
   }
+
+  /** Load DB notifications when a wallet is present (fallback: local copy). */
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    fetch(`/api/notifications?wallet=${wallet}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d?.ok && Array.isArray(d.notes)) {
+          setNotes(d.notes.map((n: Note) => ({ ...n, at: String(n.at) })));
+        }
+      })
+      .catch(() => {
+        /* offline DB — keep localStorage mirror */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
 
   type Note = { id: number; text: string; at: string; read: boolean };
   const [notes, setNotes] = useState<Note[]>(() => readStorage<Note[]>("seidar.notes", []));
@@ -315,8 +353,18 @@ export function Shell({
 
   const unread = notes.filter((n) => !n.read).length;
 
-  function markAllRead() {
+  async function markAllRead() {
     setNotes((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (!wallet) return;
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, all: true }),
+      });
+    } catch {
+      /* local-only when DB unreachable */
+    }
   }
 
   const q = query.trim().toLowerCase();
@@ -388,9 +436,10 @@ export function Shell({
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
                   <Identicon address={wallet} size={33} square />
                   <span className="wallet-text">
-                    <b>{shortAddress(wallet)}<span className="wallet-logo" title="Freighter">F</span></b>
+                    <b>{shortAddress(wallet)}</b>
                     <small>Testnet</small>
                   </span>
+                  <img src="/freighter-logo.svg" alt="Freighter" className="wallet-logo" />
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>

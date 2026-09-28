@@ -151,6 +151,7 @@
 .seg-group.wallet {
   border-color: var(--green);
   background: var(--green);
+  border-radius: 6px;
 }
 .seg-group.wallet .seg-main {
   color: #04120a;
@@ -185,17 +186,9 @@
   font-size: 11.5px;
 }
 .wallet-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 12px;
   height: 12px;
-  border-radius: 4px;
-  background: #7c6cf5;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 800;
-  margin-left: 5px;
+  margin-left: 8px;
   flex: none;
 }
 .wallet-text small {

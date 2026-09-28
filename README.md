@@ -14,3 +14,15 @@ Blend V2 · XOXNO · Peridot · Soroswap / Aqua / Phoenix · Reflector oracles.
 V1 lock: Blend V2 + XOXNO + Peridot for leverage/shifter, DeFindex + Templar vaults
 for savings, `G...` manual + OZ smart-account for automation (multisig optional policy),
 keeper + market-swap automation, gas credits via OZ Relayer, no orderbook / perps.
+
+## Local services
+
+Notifications are DB-backed (Postgres) with a localStorage fallback:
+
+```
+docker compose up -d db            # start Postgres (needs Docker Desktop running)
+cp apps/app/.env.example apps/app/.env.local
+npm run dev:app
+```
+
+Without `DATABASE_URL`, the app serves from the local mirror automatically.
