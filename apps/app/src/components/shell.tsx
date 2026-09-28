@@ -272,12 +272,16 @@ export function Shell({
   }
 
   /** Welcome exactly once per wallet (DB-first, localStorage fallback). */
-  async function ensureWelcome(address: string) {
+  async function ensureWelcome(address: string, force = false) {
+    if (!force && welcomedRef.current) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
     try {
       const r = await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wallet: address, welcome: true }),
+        signal: ctrl.signal,
       });
       const d = await r.json();
       if (d?.ok && d.created && d.note) {
@@ -293,6 +297,24 @@ export function Shell({
           `Welcome to Seidar, ${shortAddress(address)} — your positions, keepers and gas credits live here. Start with a testnet Boost to see automation in action.`
         );
       }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Reconcile on every wallet load: if no welcome exists anywhere (server
+   * list + local), create it. A single interrupted first attempt can never
+   * strand a wallet without its welcome again.
+   */
+  async function reconcileWelcome(address: string, serverNotes: Note[]) {
+    const hasWelcome =
+      serverNotes.some((n) => n.text.startsWith("Welcome to Seidar")) ||
+      readStorage<Note[]>("seidar.notes", []).some((n) => n.text.startsWith("Welcome to Seidar"));
+    if (!hasWelcome) {
+      welcomedRef.current = false;
+      writeStorage("seidar.welcomed", false);
+      await ensureWelcome(address, true);
     }
   }
 
@@ -317,6 +339,7 @@ export function Shell({
       if (d?.ok && Array.isArray(d.notes)) {
         const server = d.notes.map((n: Note) => ({ ...n, at: String(n.at) }));
         setNotes((prev) => mergeNotes(prev, server));
+        await reconcileWelcome(walletAddr, server);
       }
     } catch {
       /* offline DB — keep localStorage mirror */
@@ -326,6 +349,7 @@ export function Shell({
   type Note = { id: number; text: string; at: string; read: boolean };
   const [notes, setNotes] = useState<Note[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
 
   /** Reload server notes whenever a wallet is present. */
   useEffect(() => {
@@ -394,6 +418,13 @@ export function Shell({
   function disconnectWallet() {
     setWallet(null);
     setWalletMenuOpen(false);
+  }
+
+  /** Switch accounts: drop the session, then let Freighter pick again. */
+  async function connectDifferent() {
+    setWalletMenuOpen(false);
+    setWallet(null);
+    await connectWallet();
   }
 
   async function copyAddress() {
@@ -486,10 +517,16 @@ export function Shell({
             {wallet ? (
               <>
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
-                  <Identicon address={wallet} size={33} square />
+                  <span className="identicon-wrap">
+                    <Identicon address={wallet} size={36} square />
+                    <span className="provider-badge" title="Freighter">
+                      <img src="/freighter-logo.svg" alt="" />
+                    </span>
+                  </span>
                   <span className="wallet-text">
-                    <b>{shortAddress(wallet)}<span className="wallet-logo" title="Freighter"><img src="/freighter-logo.svg" alt="" /></span></b>
-                    <small>Testnet</small>
+                    <b>{shortAddress(wallet)}</b>
+                    <small>Freighter · {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 0 })} XLM</small>
+                    <em>No Smart Account</em>
                   </span>
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
@@ -504,27 +541,76 @@ export function Shell({
           </div>
           <img src="/stellar-logo.png" alt="Stellar" className="stellar-logo" title="Built on Stellar" />
           {walletMenuOpen && wallet && (
-            <div className="wallet-drop" role="menu" aria-label="Wallet menu">
-              <div className="wallet-drop-head">
-                <Identicon address={wallet} size={32} />
-                <div>
-                  <b>{shortAddress(wallet)}</b>
-                  <small>Stellar Testnet</small>
+            <div className="wallet-drop dfs" role="menu" aria-label="Wallet menu">
+              <div className="wdrop-head">
+                <span className="identicon-wrap lg">
+                  <Identicon address={wallet} size={40} square />
+                  <span className="provider-badge" title="Freighter">
+                    <img src="/freighter-logo.svg" alt="" />
+                  </span>
+                </span>
+                <div className="wdrop-identity">
+                  <button type="button" className="wdrop-addr" onClick={copyAddress} title="Copy full address">
+                    {copied ? "Copied ✓" : shortAddress(wallet)}
+                  </button>
+                  <small>Freighter · {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 0 })} XLM</small>
                 </div>
+                <button type="button" className="wdrop-collapse" aria-label="Close menu" onClick={() => setWalletMenuOpen(false)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+                </button>
               </div>
-              <button type="button" onClick={copyAddress}>
-                {copied ? "Copied ✓" : "Copy address"}
-              </button>
-              <a
-                href={`https://stellar.expert/explorer/testnet/account/${wallet}`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                className="wdrop-create"
+                onClick={() => {
+                  setWalletMenuOpen(false);
+                  setView("settings");
+                }}
               >
-                View on explorer ↗
-              </a>
-              <button type="button" className="danger" onClick={disconnectWallet}>
-                Disconnect
+                <span className="wdrop-create-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="14" rx="3" /><path d="M2 10h20" /></svg>
+                </span>
+                Create Smart Account
               </button>
+              <div className="wdrop-rows">
+                <button type="button" onClick={() => go("recipes")}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="12" r="2.5" /><path d="M8 7l7.5 4M8 17l7.5-4" /></svg></span>
+                  Simulate
+                </button>
+                <button type="button" onClick={() => go("portfolio")}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" /></svg></span>
+                  Track
+                </button>
+                <button type="button" onClick={copyAddress}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="18" rx="2" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="13" y2="11" /></svg></span>
+                  {copied ? "Copied ✓" : "Address book"}
+                </button>
+                <button type="button" onClick={() => go("settings")}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg></span>
+                  Manage
+                </button>
+              </div>
+              <div className="wdrop-rows">
+                <button type="button" onClick={connectDifferent}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="13" height="12" rx="2" /><path d="M15 10l5 2-5 2v-4z" /></svg></span>
+                  Connect different wallet
+                </button>
+                <button type="button" className="danger" onClick={disconnectWallet}>
+                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></span>
+                  Disconnect
+                </button>
+              </div>
+              <button type="button" className="wdrop-why" onClick={() => setShowWhy((s) => !s)}>
+                <span className="wdrop-why-star" aria-hidden="true">★</span>
+                Why Smart Accounts
+              </button>
+              {showWhy && (
+                <p className="wdrop-why-text">
+                  Smart accounts let Seidar keepers automate your positions with scoped,
+                  expiring keys — you stay in custody the whole time. Enable the optional
+                  multisig policy in Settings for shared control.
+                </p>
+              )}
             </div>
           )}
         </div>

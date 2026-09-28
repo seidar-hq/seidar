@@ -54,22 +54,38 @@ async function rpc(method: string, params: unknown) {
 
 /** Recent events for our contracts (topic symbol + ledger + tx hash). */
 export async function fetchActivity(
-  limitLedgers = 5000
+  windowsBack = 8,
+  windowSize = 5000
 ): Promise<{ ledger: number; events: ChainEvent[] }> {
   const latest: number = (await rpc("getLatestLedger", {})).sequence;
-  const events: ChainEvent[] = [];
   const ids = [CONTRACTS.guardian, CONTRACTS.recipeExecutor];
-  const r = await rpc("getEvents", {
-    startLedger: Math.max(2, latest - limitLedgers),
-    filters: [{ type: "contract", contractIds: ids, topics: [] }],
-    pagination: { limit: 25 },
-  });
-  for (const ev of r.events ?? []) {
-    const t0 = ev.topic?.[0];
-    const topic = decodeTopic(t0);
-    events.push({ contract: ev.contractId, topic, ledger: ev.ledger, txHash: ev.txHash });
+  const seen = new Set<string>();
+  const events: ChainEvent[] = [];
+  // Step backward in fixed windows: one getEvents call cannot scan the
+  // whole retention range, but each windowed call scans forward from its
+  // own start, so union the windows and dedupe.
+  for (let w = 0; w < windowsBack && events.length < 25; w++) {
+    const start = Math.max(2, latest - windowSize * (w + 1));
+    const r = await rpc("getEvents", {
+      startLedger: start,
+      filters: [{ type: "contract", contractIds: ids, topics: [] }],
+      pagination: { limit: 100 },
+    });
+    for (const ev of r.events ?? []) {
+      const key = `${ev.txHash}:${JSON.stringify(ev.topic?.[0] ?? "")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      events.push({
+        contract: ev.contractId,
+        topic: decodeTopic(ev.topic?.[0]),
+        ledger: ev.ledger,
+        txHash: ev.txHash,
+      });
+    }
+    if (start <= 2) break;
   }
-  return { ledger: latest, events: events.slice(-12).reverse() };
+  events.sort((a, b) => b.ledger - a.ledger || (a.txHash < b.txHash ? -1 : 1));
+  return { ledger: latest, events: events.slice(0, 12) };
 }
 
 export function shortAddress(addr: string) {
