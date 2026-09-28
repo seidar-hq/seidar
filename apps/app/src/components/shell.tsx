@@ -349,7 +349,6 @@ export function Shell({
   type Note = { id: number; text: string; at: string; read: boolean };
   const [notes, setNotes] = useState<Note[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [showWhy, setShowWhy] = useState(false);
 
   /** Reload server notes whenever a wallet is present. */
   useEffect(() => {
@@ -574,10 +573,6 @@ export function Shell({
                 Create Smart Account
               </button>
               <div className="wdrop-rows">
-                <button type="button" onClick={() => go("recipes")}>
-                  <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="12" r="2.5" /><path d="M8 7l7.5 4M8 17l7.5-4" /></svg></span>
-                  Simulate
-                </button>
                 <button type="button" onClick={() => go("portfolio")}>
                   <span className="wdrop-ico" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" /></svg></span>
                   Track
@@ -601,17 +596,6 @@ export function Shell({
                   Disconnect
                 </button>
               </div>
-              <button type="button" className="wdrop-why" onClick={() => setShowWhy((s) => !s)}>
-                <span className="wdrop-why-star" aria-hidden="true">★</span>
-                Why Smart Accounts
-              </button>
-              {showWhy && (
-                <p className="wdrop-why-text">
-                  Smart accounts let Seidar keepers automate your positions with scoped,
-                  expiring keys — you stay in custody the whole time. Enable the optional
-                  multisig policy in Settings for shared control.
-                </p>
-              )}
             </div>
           )}
         </div>
