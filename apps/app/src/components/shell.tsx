@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { requestAccess, getAddress } from "@stellar/freighter-api";
 import { shortAddress } from "@/lib/chain";
 
@@ -81,6 +82,7 @@ function Identicon({ address, size = 26, square = false }: { address: string; si
 export type AppView =
   | "portfolio"
   | "discover"
+  | "protocols"
   | "blend"
   | "xoxno"
   | "peridot"
@@ -90,7 +92,28 @@ export type AppView =
   | "automate"
   | "settings";
 
-const NAV: { id: AppView; label: string; icon: React.ReactNode }[] = [
+type NavChild = { id: AppView; label: string };
+type NavItem = { id: AppView; label: string; icon: React.ReactNode; children?: NavChild[] };
+
+/** View <-> URL mapping. Portfolio lives at `/`; protocols nest under `/protocols`. */
+export function viewToPath(v: AppView): string {
+  if (v === "portfolio") return "/";
+  if (v === "blend" || v === "xoxno" || v === "peridot") return `/protocols/${v}`;
+  return `/${v}`;
+}
+
+export function pathToView(pathname: string | null): AppView {
+  const seg = (pathname ?? "/").split("/").filter(Boolean);
+  if (seg.length === 0) return "portfolio";
+  if (seg[0] === "protocols") {
+    if (seg[1] === "blend" || seg[1] === "xoxno" || seg[1] === "peridot") return seg[1];
+    return "protocols";
+  }
+  const known: AppView[] = ["discover", "savings", "shifter", "recipes", "automate", "settings", "protocols", "portfolio"];
+  return known.includes(seg[0] as AppView) ? (seg[0] as AppView) : "portfolio";
+}
+
+const NAV: NavItem[] = [
   {
     id: "portfolio",
     label: "Portfolio",
@@ -106,25 +129,16 @@ const NAV: { id: AppView; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
-    id: "blend",
-    label: "Blend",
+    id: "protocols",
+    label: "Protocols",
     icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
     ),
-  },
-  {
-    id: "xoxno",
-    label: "XOXNO",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>
-    ),
-  },
-  {
-    id: "peridot",
-    label: "Peridot",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
-    ),
+    children: [
+      { id: "blend", label: "Blend" },
+      { id: "xoxno", label: "XOXNO" },
+      { id: "peridot", label: "Peridot" },
+    ],
   },
   {
     id: "savings",
@@ -156,15 +170,10 @@ const NAV: { id: AppView; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export function Shell({
-  view,
-  setView,
-  children,
-}: {
-  view: AppView;
-  setView: (v: AppView) => void;
-  children: React.ReactNode;
-}) {
+export function Shell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const view = pathToView(pathname);
   // SSR-safe initial state (matches server HTML); session restores after mount.
   const [wallet, setWallet] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -210,14 +219,25 @@ export function Shell({
   ];
 
   const sq = query.trim().toLowerCase();
-  const matchedSections = NAV.filter((item) => item.label.toLowerCase().includes(sq));
+  const SEARCH_SECTIONS = NAV.flatMap((item) => [
+    { id: item.id, label: item.label, icon: item.icon },
+    ...(item.children ?? []).map((c) => ({ id: c.id, label: c.label, icon: item.icon })),
+  ]);
+  const matchedSections = SEARCH_SECTIONS.filter((item) => item.label.toLowerCase().includes(sq));
   const matchedActions = QUICK_ACTIONS.filter(
     (a) => a.label.toLowerCase().includes(sq) || a.hint.toLowerCase().includes(sq)
   );
 
-  function go(view: AppView) {
-    setView(view);
+  function go(v: AppView) {
     setSearchOpen(false);
+    setWalletMenuOpen(false);
+    if (v !== view) router.push(viewToPath(v));
+  }
+
+  /** Sidebar navigation: release focus so the rail collapses on hover-out. */
+  function navGo(v: AppView, el: HTMLButtonElement | null) {
+    go(v);
+    el?.blur();
   }
   const [balance, setBalance] = useState<{ xlm: number; usd: number | null }>({
     xlm: 0,
@@ -431,11 +451,8 @@ export function Shell({
       if (wallet) fetchNotes(wallet, "manual-refresh");
     }
     function onGotoView(e: Event) {
-      const view = (e as CustomEvent<AppView>).detail;
-      if (view) {
-        setView(view);
-        setWalletMenuOpen(false);
-      }
+      const v = (e as CustomEvent<AppView>).detail;
+      if (v) go(v);
     }
     window.addEventListener("seidar:open-wallets", onOpenWallets);
     window.addEventListener("seidar:refresh-notes", onRefreshAll);
@@ -597,7 +614,7 @@ export function Shell({
                 className="wdrop-create"
                 onClick={() => {
                   setWalletMenuOpen(false);
-                  setView("settings");
+                  go("settings");
                 }}
               >
                 <span className="wdrop-create-icon" aria-hidden="true">
@@ -693,25 +710,44 @@ export function Shell({
       <div className="shell-layout">
         <aside className="shell-sidebar">
           <nav className="side-nav">
-            {NAV.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`nav-item${view === item.id ? " active" : ""}`}
-                onClick={() => setView(item.id)}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
-                {item.id === "automate" && (
-                  <span className="badge-beta">BETA</span>
-                )}
-              </button>
-            ))}
+            {NAV.map((item) => {
+              const childActive = item.children?.some((c) => c.id === view) ?? false;
+              const active = view === item.id || childActive;
+              return (
+                <Fragment key={item.id}>
+                  <button
+                    type="button"
+                    className={`nav-item${active ? " active" : ""}`}
+                    onClick={(e) => navGo(item.id, e.currentTarget)}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    <span className="nav-label">{item.label}</span>
+                    {item.id === "automate" && (
+                      <span className="badge-beta">BETA</span>
+                    )}
+                  </button>
+                  {item.children && (
+                    <div className="nav-sub">
+                      {item.children.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={`nav-item nav-child${view === c.id ? " active" : ""}`}
+                          onClick={(e) => navGo(c.id, e.currentTarget)}
+                        >
+                          <span className="nav-label">{c.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
             <div className="section-title">
               <span className="rule" />
               <span className="nav-label">MORE</span>
             </div>
-            <button type="button" className="nav-item" onClick={() => setView("settings")}>
+            <button type="button" className="nav-item" onClick={(e) => navGo("settings", e.currentTarget)}>
               <span className="nav-icon">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
               </span>

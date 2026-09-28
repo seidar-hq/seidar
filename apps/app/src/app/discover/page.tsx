@@ -1,10 +1,10 @@
 import { Shell } from "@/components/shell";
 import { Views } from "@/components/views";
 
-export default function RootPage() {
+export default function DiscoverPage() {
   return (
     <Shell>
-      <Views view="portfolio" />
+      <Views view="discover" />
     </Shell>
   );
 }
