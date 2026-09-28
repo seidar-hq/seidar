@@ -290,7 +290,7 @@ function Donut({ items, total }: { items: DonutItem[]; total: number }) {
             r={R}
             fill="none"
             stroke={s.color}
-            strokeWidth={i === hover ? 22 : 18}
+            strokeWidth={i === hover ? 15 : 12}
             strokeDasharray={`${Math.max(0, s.frac * C - 2)} ${C}`}
             strokeDashoffset={-s.offset * C}
             strokeLinecap="butt"
@@ -436,17 +436,17 @@ function Portfolio() {
               </div>
             </div>
             <p className="pf-net-label">Net worth</p>
-            <p className="pf-net">${Math.round(netWorth).toLocaleString()}</p>
             <div className="pf-split">
-              <div className="pf-break">
-                {alloc.map((a) => (
-                  <div key={a.label}>
-                    <small>{a.label}</small>
-                    <b style={{ color: a.color }}>${Math.round(a.value).toLocaleString()}</b>
-                  </div>
-                ))}
-              </div>
+              <p className="pf-net">${Math.round(netWorth).toLocaleString()}</p>
               <Donut items={alloc} total={netWorth} />
+            </div>
+            <div className="pf-break">
+              {alloc.map((a) => (
+                <div key={a.label}>
+                  <small>{a.label}</small>
+                  <b style={{ color: a.color }}>${Math.round(a.value).toLocaleString()}</b>
+                </div>
+              ))}
             </div>
           </div>
           <div className="pf-card">
@@ -601,11 +601,30 @@ type MarketRow = {
   supplyApy: number;
   borrowApy: number | null;
   maxLev: string;
+  ltv: number | null;
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: MarketCat[];
   available: boolean;
 };
+
+/** Custom dark tooltip (hover/focus). */
+function Tip({ tip, children }: { tip: React.ReactNode; children: React.ReactNode }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      className="tip-wrap"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+      tabIndex={0}
+    >
+      {children}
+      {show && <span className="tip-bubble">{tip}</span>}
+    </span>
+  );
+}
 
 const DV_CATS = [
   { id: "browse", label: "Browse All" },
@@ -863,7 +882,22 @@ function DiscoverPage() {
               </div>
               <div className="dv-tablewrap">
                 <div className="dv-thead">
-                  <span>Collateral</span><span>Debt</span><span>Supply APY</span><span>Borrow APY</span><span>Net APY</span><span>Max Leverage</span><span>Protocol</span>
+                  <span>Collateral</span><span>Debt</span><span>Supply APY</span><span>Borrow APY</span><span>Net APY</span>
+                  <span>
+                    Max Leverage{" "}
+                    <Tip
+                      tip={
+                        <>
+                          <b>Loan-to-Value (LTV)</b> is how much you can borrow against your
+                          collateral. 75% LTV on $100 of collateral = $75 max loan. Higher
+                          LTV allows higher leverage — and liquidates faster when prices fall.
+                        </>
+                      }
+                    >
+                      <span className="dv-info" aria-label="What is LTV">ⓘ</span>
+                    </Tip>
+                  </span>
+                  <span>Protocol</span>
                 </div>
                 {filtered.map((m, i) => (
                   <button
@@ -877,8 +911,25 @@ function DiscoverPage() {
                     <span className="dv-asset">{m.debt ? (<><TokenIcon symbol={m.debt} size={22} /> {m.debt}</>) : "—"}</span>
                     <span>{m.supplyApy.toFixed(2)}%</span>
                     <span>{m.borrowApy == null ? "—" : `${m.borrowApy.toFixed(2)}%`}</span>
-                    <span className="dv-net">{netFor(m).toFixed(2)}%</span>
-                    <span>{m.maxLev}</span>
+                    <Tip tip={<>Decimal form: <b>{(netFor(m) / 100).toFixed(4)}</b></>}>
+                      <span className="dv-net">{netFor(m).toFixed(2)}%</span>
+                    </Tip>
+                    {m.maxLev === "—" || m.ltv == null ? (
+                      <span>{m.maxLev}</span>
+                    ) : (
+                      <Tip
+                        tip={
+                          <>
+                            <b>{Math.round(parseFloat(m.maxLev) * 100)}% exposure</b>
+                            <br />
+                            LTV {(m.ltv * 100).toFixed(0)}% — borrow up to {(m.ltv * 100).toFixed(0)}% of
+                            your collateral&apos;s value.
+                          </>
+                        }
+                      >
+                        <span>{m.maxLev}</span>
+                      </Tip>
+                    )}
                     <span className="dv-proto">{m.protocolLabel}</span>
                   </button>
                 ))}

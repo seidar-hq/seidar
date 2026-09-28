@@ -34,6 +34,7 @@ export type PoolRow = {
   supplyApy: number;
   borrowApy: number | null;
   maxLev: string;
+  ltv: number | null;
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: ("leverage" | "yield" | "passive")[];
@@ -150,6 +151,7 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
             supplyApy: r.supplyApy,
             borrowApy: null,
             maxLev: "—",
+            ltv: null,
             protocol: "blend",
             protocolLabel: "Blend",
             cats,
@@ -167,6 +169,7 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
               supplyApy: s.supplyApy,
               borrowApy: d.borrowApy,
               maxLev: maxLev(s.ltv),
+              ltv: s.ltv,
               protocol: "blend",
               protocolLabel: "Blend",
               cats: ["leverage"],
@@ -225,6 +228,7 @@ async function xoxnoRows(): Promise<PoolRow[]> {
         supplyApy: p.apy ?? 0,
         borrowApy: null,
         maxLev: "—",
+        ltv: null,
         protocol: "xoxno",
         protocolLabel: "XOXNO",
         cats,
