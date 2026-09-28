@@ -203,6 +203,19 @@ export function Shell({
   const [copied, setCopied] = useState(false);
   const welcomedRef = useRef(false);
   const noteId = useRef(0);
+  const rightRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside dismisses open dropdowns.
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (rightRef.current && !rightRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+        setWalletMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
 
   function disconnectWallet() {
     setWallet(null);
@@ -267,7 +280,7 @@ export function Shell({
             />
           </div>
         </div>
-        <div className="shell-topbar-right">
+        <div className="shell-topbar-right" ref={rightRef}>
           <button
             className="notif-btn"
             type="button"

@@ -173,7 +173,7 @@
 .wallet-drop {
   position: absolute;
   top: 44px;
-  right: 0;
+  right: 10px;
   width: 250px;
   background: #0a0a0a;
   border: 1px solid var(--border-2);
@@ -260,7 +260,7 @@
 .notif-drop {
   position: absolute;
   top: 44px;
-  right: 0;
+  right: 10px;
   width: 330px;
   max-height: 380px;
   overflow-y: auto;
