@@ -5,6 +5,7 @@ import {
   healthBps,
   healthStatus,
   aggregatePortfolio,
+  netApy,
 } from "@seidar/positions-sdk";
 import { evaluateRule } from "@seidar/automation-sdk";
 import type { AppView } from "./shell";
@@ -527,14 +528,268 @@ function ProtocolsView() {
   );
 }
 
+type MarketCat = "leverage" | "yield" | "passive";
+
+type MarketRow = {
+  collateral: string;
+  debt: string | null;
+  supplyApy: number;
+  borrowApy: number | null;
+  netApy: number;
+  maxLev: string;
+  protocol: "blend" | "xoxno" | "peridot";
+  protocolLabel: string;
+  cats: MarketCat[];
+  available: boolean;
+};
+
+// Illustrative market presets (APYs in %). Live per-pool values arrive with
+// the Blend/XOXNO/Peridot RPC integrations.
+const MARKETS: MarketRow[] = [
+  { collateral: "XLM", debt: "USDC", supplyApy: 0.05, borrowApy: 0.1, netApy: 0.58, maxLev: "3.2x", protocol: "blend", protocolLabel: "Blend", cats: ["leverage"], available: true },
+  { collateral: "USDC", debt: "XLM", supplyApy: 7.1, borrowApy: 0.4, netApy: 2.52, maxLev: "2.1x", protocol: "xoxno", protocolLabel: "XOXNO", cats: ["leverage"], available: true },
+  { collateral: "XLM", debt: "USDC", supplyApy: 0.04, borrowApy: 0.3, netApy: 0.31, maxLev: "1.8x", protocol: "peridot", protocolLabel: "Peridot", cats: ["leverage"], available: true },
+  { collateral: "XLM", debt: "EURC", supplyApy: 0.05, borrowApy: 0.5, netApy: 0.12, maxLev: "2.4x", protocol: "blend", protocolLabel: "Blend", cats: ["leverage"], available: false },
+  { collateral: "USDC", debt: null, supplyApy: 7.42, borrowApy: null, netApy: 7.42, maxLev: "—", protocol: "blend", protocolLabel: "Blend", cats: ["yield"], available: true },
+  { collateral: "EURC", debt: null, supplyApy: 5.84, borrowApy: null, netApy: 5.84, maxLev: "—", protocol: "blend", protocolLabel: "Blend", cats: ["yield"], available: true },
+  { collateral: "XLM", debt: null, supplyApy: 0.51, borrowApy: null, netApy: 0.51, maxLev: "—", protocol: "xoxno", protocolLabel: "XOXNO", cats: ["yield"], available: true },
+  { collateral: "USDC", debt: null, supplyApy: 5.1, borrowApy: null, netApy: 5.1, maxLev: "—", protocol: "peridot", protocolLabel: "Peridot", cats: ["passive"], available: true },
+  { collateral: "EURC", debt: null, supplyApy: 4.2, borrowApy: null, netApy: 4.2, maxLev: "—", protocol: "peridot", protocolLabel: "Peridot", cats: ["passive"], available: true },
+];
+
+const DV_CATS = [
+  { id: "browse", label: "Browse All" },
+  { id: "leverage", label: "Leveraged Borrowing" },
+  { id: "yield", label: "Yield Farming" },
+  { id: "passive", label: "Passive Yield" },
+] as const;
+
+type DvCat = (typeof DV_CATS)[number]["id"];
+
 function DiscoverPage() {
+  const [cat, setCat] = useState<DvCat>("browse");
+  const [collateral, setCollateral] = useState("all");
+  const [debt, setDebt] = useState("all");
+  const [protocol, setProtocol] = useState("all");
+  const [estimate, setEstimate] = useState(true);
+  const [ownedOnly, setOwnedOnly] = useState(false);
+  const [hideUnavailable, setHideUnavailable] = useState(false);
+  const [hideTable, setHideTable] = useState(false);
+  const [mode, setMode] = useState<"borrow" | "leverage">("borrow");
+  const [showHint, setShowHint] = useState(true);
+  const [collateralAmt, setCollateralAmt] = useState("100000");
+  const [debtAmt, setDebtAmt] = useState("50000");
+
+  const codes = useMemo(() => {
+    const s = new Set<string>();
+    MARKETS.forEach((m) => {
+      s.add(m.collateral);
+      if (m.debt) s.add(m.debt);
+    });
+    return [...s].sort();
+  }, []);
+  const protocols = useMemo(() => [...new Set(MARKETS.map((m) => m.protocolLabel))].sort(), []);
+
+  const inCat = (m: MarketRow) => cat === "browse" || m.cats.includes(cat);
+  const filtered = MARKETS.filter(
+    (m) =>
+      inCat(m) &&
+      (collateral === "all" || m.collateral === collateral) &&
+      (debt === "all" || m.debt === debt) &&
+      (protocol === "all" || m.protocolLabel === protocol) &&
+      (!ownedOnly || m.collateral === "XLM") &&
+      (!hideUnavailable || m.available)
+  );
+
+  const collNum = Number(collateralAmt.replace(/[^0-9.]/g, "")) || 0;
+  const debtNum = Number(debtAmt.replace(/[^0-9.]/g, "")) || 0;
+
+  function netFor(m: MarketRow): number {
+    if (!estimate || collNum <= 0) return m.netApy;
+    if (m.debt == null || m.borrowApy == null || debtNum <= 0) return m.supplyApy;
+    return netApy(collNum, m.supplyApy * 100, debtNum, m.borrowApy * 100) / 100;
+  }
+
+  function Toggle({ on, onFlip, label }: { on: boolean; onFlip: () => void; label: string }) {
+    return (
+      <button type="button" className="dv-toggle" onClick={onFlip} aria-pressed={on}>
+        <span className={`dv-switch${on ? " on" : ""}`} aria-hidden="true" />
+        {label}
+      </button>
+    );
+  }
+
   return (
     <>
       <h1 style={{ fontSize: 20 }}>Discover</h1>
       <p style={{ color: "#8a8a91", fontSize: 13, marginTop: 4, marginBottom: 12 }}>
         Curated leverage, borrow and yield presets across Stellar protocols.
       </p>
-      <DiscoverSection />
+
+      <div className="dv-tabs" role="tablist" aria-label="Discover categories">
+        {DV_CATS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={cat === c.id}
+            className={`dv-tab${cat === c.id ? " active" : ""}`}
+            onClick={() => setCat(c.id)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      {cat === "browse" ? (
+        <div className="dv-browse">
+          <div className="dv-browse-col">
+            <div className="dv-sect-head" onClick={() => setCat("leverage")} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter") setCat("leverage"); }}>
+              <h2>Leveraged borrowing <span aria-hidden="true">→</span></h2>
+              <p>Trade with low to medium leverage on Stellar lending protocols like Blend, XOXNO &amp; Peridot.</p>
+            </div>
+            <div className="dz-card">
+              <div className="dz-visual" style={{ background: "linear-gradient(180deg, #3b82f626, transparent)" }}>
+                <Spark points="0,34 20,30 40,32 60,22 80,26 100,16 120,20 140,10 160,14" tint="#3b82f6" />
+                <span className="dz-big-icon" style={{ background: "#3b82f630", boxShadow: "0 0 40px #3b82f655" }}>
+                  <TokenIcon symbol="XLM" size={40} />
+                </span>
+              </div>
+              <div className="dz-body">
+                <p className="dz-title">Go long on <TokenIcon symbol="XLM" size={18} /> XLM up to <b style={{ color: "#8ea2ff" }}>3.2x</b></p>
+                <div className="dz-btnrow">
+                  <button type="button" onClick={() => goto("blend")}>⚡ Long</button>
+                  <button type="button" onClick={() => goto("blend")}>⚡ Short</button>
+                  <button type="button" className="dz-link" onClick={() => goto("blend")}>Browse all XLM markets</button>
+                </div>
+              </div>
+            </div>
+            <div className="dz-card" style={{ padding: 18 }}>
+              <p className="dz-title">Go long on crypto bluechips</p>
+              <p className="dz-desc" style={{ maxWidth: "none" }}>Borrow stablecoins against the majors to lever up a long, across the biggest Stellar lending markets.</p>
+              <div className="dv-assetlist">
+                {["XLM", "USDC", "EURC"].map((code) => (
+                  <button key={code} type="button" onClick={() => { setCat("leverage"); setCollateral(code); }}>
+                    <TokenIcon symbol={code} size={22} />
+                    <span>{code}</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="dv-browse-col">
+            <div className="dv-sect-head" onClick={() => setCat("passive")} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter") setCat("passive"); }}>
+              <h2>Passive yield <span aria-hidden="true">→</span></h2>
+              <p>Earn steady rates on stables and vaults without managing loans.</p>
+            </div>
+            {[
+              { tag: "Blend", title: "Earn with", asset: "USDC", apy: "7.42%", view: "blend" as AppView },
+              { tag: "DeFindex", title: "Earn steady vault", asset: "USDC", apy: "5.10%", view: "savings" as AppView },
+              { tag: "Blend", title: "Earn with", asset: "EURC", apy: "5.84%", view: "blend" as AppView },
+            ].map((c) => (
+              <div className="dz-card dz-earn" key={c.tag + c.asset}>
+                <div>
+                  <small className="dz-tag">{c.tag}</small>
+                  <p className="dz-title">{c.title} <TokenIcon symbol={c.asset} size={18} /> {c.asset}</p>
+                  <button type="button" className="dz-open" onClick={() => goto(c.view)}>Open position</button>
+                </div>
+                <div className="dz-apy">
+                  <TokenIcon symbol={c.asset} size={40} />
+                  <b>{c.apy}</b>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="dv-filters">
+            <label aria-label="Collateral tokens">
+              <select value={collateral} onChange={(e) => setCollateral(e.target.value)} aria-label="Collateral tokens">
+                <option value="all">All collateral tokens</option>
+                {codes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label aria-label="Debt tokens">
+              <select value={debt} onChange={(e) => setDebt(e.target.value)} aria-label="Debt tokens">
+                <option value="all">All debt tokens</option>
+                {codes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label aria-label="Protocols">
+              <select value={protocol} onChange={(e) => setProtocol(e.target.value)} aria-label="Protocols">
+                <option value="all">All protocols</option>
+                {protocols.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="dv-toggles">
+            <Toggle on={estimate} onFlip={() => setEstimate(!estimate)} label="Estimate Net APY" />
+            <Toggle on={ownedOnly} onFlip={() => setOwnedOnly(!ownedOnly)} label="Only owned assets" />
+            <Toggle on={hideUnavailable} onFlip={() => setHideUnavailable(!hideUnavailable)} label="Hide unavailable markets" />
+            <span className="dv-count">Showing {filtered.length} option{filtered.length === 1 ? "" : "s"}</span>
+            <button type="button" className="dv-hidetable" onClick={() => setHideTable(!hideTable)}>
+              {hideTable ? "Show table" : "Hide table"} ✕
+            </button>
+          </div>
+          {!hideTable && (
+            <>
+              <div className="dv-amounts">
+                <div className="dv-mode">
+                  <button type="button" className={mode === "borrow" ? "active" : ""} onClick={() => setMode("borrow")}>Borrow</button>
+                  <button type="button" className={mode === "leverage" ? "active" : ""} onClick={() => setMode("leverage")}>Leverage</button>
+                  <span>Enter amounts to see applicable protocols and net APY estimates.</span>
+                  {showHint && (
+                    <button type="button" aria-label="Dismiss" className="dv-x" onClick={() => setShowHint(false)}>✕</button>
+                  )}
+                </div>
+                <div className="dv-inputs">
+                  <label>ⓘ Collateral:
+                    <input value={collateralAmt} onChange={(e) => setCollateralAmt(e.target.value)} inputMode="decimal" />
+                  </label>
+                  <label>ⓘ Debt:
+                    <input value={debtAmt} onChange={(e) => setDebtAmt(e.target.value)} inputMode="decimal" />
+                  </label>
+                </div>
+              </div>
+              <div className="dv-tablewrap">
+                <div className="dv-thead">
+                  <span>Collateral</span><span>Debt</span><span>Supply APY</span><span>Borrow APY</span><span>Net APY</span><span>Max Leverage</span><span>Protocol</span>
+                </div>
+                {filtered.map((m, i) => (
+                  <button
+                    key={`${m.protocol}-${m.collateral}-${m.debt ?? "earn"}-${i}`}
+                    type="button"
+                    className="dv-trow"
+                    onClick={() => goto(m.protocol)}
+                    title={`Open in ${m.protocolLabel}`}
+                  >
+                    <span className="dv-asset"><TokenIcon symbol={m.collateral} size={22} /> {m.collateral}</span>
+                    <span className="dv-asset">{m.debt ? (<><TokenIcon symbol={m.debt} size={22} /> {m.debt}</>) : "—"}</span>
+                    <span>{m.supplyApy.toFixed(2)}%</span>
+                    <span>{m.borrowApy == null ? "—" : `${m.borrowApy.toFixed(2)}%`}</span>
+                    <span className="dv-net">{netFor(m).toFixed(2)}%</span>
+                    <span>{m.maxLev}</span>
+                    <span className="dv-proto">{m.protocolLabel}</span>
+                  </button>
+                ))}
+                {filtered.length === 0 && (
+                  <p className="pf-empty">No markets match these filters.</p>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }

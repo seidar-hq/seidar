@@ -125,7 +125,7 @@ const NAV: NavItem[] = [
     id: "discover",
     label: "Discover",
     icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><polygon points="15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5" /></svg>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.8" /><path d="M12 12l5.2-5.2" /><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="14.8" cy="14.6" r="1.1" fill="currentColor" stroke="none" /></svg>
     ),
   },
   {
