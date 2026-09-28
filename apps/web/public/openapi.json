@@ -1,0 +1,212 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Seidar API",
+    "version": "0.1.0",
+    "description": "Project-scoped operations for Stellar Confidential Token assets. Testnet developer preview."
+  },
+  "servers": [{ "url": "http://localhost:8080" }],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/v1/projects/{projectID}/overview": {
+      "get": {
+        "summary": "Get operational overview",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets": {
+      "get": {
+        "summary": "List confidential assets",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Create or import an asset",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}": {
+      "get": {
+        "summary": "Get a confidential asset",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}/inspect": {
+      "post": {
+        "summary": "Inspect contract compatibility",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}/recovery": {
+      "get": {
+        "summary": "Get recent RPC observation health",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}/events": {
+      "get": {
+        "summary": "Page through observed recent Stellar event metadata",
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          {
+            "name": "start_ledger",
+            "in": "query",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "maximum": 200 }
+          }
+        ],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}/accounts": {
+      "get": {
+        "summary": "List participants",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Add a participant",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/assets/{assetID}/accounts/{accountID}": {
+      "patch": {
+        "summary": "Update participant policy state",
+        "description": "Managed policies confirm an on-chain testnet transaction before database state changes.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/policies": {
+      "get": {
+        "summary": "List policies",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Create a policy",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/policy-templates": {
+      "get": {
+        "summary": "List configured managed policy templates",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/policies/inspect": {
+      "post": {
+        "summary": "Inspect a bring-your-own policy contract",
+        "description": "Checks for is_authorized(account: Address, token: Address) -> bool and records no policy.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/policies/{policyID}/attach": {
+      "post": {
+        "summary": "Connect a compatible policy to a confidential asset",
+        "description": "Submits set_compliance_config through the configured issuer signing boundary.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/auditors": {
+      "get": {
+        "summary": "List auditor metadata",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Register auditor metadata",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/activity": {
+      "get": {
+        "summary": "List normalized activity",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/alerts": {
+      "get": {
+        "summary": "List operational alerts",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/disclosures": {
+      "get": {
+        "summary": "List disclosure requests",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Create a historical disclosure request",
+        "description": "Uses an inclusive from and exclusive to boundary and a recipient-owned Grumpkin public key. The master auditor key is never submitted.",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/disclosures/{disclosureID}/review": {
+      "post": {
+        "summary": "Approve or reject a disclosure request",
+        "description": "Approval atomically freezes the matching encrypted Stellar events into a hash-addressed manifest.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/disclosures/{disclosureID}/events": {
+      "get": {
+        "summary": "List the frozen disclosure event manifest",
+        "description": "Available only while an approved or completed request has not expired.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/disclosures/{disclosureID}/events/{eventID}/bundle": {
+      "put": {
+        "summary": "Attach a recipient-bound proof bundle",
+        "description": "Called by the customer-controlled auditor-key custodian after producing a D-auditor proof.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/disclosures/{disclosureID}/complete": {
+      "post": {
+        "summary": "Complete a scoped disclosure package",
+        "description": "Completion is rejected until every frozen event has a proof bundle.",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/api-keys": {
+      "get": {
+        "summary": "List API keys",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Create an API key",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/v1/projects/{projectID}/webhooks": {
+      "get": {
+        "summary": "List webhooks",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "summary": "Create a signed webhook",
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Project-scoped seidar_test_ API key"
+      }
+    },
+    "responses": {
+      "Success": {
+        "description": "Successful JSON response",
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    }
+  }
+}

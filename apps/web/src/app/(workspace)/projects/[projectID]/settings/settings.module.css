@@ -1,0 +1,177 @@
+.content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding-top: 24px;
+}
+.card {
+  min-width: 0;
+  padding: 21px;
+  border: 1px solid #3d3d3d;
+  border-radius: 9px;
+  background: #222;
+}
+.card > div:first-child > span {
+  color: #777;
+  font:
+    500 9px ui-monospace,
+    monospace;
+  letter-spacing: 0.1em;
+}
+.card h2 {
+  margin-top: 6px;
+  font-size: 16px;
+}
+.card > div:first-child > p {
+  margin-top: 6px;
+  color: #818181;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.card form {
+  margin-top: 20px;
+}
+.card label {
+  display: block;
+  margin-top: 13px;
+  color: #8d8d8d;
+  font-size: 10px;
+}
+.card input,
+.card textarea {
+  width: 100%;
+  margin-top: 7px;
+  border: 1px solid #454545;
+  border-radius: 6px;
+  background: #191919;
+  color: #ddd;
+  font-size: 11px;
+}
+.card input {
+  height: 38px;
+  padding: 0 10px;
+}
+.card textarea {
+  min-height: 82px;
+  padding: 10px;
+  resize: vertical;
+}
+.card input:disabled,
+.card textarea:disabled {
+  opacity: 0.6;
+}
+.identifiers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 15px 0;
+}
+.identifiers > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #393939;
+  border-radius: 6px;
+  background: #1c1c1c;
+}
+.identifiers small,
+.identifiers code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.identifiers small {
+  color: #696969;
+  font:
+    8px ui-monospace,
+    monospace;
+  text-transform: uppercase;
+}
+.identifiers code {
+  margin-top: 5px;
+  color: #969696;
+  font-size: 8px;
+}
+.card form button {
+  height: 36px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 6px;
+  background: #eee;
+  color: #111;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.message,
+.readOnly {
+  display: block;
+  margin-top: 11px;
+  color: #899b8f;
+  font-size: 9px;
+}
+.card dl {
+  margin-top: 19px;
+  border-top: 1px solid #393939;
+}
+.card dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 11px 0;
+  border-bottom: 1px solid #373737;
+}
+.card dt {
+  color: #797979;
+  font-size: 9px;
+}
+.card dd {
+  color: #aaa;
+  font-size: 9px;
+  text-align: right;
+  text-transform: capitalize;
+}
+.card dd code {
+  font:
+    8px ui-monospace,
+    monospace;
+  text-transform: none;
+}
+.card dd[data-ready="true"] {
+  color: #90b69c;
+}
+.warning {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #594c2c;
+  border-radius: 7px;
+  background: #302914;
+}
+.warning b {
+  color: #c8b47c;
+  font-size: 9px;
+}
+.warning span {
+  color: #9f9473;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.loading {
+  padding: 60px 0;
+  color: #777;
+  font-size: 10px;
+  text-align: center;
+}
+@media (max-width: 850px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .identifiers {
+    grid-template-columns: 1fr;
+  }
+}
