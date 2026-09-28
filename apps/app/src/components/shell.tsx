@@ -390,6 +390,7 @@ export function Shell({
 
   useEffect(() => {
     writeStorage("seidar.wallet", wallet);
+    window.dispatchEvent(new CustomEvent("seidar:wallet", { detail: wallet }));
   }, [wallet]);
 
   useEffect(() => {
@@ -413,6 +414,22 @@ export function Shell({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
+
+  // Portfolio card actions (event bus keeps Shell state local).
+  useEffect(() => {
+    function onOpenWallets() {
+      setWalletMenuOpen(true);
+    }
+    function onRefreshAll() {
+      if (wallet) fetchNotes(wallet, "manual-refresh");
+    }
+    window.addEventListener("seidar:open-wallets", onOpenWallets);
+    window.addEventListener("seidar:refresh-notes", onRefreshAll);
+    return () => {
+      window.removeEventListener("seidar:open-wallets", onOpenWallets);
+      window.removeEventListener("seidar:refresh-notes", onRefreshAll);
+    };
+  }, [wallet]);
 
   function disconnectWallet() {
     setWallet(null);

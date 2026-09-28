@@ -16,6 +16,7 @@ type Position = {
   id: string;
   market: string;
   protocol: "Blend" | "XOXNO" | "Peridot" | "Vault";
+  kind: "lending" | "vault";
   collateralLabel: string;
   debtLabel: string;
   collateralValue: number;
@@ -25,11 +26,15 @@ type Position = {
 };
 
 const POSITIONS: Position[] = [
-  { id: "1", market: "XLM / USDC · Blend", protocol: "Blend", collateralLabel: "12,400 XLM", debtLabel: "3,100 USDC", collateralValue: 1240, debtValue: 3100 * 0.22, leverage: "3.2x", automation: "Auto-repay" },
-  { id: "2", market: "USDC / XLM · XOXNO", protocol: "XOXNO", collateralLabel: "8,000 USDC", debtLabel: "41,200 XLM", collateralValue: 8000, debtValue: 4120, leverage: "2.1x", automation: "Stop-loss" },
-  { id: "3", market: "XLM / USDC · Peridot", protocol: "Peridot", collateralLabel: "5,600 XLM", debtLabel: "900 USDC", collateralValue: 560, debtValue: 900 * 0.22, leverage: "1.8x", automation: "Off" },
-  { id: "4", market: "USDC Vault · DeFindex", protocol: "Vault", collateralLabel: "10,000 USDC", debtLabel: "—", collateralValue: 10000, debtValue: 0, leverage: "Yield", automation: "Compound" },
+  { id: "1", market: "XLM / USDC · Blend", protocol: "Blend", kind: "lending", collateralLabel: "12,400 XLM", debtLabel: "3,100 USDC", collateralValue: 1240, debtValue: 3100 * 0.22, leverage: "3.2x", automation: "Auto-repay" },
+  { id: "2", market: "USDC / XLM · XOXNO", protocol: "XOXNO", kind: "lending", collateralLabel: "8,000 USDC", debtLabel: "41,200 XLM", collateralValue: 8000, debtValue: 4120, leverage: "2.1x", automation: "Stop-loss" },
+  { id: "3", market: "XLM / USDC · Peridot", protocol: "Peridot", kind: "lending", collateralLabel: "5,600 XLM", debtLabel: "900 USDC", collateralValue: 560, debtValue: 900 * 0.22, leverage: "1.8x", automation: "Off" },
+  { id: "4", market: "USDC Vault · DeFindex", protocol: "Vault", kind: "vault", collateralLabel: "10,000 USDC", debtLabel: "—", collateralValue: 10000, debtValue: 0, leverage: "Yield", automation: "Compound" },
 ];
+
+function shortAddr(a: string | null) {
+  return a && a.length > 9 ? `${a.slice(0, 4)}…${a.slice(-4)}` : "this wallet";
+}
 
 function healthPill(collateralValue: number, debtValue: number) {
   const h = healthBps(collateralValue, debtValue);
@@ -48,19 +53,24 @@ function LiveActivity() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/activity")
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setLive(d.live);
-        setLedger(d.ledger ?? 0);
-        setEvents(d.events ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setLive(false);
-      });
+    function load() {
+      fetch("/api/activity")
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          setLive(d.live);
+          setLedger(d.ledger ?? 0);
+          setEvents(d.events ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setLive(false);
+        });
+    }
+    load();
+    window.addEventListener("seidar:refresh", load);
     return () => {
       cancelled = true;
+      window.removeEventListener("seidar:refresh", load);
     };
   }, []);
 
@@ -99,7 +109,49 @@ function LiveActivity() {
 
 function Portfolio() {
   const [leverage, setLeverage] = useState(3.2);
+  const [tab, setTab] = useState<"all" | "lending" | "vaults">("all");
+  const [walletAddr, setWalletAddr] = useState<string | null>(null);
+  const [walletBal, setWalletBal] = useState<{ xlm: number; usd: number | null }>({ xlm: 0, usd: 0 });
   const agg = useMemo(() => aggregatePortfolio(POSITIONS), []);
+
+  useEffect(() => {
+    function onWallet(e: Event) {
+      setWalletAddr((e as CustomEvent<string | null>).detail ?? null);
+    }
+    window.addEventListener("seidar:wallet", onWallet);
+    try {
+      const raw = window.localStorage.getItem("seidar.wallet");
+      if (raw) setWalletAddr(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+    return () => window.removeEventListener("seidar:wallet", onWallet);
+  }, []);
+
+  useEffect(() => {
+    if (!walletAddr) {
+      setWalletBal({ xlm: 0, usd: 0 });
+      return;
+    }
+    let cancelled = false;
+    function load() {
+      fetch(`/api/balance?address=${walletAddr}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (!cancelled) setWalletBal({ xlm: Number(d.xlm ?? 0), usd: d.usd ?? null });
+        })
+        .catch(() => {
+          /* keep last */
+        });
+    }
+    load();
+    window.addEventListener("seidar:refresh", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("seidar:refresh", load);
+    };
+  }, [walletAddr]);
+
   const quote = useMemo(() => {
     // Quote the boost the same way @seidar/sdk + positions math do.
     const base = POSITIONS[0];
@@ -125,31 +177,123 @@ function Portfolio() {
     };
   }, [leverage]);
 
+  const supplied = agg.collateral;
+  const borrowed = Math.round(agg.debt);
+  const vaultValue = POSITIONS.filter((p) => p.kind === "vault").reduce((a, p) => a + p.collateralValue, 0);
+  const tokensValue = walletBal.usd ?? 0;
+  const netWorth = supplied - borrowed + tokensValue;
+  const barTotal = Math.max(1, supplied + borrowed);
+  const rows = POSITIONS.filter((p) => tab === "all" || (tab === "lending" ? p.kind === "lending" : p.kind === "vault"));
+  const tokenRows = [
+    { symbol: "XLM", amount: walletBal.xlm, usd: walletBal.usd },
+  ].filter((t) => t.amount > 0);
+
+  function refreshAll() {
+    window.dispatchEvent(new Event("seidar:refresh"));
+    window.dispatchEvent(new Event("seidar:refresh-notes"));
+  }
+
   return (
     <>
-      <h1 style={{ fontSize: 20 }}>Portfolio</h1>
-      <p style={{ color: "#8a8a91", fontSize: 13, marginTop: 4 }}>
-        Health, leverage, automation and gas credits across Blend, XOXNO and Peridot.
-      </p>
-      <div className="cards">
-        <div className="card"><small>NET COLLATERAL</small><strong>${agg.collateral.toLocaleString()}</strong><span>{agg.count} positions · Testnet</span></div>
-        <div className="card"><small>NET DEBT</small><strong>${Math.round(agg.debt).toLocaleString()}</strong><span>XLM + USDC</span></div>
-        <div className="card"><small>PROTECTED</small><strong>{agg.protected} / {agg.loans} loans</strong><span>Keeper + guardian on-chain</span></div>
-        <div className="card"><small>GAS CREDITS</small><strong>4 left</strong><span>Then pay in USDC</span></div>
-      </div>
-      <div className="table">
-        <header><span>POSITION</span><span>COLLATERAL</span><span>DEBT</span><span>AUTOMATION</span><span>HEALTH</span></header>
-        {POSITIONS.map((p) => (
-          <div className="row" key={p.id}>
-            <span><b>{p.market}</b> <span style={{ color: "#8a8a91" }}>· {p.leverage}</span></span>
-            <span>{p.collateralLabel}</span>
-            <span>{p.debtLabel}</span>
-            <span>{p.automation}</span>
-            <span>{healthPill(p.collateralValue, p.debtValue)}</span>
+      <div className="pf-grid">
+        <div className="pf-card">
+          <div className="pf-head">
+            <span className="pf-title">Portfolio</span>
+            <div className="pf-actions">
+              <button
+                type="button"
+                className="pf-wallets"
+                onClick={() => window.dispatchEvent(new Event("seidar:open-wallets"))}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="14" rx="3" /><path d="M2 10h20" /></svg>
+                Wallets
+              </button>
+              <button type="button" className="icon-btn" aria-label="Refresh" onClick={refreshAll}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+              </button>
+            </div>
           </div>
-        ))}
+          <p className="pf-net-label">Net worth</p>
+          <p className="pf-net">${Math.round(netWorth).toLocaleString()}</p>
+          <div className="pf-break">
+            <div><small>Tokens</small><b className="pos">${Math.round(tokensValue).toLocaleString()}</b></div>
+            <div><small>Supplied</small><b className="pos">${Math.round(supplied).toLocaleString()}</b></div>
+            <div><small>Claimable</small><b className="pos">$0</b></div>
+            <div><small>Staked</small><b className="warn">$0</b></div>
+            <div><small>Borrowed</small><b className="neg">${borrowed.toLocaleString()}</b></div>
+            <div><small>Vaults</small><b className="pos">${Math.round(vaultValue).toLocaleString()}</b></div>
+          </div>
+          <div className="pf-bar" aria-hidden="true">
+            <span style={{ width: `${(supplied / barTotal) * 100}%` }} className="seg-supplied" />
+            <span style={{ width: `${(borrowed / barTotal) * 100}%` }} className="seg-borrowed" />
+          </div>
+        </div>
+        <div className="pf-card">
+          <div className="pf-head">
+            <span className="pf-title">Tokens</span>
+          </div>
+          {tokenRows.length === 0 ? (
+            <p className="pf-empty">This account currently doesn&apos;t own any tokens</p>
+          ) : (
+            <div className="token-list">
+              {tokenRows.map((t) => (
+                <div className="token-row" key={t.symbol}>
+                  <span><b>{t.symbol}</b> <small>· {t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</small></span>
+                  <span>${t.usd === null ? "—" : Math.round(t.usd).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="leverage">
+
+      <div className="pf-card" style={{ marginTop: 12 }}>
+        <div className="pf-head">
+          <span className="pf-title">Positions</span>
+          <div className="tabs" role="tablist" aria-label="Position filters">
+            {(["all", "lending", "vaults"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                className={`tab${tab === t ? " active" : ""}`}
+                onClick={() => setTab(t)}
+              >
+                {t === "all" ? "All" : t === "lending" ? "Lending" : "Vaults"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {rows.length === 0 ? (
+          <div className="pf-empty-block">
+            <svg width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#3a3a41" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <rect x="8" y="6" width="40" height="7" rx="3.5" strokeDasharray="4 4" />
+              <rect x="8" y="17" width="40" height="7" rx="3.5" strokeDasharray="4 4" />
+              <rect x="8" y="28" width="40" height="7" rx="3.5" strokeDasharray="4 4" />
+              <rect x="8" y="39" width="28" height="7" rx="3.5" strokeDasharray="4 4" />
+              <circle cx="50" cy="38" r="10" />
+              <line x1="57.5" y1="45.5" x2="66" y2="54" />
+            </svg>
+            <p>No active positions found for {shortAddr(walletAddr)}.</p>
+          </div>
+        ) : (
+          <div className="table" style={{ marginTop: 12 }}>
+            <header><span>POSITION</span><span>COLLATERAL</span><span>DEBT</span><span>AUTOMATION</span><span>HEALTH</span></header>
+            {rows.map((p) => (
+              <div className="row" key={p.id}>
+                <span><b>{p.market}</b> <span style={{ color: "#8a8a91" }}>· {p.leverage}</span></span>
+                <span>{p.collateralLabel}</span>
+                <span>{p.debtLabel}</span>
+                <span>{p.automation}</span>
+                <span>{healthPill(p.collateralValue, p.debtValue)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="leverage" style={{ marginTop: 12 }}>
         <b>Boost / Repay preview — XLM / USDC · Blend</b>
         <p style={{ color: "#8a8a91", fontSize: 12.5, marginTop: 6 }}>
           Quoted live by @seidar/sdk + @seidar/positions-sdk: flash liquidity, 25bps service fee, atomic {quote.steps}-step recipe.
@@ -173,7 +317,7 @@ function Portfolio() {
           <button className="btn" type="button">Simulate</button>
         </div>
       </div>
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 12 }}>
         <LiveActivity />
       </div>
     </>
