@@ -71,9 +71,15 @@ async function fetchList(): Promise<Record<string, TokenMeta>> {
   return byCode;
 }
 
+/** Pinned local icons (always available, same-origin). */
+const PINNED: Record<string, TokenMeta> = {
+  XLM: { code: "XLM", icon: "/xlm-logo.png", name: "Stellar Lumens" },
+};
+
 /** Metadata for a symbol; always resolves (fallback when unknown). */
 export async function getTokenMeta(symbol: string): Promise<TokenMeta> {
   const code = symbol.toUpperCase();
+  if (PINNED[code]) return PINNED[code];
   const cached = readCache();
   if (cached && Date.now() - cached.at < TTL_MS && cached.byCode[code]) {
     return cached.byCode[code];
