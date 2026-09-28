@@ -1414,6 +1414,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "seidar-live"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "seidar-recipe-executor"
 version = "0.1.0"
 dependencies = [
