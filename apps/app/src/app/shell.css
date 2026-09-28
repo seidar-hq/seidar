@@ -269,8 +269,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 0;
   background: #6d5ef0;
   margin-left: 6px;
@@ -279,9 +279,10 @@
   align-self: center;
 }
 .wallet-logo img {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   display: block;
+  flex: none;
 }
 .wallet-text small {
   font-size: 10.5px;
