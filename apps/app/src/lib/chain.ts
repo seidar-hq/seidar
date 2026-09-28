@@ -13,6 +13,25 @@ export const CONTRACTS = {
 export const EXPERT_TX = (hash: string) =>
   `https://stellar.expert/explorer/testnet/tx/${hash}`;
 
+/** Decode a base64 XDR topic to its symbol string (e.g. rule_added). */
+function decodeTopic(t: unknown): string {
+  if (typeof t !== "string") return "unknown";
+  // Soroban RPC encodes topics as base64 XDR; the symbol reads as ASCII inside.
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(t) && t.length % 4 === 0 && t.length >= 16) {
+    try {
+      const bin =
+        typeof Buffer !== "undefined"
+          ? Buffer.from(t, "base64").toString("binary")
+          : atob(t);
+      const m = bin.match(/[a-z][a-z0-9_]{2,}/);
+      if (m) return m[0];
+    } catch {
+      /* fall through to raw */
+    }
+  }
+  return t;
+}
+
 export type ChainEvent = {
   contract: string;
   topic: string;
@@ -47,8 +66,7 @@ export async function fetchActivity(
   });
   for (const ev of r.events ?? []) {
     const t0 = ev.topic?.[0];
-    const topic =
-      typeof t0 === "string" ? t0 : t0 && typeof t0 === "object" && "symbol" in t0 ? String(t0.symbol) : "unknown";
+    const topic = decodeTopic(t0);
     events.push({ contract: ev.contractId, topic, ledger: ev.ledger, txHash: ev.txHash });
   }
   return { ledger: latest, events: events.slice(-12).reverse() };

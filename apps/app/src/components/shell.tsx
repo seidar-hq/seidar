@@ -165,9 +165,8 @@ export function Shell({
   setView: (v: AppView) => void;
   children: React.ReactNode;
 }) {
-  const [wallet, setWallet] = useState<string | null>(() =>
-    readStorage<string | null>("seidar.wallet", null)
-  );
+  // SSR-safe initial state (matches server HTML); session restores after mount.
+  const [wallet, setWallet] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -325,7 +324,7 @@ export function Shell({
   }
 
   type Note = { id: number; text: string; at: string; read: boolean };
-  const [notes, setNotes] = useState<Note[]>(() => readStorage<Note[]>("seidar.notes", []));
+  const [notes, setNotes] = useState<Note[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
 
   /** Reload server notes whenever a wallet is present. */
@@ -345,11 +344,14 @@ export function Shell({
   const welcomedRef = useRef(false);
   const noteId = useRef(0);
 
-  // Restore session + persist wallet/notes across refreshes.
+  // Restore session AFTER mount so server HTML and first client render match.
   useEffect(() => {
     welcomedRef.current = readStorage("seidar.welcomed", false);
     const stored = readStorage<Note[]>("seidar.notes", []);
+    if (stored.length > 0) setNotes(stored);
     noteId.current = stored.reduce((m, n) => Math.max(m, n.id || 0), 0);
+    const storedWallet = readStorage<string | null>("seidar.wallet", null);
+    if (storedWallet) setWallet(storedWallet);
     let cancelled = false;
     getAddress()
       .then(({ address }) => {
@@ -486,11 +488,8 @@ export function Shell({
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
                   <Identicon address={wallet} size={33} square />
                   <span className="wallet-text">
-                    <b>{shortAddress(wallet)}</b>
+                    <b>{shortAddress(wallet)}<span className="wallet-logo" title="Freighter"><img src="/freighter-logo.svg" alt="" /></span></b>
                     <small>Testnet</small>
-                  </span>
-                  <span className="wallet-logo" title="Freighter">
-                    <img src="/freighter-logo.svg" alt="" />
                   </span>
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
