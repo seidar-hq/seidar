@@ -7,17 +7,17 @@ import styles from "./page.module.css";
 
 const stats = [
   [
-    "Leverage",
+    "Lending & Borrowing",
     "Boost & Repay in one tx",
-    "Open, lever up, or unwind Blend, XOXNO and Peridot positions atomically via flash liquidity + Soroswap routing.",
+    "Supply assets, borrow against your collateral, and mange positions across Stellar lending markets.",
   ],
   [
     "Automation",
     "Keepers + on-chain guards",
-    "Liquidation protection, auto-leverage, stop-loss and take-profit re-checked on-chain against Reflector prices.",
+    "Protect against liquidation, take profits, reduce exposure, or rebalance your position based on conditions you define",
   ],
   [
-    "Shifter",
+    "Loan Shifter",
     "Move without unwinding",
     "Shift collateral, debt, or whole positions across pools and protocols without closing and reopening manually.",
   ],
@@ -25,6 +25,18 @@ const stats = [
     "Accounts",
     "Smart accounts + gas credits",
     "Passkey smart accounts with scoped keeper keys, optional multisig policy, and sponsored transactions.",
+  ],
+    
+  [
+    "Position Management",
+    "Smart accounts + gas credits",
+    "Track collateral, debt, health factors, exposure, yields, and activity without switching between multiple applications.",
+  ],
+
+  [
+    "Dex Aggregation",
+    "Smart accounts + gas credits",
+    "Swap tokens, set limit orders, and access liquidity across Stellar's leading DEXs with routes optimized for competitive execution.",
   ],
 ];
 
@@ -293,6 +305,86 @@ function ProductPreview() {
         </div>
       </div>
     </div>
+  );
+}
+
+const protocols = [
+  { code: "Bl", name: "Blend", kind: "Lending", isNew: false },
+  { code: "Xo", name: "XOXNO", kind: "Lending", isNew: true },
+  { code: "Pe", name: "Peridot", kind: "Lending", isNew: true },
+  { code: "Te", name: "Templar", kind: "Vaults", isNew: true },
+  { code: "So", name: "Soroswap", kind: "DEX", isNew: false },
+  { code: "Aq", name: "Aqua", kind: "DEX", isNew: false },
+  { code: "Ph", name: "Phoenix", kind: "DEX", isNew: false },
+  { code: "De", name: "DeFindex", kind: "Vaults", isNew: false },
+  { code: "Re", name: "Reflector", kind: "Oracle", isNew: false },
+  { code: "Xl", name: "Stellar DEX", kind: "Native", isNew: false },
+];
+
+function ProtocolGrid() {
+  return (
+    <section className={styles.statsSection} style={{ paddingTop: 8 }}>
+      <div className={styles.container}>
+        <p
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            color: "#8a8a91",
+            marginBottom: 18,
+          }}
+        >
+          ALL THE TOP TIER PROTOCOLS ON STELLAR
+        </p>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+            borderTop: "1px solid #282828",
+            borderLeft: "1px solid #282828",
+          }}
+        >
+          {protocols.map((p) => (
+            <div
+              key={p.name}
+              style={{
+                position: "relative",
+                borderRight: "1px solid #282828",
+                borderBottom: "1px solid #282828",
+                padding: "28px 12px 20px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+                background: "#000",
+              }}
+            >
+              {p.isNew && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    left: 10,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#57c36b",
+                  }}
+                >
+                  New
+                </span>
+              )}
+              <span style={{ fontSize: 30, fontWeight: 800, color: "#f7f7f7", letterSpacing: "-0.02em" }}>
+                {p.code}
+              </span>
+              <span style={{ textAlign: "center" }}>
+                <span style={{ display: "block", fontSize: 13.5, color: "#ddd" }}>{p.name}</span>
+                <span style={{ display: "block", fontSize: 11, color: "#666", marginTop: 2 }}>{p.kind}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -632,13 +724,14 @@ export default function Home() {
           </div>
         </section>
         <ProductPreview />
+        <ProtocolGrid />
         <section className={styles.statsSection} id="community">
           <div className={styles.container}>
-            <h2>Lending positions still need an operating layer.</h2>
+            <h2>One place to manage your Stellar Defi.</h2>
             <p className={styles.sectionLead}>
-              Pools hold liquidity. Seidar handles the leverage, protection
+              Seidar brings the tools you need to manage and automate your
               <br />
-              and automation borrowers need to use it safely.
+              Defi positions across Stellar into a single interface
             </p>
             <div className={styles.statsGrid}>
               {stats.map(([label, title, desc]) => (
@@ -656,10 +749,9 @@ export default function Home() {
         <section className={styles.candidateSection}>
           <div className={styles.container}>
             <div className={styles.sectionHeading}>
-              <h2>Everything you need to run leveraged positions.</h2>
+              <h2>Build your own strategy.</h2>
               <p>
-                Seidar gives your wallet one place to track, protect and move
-                Stellar lending positions.
+                Combine Defi actions, create unique strategies, explore existing ones and execute in a single transaction.
               </p>
             </div>
             <div className={styles.candidateGrid}>
@@ -673,7 +765,7 @@ export default function Home() {
           <div className={styles.featuresInner}>
             <FeatureRow
               number="01"
-              title="Boost or unwind in one transaction"
+              title="Do more in one transaction"
               description="Compose flash liquidity, Soroswap routing and pool calls into a single atomic recipe with health preview."
               detailTitle="Every step understood"
               detail="Inspect quote, slippage, fees and resulting health before signing. Panic anywhere reverts everything."
@@ -700,12 +792,10 @@ export default function Home() {
         <section className={styles.testimonials} id="use-cases">
           <div className={styles.container}>
             <h2>
-              Built for teams putting Stellar lending into real products.
+              Discover opportunities across Stellar
             </h2>
             <p className={styles.sectionLead}>
-              Whether you&apos;re looping XLM or guarding a treasury loan,
-              Seidar provides the operating layer around Blend, XOXNO and
-              Peridot.
+              Explore lending markets, trading opportunities, yields, and strategies<br />across the stellar ecosystem before even connecting your wallet
             </p>
             <UseCaseGrid />
           </div>
@@ -748,7 +838,7 @@ export default function Home() {
           <div className={styles.ctaShade} />
           <div className={`${styles.container} ${styles.ctaContent}`}>
             <h2>
-              Run leveraged Stellar positions with Seidar.
+              Built for the next generation of Stellar Defi.
             </h2>
             <div>
               <Link href="/signin" className={styles.lightButton}>
