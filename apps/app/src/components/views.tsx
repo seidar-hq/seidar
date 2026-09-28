@@ -536,27 +536,12 @@ type MarketRow = {
   debt: string | null;
   supplyApy: number;
   borrowApy: number | null;
-  netApy: number;
   maxLev: string;
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: MarketCat[];
   available: boolean;
 };
-
-// Illustrative market presets (APYs in %). Live per-pool values arrive with
-// the Blend/XOXNO/Peridot RPC integrations.
-const MARKETS: MarketRow[] = [
-  { collateral: "XLM", debt: "USDC", supplyApy: 0.05, borrowApy: 0.1, netApy: 0.58, maxLev: "3.2x", protocol: "blend", protocolLabel: "Blend", cats: ["leverage"], available: true },
-  { collateral: "USDC", debt: "XLM", supplyApy: 7.1, borrowApy: 0.4, netApy: 2.52, maxLev: "2.1x", protocol: "xoxno", protocolLabel: "XOXNO", cats: ["leverage"], available: true },
-  { collateral: "XLM", debt: "USDC", supplyApy: 0.04, borrowApy: 0.3, netApy: 0.31, maxLev: "1.8x", protocol: "peridot", protocolLabel: "Peridot", cats: ["leverage"], available: true },
-  { collateral: "XLM", debt: "EURC", supplyApy: 0.05, borrowApy: 0.5, netApy: 0.12, maxLev: "2.4x", protocol: "blend", protocolLabel: "Blend", cats: ["leverage"], available: false },
-  { collateral: "USDC", debt: null, supplyApy: 7.42, borrowApy: null, netApy: 7.42, maxLev: "—", protocol: "blend", protocolLabel: "Blend", cats: ["yield"], available: true },
-  { collateral: "EURC", debt: null, supplyApy: 5.84, borrowApy: null, netApy: 5.84, maxLev: "—", protocol: "blend", protocolLabel: "Blend", cats: ["yield"], available: true },
-  { collateral: "XLM", debt: null, supplyApy: 0.51, borrowApy: null, netApy: 0.51, maxLev: "—", protocol: "xoxno", protocolLabel: "XOXNO", cats: ["yield"], available: true },
-  { collateral: "USDC", debt: null, supplyApy: 5.1, borrowApy: null, netApy: 5.1, maxLev: "—", protocol: "peridot", protocolLabel: "Peridot", cats: ["passive"], available: true },
-  { collateral: "EURC", debt: null, supplyApy: 4.2, borrowApy: null, netApy: 4.2, maxLev: "—", protocol: "peridot", protocolLabel: "Peridot", cats: ["passive"], available: true },
-];
 
 const DV_CATS = [
   { id: "browse", label: "Browse All" },
@@ -570,6 +555,9 @@ type DvCat = (typeof DV_CATS)[number]["id"];
 function DiscoverPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const [markets, setMarkets] = useState<MarketRow[]>([]);
+  const [poolsState, setPoolsState] = useState<"loading" | "live" | "error">("loading");
+  const [poolsUpdatedAt, setPoolsUpdatedAt] = useState<number>(0);
   const slug = (pathname ?? "/discover/all").split("/").filter(Boolean)[1] ?? "all";
   const slugToCat: Record<string, DvCat> = {
     all: "browse",
@@ -587,6 +575,30 @@ function DiscoverPage() {
   const setCat = (c: DvCat) => {
     if (c !== cat) router.push(`/discover/${catToSlug[c]}`);
   };
+
+  // Live markets: Blend V2 pools via SDK + XOXNO supply via DeFiLlama.
+  // Peridot Stellar pools have no verified read source yet — shown as pending.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pools")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.ok && Array.isArray(d.rows)) {
+          setMarkets(d.rows);
+          setPoolsUpdatedAt(d.updatedAt ?? Date.now());
+          setPoolsState("live");
+        } else {
+          setPoolsState("error");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPoolsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [collateral, setCollateral] = useState("all");
   const [debt, setDebt] = useState("all");
   const [protocol, setProtocol] = useState("all");
@@ -601,16 +613,16 @@ function DiscoverPage() {
 
   const codes = useMemo(() => {
     const s = new Set<string>();
-    MARKETS.forEach((m) => {
+    markets.forEach((m) => {
       s.add(m.collateral);
       if (m.debt) s.add(m.debt);
     });
     return [...s].sort();
-  }, []);
-  const protocols = useMemo(() => [...new Set(MARKETS.map((m) => m.protocolLabel))].sort(), []);
+  }, [markets]);
+  const protocols = useMemo(() => [...new Set(markets.map((m) => m.protocolLabel))].sort(), [markets]);
 
   const inCat = (m: MarketRow) => cat === "browse" || m.cats.includes(cat);
-  const filtered = MARKETS.filter(
+  const filtered = markets.filter(
     (m) =>
       inCat(m) &&
       (collateral === "all" || m.collateral === collateral) &&
@@ -624,8 +636,10 @@ function DiscoverPage() {
   const debtNum = Number(debtAmt.replace(/[^0-9.]/g, "")) || 0;
 
   function netFor(m: MarketRow): number {
-    if (!estimate || collNum <= 0) return m.netApy;
     if (m.debt == null || m.borrowApy == null || debtNum <= 0) return m.supplyApy;
+    if (!estimate || collNum <= 0) {
+      return netApy(100000, m.supplyApy * 100, 50000, m.borrowApy * 100) / 100;
+    }
     return netApy(collNum, m.supplyApy * 100, debtNum, m.borrowApy * 100) / 100;
   }
 
@@ -756,6 +770,9 @@ function DiscoverPage() {
             <Toggle on={ownedOnly} onFlip={() => setOwnedOnly(!ownedOnly)} label="Only owned assets" />
             <Toggle on={hideUnavailable} onFlip={() => setHideUnavailable(!hideUnavailable)} label="Hide unavailable markets" />
             <span className="dv-count">Showing {filtered.length} option{filtered.length === 1 ? "" : "s"}</span>
+            <span className={`pill ${poolsState === "live" ? "green" : poolsState === "error" ? "red" : ""}`} title={poolsUpdatedAt ? `Markets updated ${new Date(poolsUpdatedAt).toLocaleTimeString()}` : "Loading live markets"}>
+              {poolsState === "live" ? "Live · Stellar mainnet" : poolsState === "error" ? "Feed error" : "Loading…"}
+            </span>
             <button type="button" className="dv-hidetable" onClick={() => setHideTable(!hideTable)}>
               {hideTable ? "Show table" : "Hide table"} ✕
             </button>
@@ -801,8 +818,19 @@ function DiscoverPage() {
                     <span className="dv-proto">{m.protocolLabel}</span>
                   </button>
                 ))}
-                {filtered.length === 0 && (
-                  <p className="pf-empty">No markets match these filters.</p>
+                {filtered.length === 0 && poolsState === "live" && (
+                  <p className="pf-empty">
+                    {protocol === "Peridot"
+                      ? "Peridot Stellar pools: live integration pending — only Stellar-network pools will be listed here, never cross-chain positions."
+                      : "No markets match these filters."}
+                  </p>
+                )}
+                {filtered.length === 0 && poolsState !== "live" && (
+                  <p className="pf-empty">
+                    {poolsState === "error"
+                      ? "Market feed unreachable — check your connection and retry."
+                      : "Loading live markets…"}
+                  </p>
                 )}
               </div>
             </>

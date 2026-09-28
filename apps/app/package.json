@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@blend-capital/blend-sdk": "^3.3.1",
     "@seidar/automation-sdk": "0.1.0",
     "@seidar/positions-sdk": "0.1.0",
     "@seidar/sdk": "0.1.0",
