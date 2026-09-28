@@ -309,7 +309,7 @@ export async function GET() {
     }
     const pools = await listPools();
     const [blend, xoxno] = await Promise.all([blendRows(pools), xoxnoRows()]);
-    const rows = dedupe([...blend, ...xoxno]);
+    const rows = curate(dedupe([...blend, ...xoxno]));
     cache = { at: Date.now(), rows, pools };
     return NextResponse.json({ ok: true, cached: false, updatedAt: cache.at, pools, rows });
   } catch (e) {
@@ -318,6 +318,23 @@ export async function GET() {
     }
     return NextResponse.json({ ok: false, error: String(e).slice(0, 200) }, { status: 200 });
   }
+}
+
+/**
+ * Curate to markets worth showing: supported assets only (matches the
+ * wallet/token registry — no long-tail dust), no absurd manipulated rates,
+ * no empty pools.
+ */
+const SUPPORTED_ASSETS = new Set(["XLM", "USDC", "EURC", "AQUA"]);
+
+function curate(rows: PoolRow[]): PoolRow[] {
+  return rows.filter(
+    (r) =>
+      SUPPORTED_ASSETS.has(r.collateral) &&
+      (r.debt === null || SUPPORTED_ASSETS.has(r.debt)) &&
+      r.supplyApy < 100 &&
+      (r.borrowApy == null || r.borrowApy < 100)
+  );
 }
 
 /**

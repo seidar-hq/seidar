@@ -1815,6 +1815,9 @@
 .dv-proto {
   color: var(--muted);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .tip-wrap {
   position: relative;

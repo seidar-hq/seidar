@@ -46,8 +46,40 @@ function shortAddr(a: string | null) {
   return a && a.length > 9 ? `${a.slice(0, 4)}…${a.slice(-4)}` : "this wallet";
 }
 
-function healthPill(collateralValue: number, debtValue: number) {
-  const h = healthBps(collateralValue, debtValue);
+const PROTOCOL_ICONS: Record<string, string> = {
+  blend: "/protocol-blend.png",
+  xoxno: "/protocol-xoxno.png",
+  peridot: "/protocol-peridot.svg",
+};
+
+function ProtoIcon({ protocol, size = 18 }: { protocol: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const src = PROTOCOL_ICONS[protocol];
+  if (!src || failed) {
+    return (
+      <span
+        className="token-fallback"
+        aria-label={protocol}
+        style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.42)), background: "#232329" }}
+      >
+        {protocol.slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className="token-icon"
+      onError={() => setFailed(true)}
+      loading="eager"
+    />
+  );
+}
+
+function healthPill(collateralValue: number, debtValue: number) {  const h = healthBps(collateralValue, debtValue);
   const s = healthStatus(h);
   if (s === "yield") return <span className="pill">Yield</span>;
   const bps = (h as number).toFixed(0);
@@ -930,7 +962,7 @@ function DiscoverPage() {
                         <span>{m.maxLev}</span>
                       </Tip>
                     )}
-                    <span className="dv-proto">{m.protocolLabel}</span>
+                    <span className="dv-proto"><ProtoIcon protocol={m.protocol} />{m.protocolLabel}</span>
                   </button>
                 ))}
                 {filtered.length === 0 && poolsState === "live" && (
