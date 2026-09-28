@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Seidar — DeFi position manager on Stellar",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": ["apps/*", "packages/*", "services/*", "mcp"],
   "scripts": {
     "dev:web": "npm run dev --workspace apps/web",
     "dev:app": "npm run dev --workspace apps/app",

@@ -1,0 +1,15 @@
+{
+  "name": "@seidar/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@seidar/automation-sdk": "0.1.0",
+    "@seidar/positions-sdk": "0.1.0"
+  }
+}
