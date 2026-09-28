@@ -10,11 +10,11 @@
 //! - Subscriptions live in `persistent()` storage as `SubKey(user, sub_id)` so
 //!   they survive across ledgers; every mutating fn bumps TTL.
 
+use seidar_common::is_below_trigger;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol,
+    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env, Map, Symbol,
     Vec,
 };
-use seidar_common::is_below_trigger;
 
 /// What the keeper must prove true before the guardian acts.
 #[contracttype]
@@ -61,10 +61,21 @@ pub enum GuardianError {
     TriggerFalse = 5,
 }
 
-const EVENT_RULE: Symbol = symbol_short!("rule");
-const EVENT_FIRED: Symbol = symbol_short!("fired");
-// ~1 day of 5s ledgers; persistent entries need explicit TTL bumps.
 const TTL_BUMP: u32 = 17_280;
+
+#[contractevent]
+pub struct RuleAdded {
+    #[topic]
+    pub owner: Address,
+    pub sub_id: u32,
+}
+
+#[contractevent]
+pub struct RuleFired {
+    #[topic]
+    pub owner: Address,
+    pub sub_id: u32,
+}
 
 #[contract]
 pub struct Guardian;
@@ -98,7 +109,7 @@ impl Guardian {
         e.storage()
             .persistent()
             .extend_ttl(&key, TTL_BUMP, TTL_BUMP * 180);
-        e.events().publish((EVENT_RULE, owner), sub_id);
+        RuleAdded { owner, sub_id }.publish(&e);
         Ok(())
     }
 
@@ -144,7 +155,7 @@ impl Guardian {
         e.storage()
             .persistent()
             .extend_ttl(&key, TTL_BUMP, TTL_BUMP * 180);
-        e.events().publish((EVENT_FIRED, owner), sub_id);
+        RuleFired { owner, sub_id }.publish(&e);
         Ok(())
     }
 
@@ -178,11 +189,16 @@ impl Guardian {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::symbol_short;
     use soroban_sdk::testutils::{Address as _, Ledger as _};
 
     fn setup(e: &Env) -> (GuardianClient<'_>, Address, Address) {
         let id = e.register(Guardian, ());
-        (GuardianClient::new(e, &id), Address::generate(e), Address::generate(e))
+        (
+            GuardianClient::new(e, &id),
+            Address::generate(e),
+            Address::generate(e),
+        )
     }
 
     #[test]
@@ -239,12 +255,12 @@ mod tests {
             &owner,
             &3,
             &symbol_short!("peridot"),
-            &Trigger::PriceBelow(1_000_0000),
+            &Trigger::PriceBelow(10_000_000),
             &GuardAction::MarketSell,
             &50,
         );
         assert_eq!(
-            c.try_execute(&keeper, &owner, &3, &20_000, &900_0000),
+            c.try_execute(&keeper, &owner, &3, &20_000, &9_000_000),
             Ok(Ok(()))
         );
     }
@@ -284,6 +300,9 @@ mod tests {
         assert_eq!(known.get(5), Some(true));
         assert_eq!(known.get(6), Some(false));
         c.remove_rule(&owner, &5);
-        assert_eq!(c.try_get_rule(&owner, &5), Err(Ok(GuardianError::UnknownSub)));
+        assert_eq!(
+            c.try_get_rule(&owner, &5),
+            Err(Ok(GuardianError::UnknownSub))
+        );
     }
 }

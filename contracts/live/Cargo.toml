@@ -7,6 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+soroban-sdk = "28"
+
+[dev-dependencies]
 soroban-sdk = { version = "28", features = ["testutils"] }
 
 # Mirrors of external Soroban interfaces (Blend V2 pool, Reflector SEP-40,

@@ -83,7 +83,7 @@ pub fn min_out(quoted: i128, slippage_bps: i128) -> i128 {
     if quoted <= 0 {
         return 0;
     }
-    quoted.saturating_mul(10_000 - slippage_bps.max(0).min(10_000)) / 10_000
+    quoted.saturating_mul(10_000 - slippage_bps.clamp(0, 10_000)) / 10_000
 }
 
 /// Build an ordered boost leg: supply collateral, borrow debt to repay flash.

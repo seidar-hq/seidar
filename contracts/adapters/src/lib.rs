@@ -7,8 +7,8 @@
 //! normalized to basis points via `seidar-common` so the guardian and the
 //! frontend can compare across protocols.
 
-use soroban_sdk::{contracttype, Address, Env, Symbol};
 use seidar_common::health_factor;
+use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 /// Which lending protocol a position lives on.
 #[contracttype]
@@ -101,8 +101,14 @@ mod tests {
         let e = Env::default();
         let pool = Address::generate(&e);
         let oracle = Address::generate(&e);
-        assert_eq!(blend_config(&e, pool.clone(), oracle.clone()).max_ltv_bps, 7_500);
-        assert_eq!(xoxno_config(&e, pool.clone(), oracle.clone()).max_ltv_bps, 8_000);
+        assert_eq!(
+            blend_config(&e, pool.clone(), oracle.clone()).max_ltv_bps,
+            7_500
+        );
+        assert_eq!(
+            xoxno_config(&e, pool.clone(), oracle.clone()).max_ltv_bps,
+            8_000
+        );
         assert_eq!(peridot_config(&e, pool, oracle).max_ltv_bps, 7_000);
     }
 
@@ -124,8 +130,14 @@ mod tests {
     #[test]
     fn symbols_are_canonical() {
         let e = Env::default();
-        assert_eq!(protocol_symbol(&e, Protocol::Blend), Symbol::new(&e, "blend"));
-        assert_eq!(protocol_symbol(&e, Protocol::Xoxno), Symbol::new(&e, "xoxno"));
+        assert_eq!(
+            protocol_symbol(&e, Protocol::Blend),
+            Symbol::new(&e, "blend")
+        );
+        assert_eq!(
+            protocol_symbol(&e, Protocol::Xoxno),
+            Symbol::new(&e, "xoxno")
+        );
         assert_eq!(
             protocol_symbol(&e, Protocol::Peridot),
             Symbol::new(&e, "peridot")

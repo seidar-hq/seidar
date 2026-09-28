@@ -277,14 +277,23 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fired"
+                "symbol": "rule_fired"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
               }
             ],
             "data": {
-              "u32": 3
+              "map": [
+                {
+                  "key": {
+                    "symbol": "sub_id"
+                  },
+                  "val": {
+                    "u32": 3
+                  }
+                }
+              ]
             }
           }
         }

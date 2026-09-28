@@ -7,10 +7,11 @@
 //! panic anywhere reverts the whole recipe. Pool/DEX cross-calls are wired
 //! through the `adapters` crate; this contract validates, orders and guards.
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
-};
 use seidar_common::fee_amount;
+use soroban_sdk::{
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address, Env,
+    Symbol, Vec,
+};
 
 /// One step of a recipe. Amounts are in the asset's smallest unit.
 /// `param_src_index` mirrors DeFi Saver `paramMapping`: when `Some(i)`, the
@@ -52,8 +53,22 @@ pub enum ExecutorError {
 }
 
 const LOCK: Symbol = symbol_short!("lock");
-const EVENT_RECIPE: Symbol = symbol_short!("recipe");
-const EVENT_ACTION: Symbol = symbol_short!("action");
+
+#[contractevent]
+pub struct RecipeExecuted {
+    #[topic]
+    pub user: Address,
+    pub actions: u32,
+}
+
+#[contractevent]
+pub struct ActionRecorded {
+    #[topic]
+    pub user: Address,
+    pub index: u32,
+    pub kind: u32,
+    pub amount: i128,
+}
 
 #[contract]
 pub struct RecipeExecutor;
@@ -78,8 +93,11 @@ impl RecipeExecutor {
         e.storage().instance().remove(&LOCK);
         res?;
 
-        e.events()
-            .publish((EVENT_RECIPE, user), recipe.actions.len());
+        RecipeExecuted {
+            user,
+            actions: recipe.actions.len(),
+        }
+        .publish(&e);
         Ok(())
     }
 
@@ -102,22 +120,22 @@ impl RecipeExecutor {
                     return Err(ExecutorError::InvalidAmount);
                 }
             }
-            match action.kind {
-                ActionKind::FlashLoan => {
-                    if i != 0 {
-                        return Err(ExecutorError::FlashNotFirst);
-                    }
-                    if flash_seen {
-                        return Err(ExecutorError::MultipleFlash);
-                    }
-                    flash_seen = true;
+            if action.kind == ActionKind::FlashLoan {
+                if i != 0 {
+                    return Err(ExecutorError::FlashNotFirst);
                 }
-                _ => {}
+                if flash_seen {
+                    return Err(ExecutorError::MultipleFlash);
+                }
+                flash_seen = true;
             }
-            e.events().publish(
-                (EVENT_ACTION, user.clone()),
-                (i as u32, action.kind as u32, action.amount),
-            );
+            ActionRecorded {
+                user: user.clone(),
+                index: i as u32,
+                kind: action.kind as u32,
+                amount: action.amount,
+            }
+            .publish(e);
         }
         Ok(())
     }
@@ -149,7 +167,10 @@ mod tests {
         let id = e.register(RecipeExecutor, ());
         let user = Address::generate(&e);
         let client = RecipeExecutorClient::new(&e, &id);
-        let r = recipe(&e, Vec::from_array(&e, [ActionKind::Supply, ActionKind::Borrow]));
+        let r = recipe(
+            &e,
+            Vec::from_array(&e, [ActionKind::Supply, ActionKind::Borrow]),
+        );
         client.execute_recipe(&user, &r);
     }
 
@@ -160,7 +181,9 @@ mod tests {
         let id = e.register(RecipeExecutor, ());
         let user = Address::generate(&e);
         let client = RecipeExecutorClient::new(&e, &id);
-        let r = Recipe { actions: Vec::new(&e) };
+        let r = Recipe {
+            actions: Vec::new(&e),
+        };
         assert_eq!(
             client.try_execute_recipe(&user, &r),
             Err(Ok(ExecutorError::EmptyRecipe))

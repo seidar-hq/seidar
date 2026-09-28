@@ -2,12 +2,13 @@
   "note": "Pin pool/oracle addresses + WASM hashes per network. CI fails the build on drift.",
   "testnet": {
     "deployer": "GCG5YFBE2CUOO2ZRP275NYBSRG3Y7WVJGPHQKDBZKZ7QTAE263QV5IJE",
-    "recipe_executor": "CBNJ42T3TDWF23OPMNCYZZB56SFHT4ENKSADJJ7N3NSIVJSDVJMBRWSS",
-    "guardian": "CB3UQXMCNXL3MAVQFIEZL7AHUF2ZLJQDPAT26US57DR4EPQR3UDT532Y",
-    "flash_receiver": "CAMNZIUTMKTFHOT66NRZ722QQ6PYKU76LSFNJ6LDDS5VNDIDZOQTQNUE",
+    "recipe_executor": "CDFS5PBV7NNK3ABM5BBFW72HZNAAN53PCB6FWVXO2AQOG6Q2KSKAMGCW",
+    "guardian": "CCS7TLOLDXTKJXUA3TCQE5RHVARTDNJS2QXYKPQTUGSNKU6PE2W5ENJP",
+    "flash_receiver": "CAJV35YX6RP6R3WZNPK2OKWUAGN7D2K46ZJVXBKMJWZWLQQXKZW6X7CI",
     "proven_txs": {
-      "guardian_add_rule": "c3c90f13c12e9545a17fc7ab6e74e6bbb8b2f2f3ce86030e7db1115aa297247e",
-      "guardian_execute_fire": "1ee51dd71c9e162c0e898c599de6409c34ab429d6c91c87fe641811ac5d96d09"
+      "guardian_add_rule": "7a4094c1d47dfc7af0877f8a621a54d5bc0ce517baf333f2ec474bf61131516e",
+      "guardian_execute_fire": "dbea42257d17e5cb7b530044427d2f9c48dfd60ac9d6b5329ceb73d755667324",
+      "executor_execute_recipe": "7c5f91c2ec2ef7ccc5bb558effbffad2f24cd10ad5600bf984e7a74aebf478a7"
     },
     "blend_oracle": "CBB_SEIDAR_TESTNET_REFLECTOR_PLACEHOLDER",
     "xoxno_pool": "CBB_SEIDAR_TESTNET_XOXNO_POOL_PLACEHOLDER",

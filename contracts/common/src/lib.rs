@@ -1,3 +1,4 @@
+#![no_std]
 //! Pure position math for Seidar. No Soroban dependencies so this crate
 //! always builds and tests with plain `cargo test`.
 //!
@@ -29,11 +30,7 @@ pub fn is_below_trigger(health_bps: i128, trigger_bps: i128) -> bool {
 ///
 /// Simplified loop model: total_exposure = collateral + looped.
 /// Returns 0 when already at/above target.
-pub fn flash_amount_for_leverage(
-    collateral: i128,
-    debt_value: i128,
-    leverage_bps: i128,
-) -> i128 {
+pub fn flash_amount_for_leverage(collateral: i128, debt_value: i128, leverage_bps: i128) -> i128 {
     if leverage_bps <= BPS || collateral <= 0 {
         return 0;
     }

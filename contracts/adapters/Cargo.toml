@@ -7,5 +7,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { version = "28", features = ["testutils"] }
+soroban-sdk = "28"
 seidar-common = { path = "../common" }
+
+[dev-dependencies]
+soroban-sdk = { version = "28", features = ["testutils"] }

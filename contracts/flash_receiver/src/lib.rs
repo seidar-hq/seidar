@@ -9,7 +9,8 @@
 //!   (swap/supply/borrow legs) before returning to the pool.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address, Env,
+    Symbol,
 };
 
 #[contracttype]
@@ -29,7 +30,13 @@ pub enum ReceiverError {
 
 const LOCK: Symbol = symbol_short!("flock");
 const LAST: Symbol = symbol_short!("last");
-const EVENT_CB: Symbol = symbol_short!("flashcb");
+
+#[contractevent]
+pub struct FlashCallbackReceived {
+    #[topic]
+    pub pool: Address,
+    pub amount: i128,
+}
 
 #[contract]
 pub struct FlashReceiver;
@@ -60,7 +67,7 @@ impl FlashReceiver {
                 amount,
             },
         );
-        e.events().publish((EVENT_CB, pool), amount);
+        FlashCallbackReceived { pool, amount }.publish(&e);
         e.storage().instance().remove(&LOCK);
         Ok(())
     }
@@ -84,9 +91,9 @@ mod tests {
         let pool = Address::generate(&e);
         let from = Address::generate(&e);
         let asset = Address::generate(&e);
-        c.exec_op(&pool, &from, &asset, &5_0000000);
+        c.exec_op(&pool, &from, &asset, &50_000_000);
         let last = c.last_callback().unwrap();
-        assert_eq!(last.amount, 5_0000000);
+        assert_eq!(last.amount, 50_000_000);
         assert_eq!(last.from, from);
     }
 
@@ -96,9 +103,7 @@ mod tests {
         let id = e.register(FlashReceiver, ());
         let c = FlashReceiverClient::new(&e, &id);
         let pool = Address::generate(&e);
-        assert!(c
-            .try_exec_op(&pool, &pool, &pool, &1_0000000)
-            .is_err());
+        assert!(c.try_exec_op(&pool, &pool, &pool, &10_000_000).is_err());
     }
 
     #[test]

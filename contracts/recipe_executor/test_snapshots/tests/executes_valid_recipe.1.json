@@ -194,22 +194,37 @@
           "v0": {
             "topics": [
               {
-                "symbol": "action"
+                "symbol": "action_recorded"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "u32": 0
+                  "key": {
+                    "symbol": "amount"
+                  },
+                  "val": {
+                    "i128": "10000000"
+                  }
                 },
                 {
-                  "u32": 0
+                  "key": {
+                    "symbol": "index"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 },
                 {
-                  "i128": "10000000"
+                  "key": {
+                    "symbol": "kind"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -227,22 +242,37 @@
           "v0": {
             "topics": [
               {
-                "symbol": "action"
+                "symbol": "action_recorded"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "u32": 1
+                  "key": {
+                    "symbol": "amount"
+                  },
+                  "val": {
+                    "i128": "10000000"
+                  }
                 },
                 {
-                  "u32": 1
+                  "key": {
+                    "symbol": "index"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
                 },
                 {
-                  "i128": "10000000"
+                  "key": {
+                    "symbol": "kind"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
                 }
               ]
             }
@@ -260,14 +290,23 @@
           "v0": {
             "topics": [
               {
-                "symbol": "recipe"
+                "symbol": "recipe_executed"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
               }
             ],
             "data": {
-              "u32": 2
+              "map": [
+                {
+                  "key": {
+                    "symbol": "actions"
+                  },
+                  "val": {
+                    "u32": 2
+                  }
+                }
+              ]
             }
           }
         }
