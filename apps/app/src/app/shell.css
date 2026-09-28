@@ -36,6 +36,42 @@
   font-size: 12px;
   border: 1px solid var(--border-2);
 }
+.shell-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex: none;
+}
+.shell-name {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.shell-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #0a0a0a;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 33px;
+  margin-left: 10px;
+  width: min(360px, 32vw);
+  color: var(--muted);
+}
+.shell-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12.5px;
+  width: 100%;
+}
+.shell-search input::placeholder {
+  color: var(--muted);
+}
 .shell-ws-btn {
   display: flex;
   align-items: center;
@@ -176,10 +212,11 @@
 .nav-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   height: 37px;
   margin: 2px 6px;
-  padding: 0 10px;
-  border-radius: 9px;
+  padding: 0;
+  border-radius: 6px;
   color: #c9c9cf;
   text-decoration: none;
   white-space: nowrap;
@@ -190,6 +227,11 @@
   cursor: pointer;
   font-size: 13px;
   text-align: left;
+}
+.shell-sidebar:hover .nav-item,
+.shell-sidebar:focus-within .nav-item {
+  justify-content: flex-start;
+  padding: 0 10px;
 }
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.06);
@@ -206,19 +248,19 @@
   justify-content: center;
   color: inherit;
 }
+/* Collapsed: labels/badges/dots leave layout entirely so icons sit dead-center */
+.nav-label,
+.badge-beta {
+  display: none;
+}
 .nav-label {
   margin-left: 10px;
   font-size: 12.5px;
   font-weight: 600;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .shell-sidebar:hover .nav-label,
 .shell-sidebar:focus-within .nav-label {
-  opacity: 1;
-  transform: translateX(0);
-  transition-delay: 0.07s;
+  display: inline;
 }
 .badge-beta {
   margin-left: auto;
@@ -229,13 +271,10 @@
   color: #fff;
   padding: 2px 7px;
   border-radius: 999px;
-  opacity: 0;
-  transition: opacity 0.18s ease;
 }
 .shell-sidebar:hover .badge-beta,
 .shell-sidebar:focus-within .badge-beta {
-  opacity: 1;
-  transition-delay: 0.1s;
+  display: inline;
 }
 .section-title {
   position: relative;
@@ -281,11 +320,10 @@
   border-radius: 50%;
   background: var(--blue);
   margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.18s;
+  display: none;
 }
 .shell-sidebar:hover .dot {
-  opacity: 1;
+  display: inline;
 }
 .shell-main {
   flex: 1;

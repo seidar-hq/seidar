@@ -91,9 +91,9 @@ export function Shell({
   setView: (v: AppView) => void;
   children: React.ReactNode;
 }) {
-  const [credits] = useState(4);
   const [wallet, setWallet] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   async function connectWallet() {
     setWalletError(null);
@@ -105,30 +105,35 @@ export function Shell({
       setWalletError("Freighter not found — install it to connect");
     }
   }
-  const titles: Record<AppView, string> = {
-    portfolio: "Portfolio",
-    discover: "Discover",
-    blend: "Blend",
-    xoxno: "XOXNO",
-    peridot: "Peridot",
-    savings: "Smart Savings",
-    shifter: "Loan Shifter",
-    recipes: "Recipe Creator",
-    automate: "Automation",
-    settings: "Settings",
-  };
+
+  const q = query.trim().toLowerCase();
+  const visibleNav = q
+    ? NAV.filter((item) => item.label.toLowerCase().includes(q))
+    : NAV;
+
+  function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && visibleNav.length > 0) {
+      setView(visibleNav[0].id);
+      setQuery("");
+    }
+    if (e.key === "Escape") setQuery("");
+  }
   return (
     <>
       <header className="shell-topbar">
         <div className="shell-topbar-left">
-          <div className="shell-avatar">S</div>
-          <button className="shell-ws-btn" type="button">
-            <span className="shell-ws-name">Seidar Workspace</span>
-            <span className="badge-credits">{credits} credits</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-          </button>
-          <span className="shell-crumb-sep">/</span>
-          <span className="shell-crumb">{titles[view]}</span>
+          <img src="/logo.png" alt="Seidar" className="shell-logo" />
+          <span className="shell-name">Seidar</span>
+          <div className="shell-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onSearchKey}
+              placeholder="Search positions, pools, actions…"
+              aria-label="Search"
+            />
+          </div>
         </div>
         <div className="shell-topbar-right">
           <div className="seg-group">
@@ -139,21 +144,12 @@ export function Shell({
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
           </div>
-          <div className="seg-group create">
-            <button className="seg-main" type="button">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              New position
-            </button>
-            <button className="seg-chev" type="button" aria-label="More actions">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-            </button>
-          </div>
         </div>
       </header>
       <div className="shell-layout">
         <aside className="shell-sidebar">
           <nav className="side-nav">
-            {NAV.map((item) => (
+            {visibleNav.map((item) => (
               <button
                 key={item.id}
                 type="button"
