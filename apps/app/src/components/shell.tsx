@@ -98,6 +98,7 @@ type NavItem = { id: AppView; label: string; icon: React.ReactNode; children?: N
 /** View <-> URL mapping. Portfolio lives at `/`; protocols nest under `/protocols`. */
 export function viewToPath(v: AppView): string {
   if (v === "portfolio") return "/";
+  if (v === "discover") return "/discover/all";
   if (v === "blend" || v === "xoxno" || v === "peridot") return `/protocols/${v}`;
   return `/${v}`;
 }
@@ -105,6 +106,7 @@ export function viewToPath(v: AppView): string {
 export function pathToView(pathname: string | null): AppView {
   const seg = (pathname ?? "/").split("/").filter(Boolean);
   if (seg.length === 0) return "portfolio";
+  if (seg[0] === "discover") return "discover";
   if (seg[0] === "protocols") {
     if (seg[1] === "blend" || seg[1] === "xoxno" || seg[1] === "peridot") return seg[1];
     return "protocols";

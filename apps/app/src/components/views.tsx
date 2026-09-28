@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   healthBps,
   healthStatus,
@@ -567,7 +568,25 @@ const DV_CATS = [
 type DvCat = (typeof DV_CATS)[number]["id"];
 
 function DiscoverPage() {
-  const [cat, setCat] = useState<DvCat>("browse");
+  const pathname = usePathname();
+  const router = useRouter();
+  const slug = (pathname ?? "/discover/all").split("/").filter(Boolean)[1] ?? "all";
+  const slugToCat: Record<string, DvCat> = {
+    all: "browse",
+    "leveraged-borrowing": "leverage",
+    "yield-farming": "yield",
+    "passive-yield": "passive",
+  };
+  const catToSlug: Record<DvCat, string> = {
+    browse: "all",
+    leverage: "leveraged-borrowing",
+    yield: "yield-farming",
+    passive: "passive-yield",
+  };
+  const cat = slugToCat[slug] ?? "browse";
+  const setCat = (c: DvCat) => {
+    if (c !== cat) router.push(`/discover/${catToSlug[c]}`);
+  };
   const [collateral, setCollateral] = useState("all");
   const [debt, setDebt] = useState("all");
   const [protocol, setProtocol] = useState("all");

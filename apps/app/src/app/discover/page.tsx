@@ -1,10 +1,5 @@
-import { Shell } from "@/components/shell";
-import { Views } from "@/components/views";
+import { redirect } from "next/navigation";
 
-export default function DiscoverPage() {
-  return (
-    <Shell>
-      <Views view="discover" />
-    </Shell>
-  );
+export default function DiscoverIndex() {
+  redirect("/discover/all");
 }
