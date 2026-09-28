@@ -1,7 +1,14 @@
 {
   "note": "Pin pool/oracle addresses + WASM hashes per network. CI fails the build on drift.",
   "testnet": {
-    "blend_pool": "CBB_SEIDAR_TESTNET_BLEND_POOL_PLACEHOLDER",
+    "deployer": "GCG5YFBE2CUOO2ZRP275NYBSRG3Y7WVJGPHQKDBZKZ7QTAE263QV5IJE",
+    "recipe_executor": "CBNJ42T3TDWF23OPMNCYZZB56SFHT4ENKSADJJ7N3NSIVJSDVJMBRWSS",
+    "guardian": "CB3UQXMCNXL3MAVQFIEZL7AHUF2ZLJQDPAT26US57DR4EPQR3UDT532Y",
+    "flash_receiver": "CAMNZIUTMKTFHOT66NRZ722QQ6PYKU76LSFNJ6LDDS5VNDIDZOQTQNUE",
+    "proven_txs": {
+      "guardian_add_rule": "c3c90f13c12e9545a17fc7ab6e74e6bbb8b2f2f3ce86030e7db1115aa297247e",
+      "guardian_execute_fire": "1ee51dd71c9e162c0e898c599de6409c34ab429d6c91c87fe641811ac5d96d09"
+    },
     "blend_oracle": "CBB_SEIDAR_TESTNET_REFLECTOR_PLACEHOLDER",
     "xoxno_pool": "CBB_SEIDAR_TESTNET_XOXNO_POOL_PLACEHOLDER",
     "peridot_pool": "CBB_SEIDAR_TESTNET_PERIDOT_POOL_PLACEHOLDER",
