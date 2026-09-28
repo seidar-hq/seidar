@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "common",
+  "recipe_executor",
+  "guardian",
+  "adapters",
+  "flash_receiver",
+]
+resolver = "2"

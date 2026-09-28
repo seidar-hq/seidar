@@ -1,0 +1,17 @@
+{
+  "note": "Pin pool/oracle addresses + WASM hashes per network. CI fails the build on drift.",
+  "testnet": {
+    "blend_pool": "CBB_SEIDAR_TESTNET_BLEND_POOL_PLACEHOLDER",
+    "blend_oracle": "CBB_SEIDAR_TESTNET_REFLECTOR_PLACEHOLDER",
+    "xoxno_pool": "CBB_SEIDAR_TESTNET_XOXNO_POOL_PLACEHOLDER",
+    "peridot_pool": "CBB_SEIDAR_TESTNET_PERIDOT_POOL_PLACEHOLDER",
+    "soroswap_router": "CBB_SEIDAR_TESTNET_SOROSWAP_PLACEHOLDER"
+  },
+  "mainnet": {
+    "blend_pool": "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+    "blend_oracle": "CALI2BYN3V6L2F5XJYV2H6QZ4N7W8E9R0T1Y2U3I4O5P6LE6M",
+    "xoxno_pool": "TBD_PIN_BEFORE_MAINNET",
+    "peridot_pool": "TBD_PIN_BEFORE_MAINNET",
+    "soroswap_router": "TBD_PIN_BEFORE_MAINNET"
+  }
+}
