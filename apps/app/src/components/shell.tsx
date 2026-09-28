@@ -28,7 +28,7 @@ function makeIdenticon(seed: string) {
   return { hue, cells };
 }
 
-function Identicon({ address, size = 26 }: { address: string; size?: number }) {
+function Identicon({ address, size = 26, square = false }: { address: string; size?: number; square?: boolean }) {
   const { hue, cells } = useMemo(() => makeIdenticon(address), [address]);
   const cell = size / 5;
   return (
@@ -36,7 +36,7 @@ function Identicon({ address, size = 26 }: { address: string; size?: number }) {
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      className="identicon"
+      className={`identicon${square ? " square" : ""}`}
       aria-hidden="true"
     >
       <rect width={size} height={size} fill={`hsl(${hue} 55% 13%)`} />
@@ -291,18 +291,18 @@ export function Shell({
             {unread > 0 && <span className="notif-badge">{unread}</span>}
           </button>
           <span className="shell-balance" title={wallet ? "Connected wallet balance (testnet)" : "Connect a wallet to see its balance"}>
-            {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM ·{" "}
-            {balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            <b>{balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</b>
+            <small>{balance.usd === null ? "—" : `$${balance.usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</small>
           </span>
-          <div className="seg-group wallet">
+          <div className={`seg-group wallet${wallet ? " connected" : ""}`}>
             {wallet ? (
               <>
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
+                  <Identicon address={wallet} size={29} square />
                   <span className="wallet-text">
                     <b>{shortAddress(wallet)}</b>
                     <small>Testnet</small>
                   </span>
-                  <Identicon address={wallet} />
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
