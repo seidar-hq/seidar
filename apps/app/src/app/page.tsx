@@ -172,7 +172,7 @@ function Portfolio() {
             <p>No active positions found for {shortAddr(walletAddr)}.</p>
           </div>
         ) : (
-          <div className="table" style={{ marginTop: 12 }}>
+          <div className="pos-table">
             <header><span>POSITION</span><span>COLLATERAL</span><span>DEBT</span><span>AUTOMATION</span><span>HEALTH</span></header>
             {rows.map((p) => (
               <div className="row" key={p.id}>
