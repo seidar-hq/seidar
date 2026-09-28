@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Shell, type AppView } from "@/components/shell";
 import {
   healthBps,
@@ -9,6 +9,7 @@ import {
 } from "@seidar/positions-sdk";
 import { boostRecipe, quoteFee, feeTierBps } from "@seidar/sdk";
 import { evaluateRule } from "@seidar/automation-sdk";
+import { CONTRACTS, EXPERT_TX, type ChainEvent } from "@/lib/chain";
 
 // Mock pool snapshot (USD values). RPC snapshots replace this in services/.
 type Position = {
@@ -38,6 +39,62 @@ function healthPill(collateralValue: number, debtValue: number) {
   if (s === "healthy") return <span className="pill green">Healthy · {(Number(bps) / 10000).toFixed(2)}</span>;
   if (s === "watch") return <span className="pill amber">Watch · {(Number(bps) / 10000).toFixed(2)}</span>;
   return <span className="pill red">Risk · {(Number(bps) / 10000).toFixed(2)}</span>;
+}
+
+function LiveActivity() {
+  const [events, setEvents] = useState<ChainEvent[]>([]);
+  const [live, setLive] = useState<boolean | null>(null);
+  const [ledger, setLedger] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/activity")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setLive(d.live);
+        setLedger(d.ledger ?? 0);
+        setEvents(d.events ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setLive(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const nameOf = (c: string) =>
+    c === CONTRACTS.guardian ? "guardian" : c === CONTRACTS.recipeExecutor ? "executor" : "unknown";
+
+  return (
+    <div className="leverage">
+      <b>
+        Live testnet activity{" "}
+        <span className={`pill ${live ? "green" : live === false ? "amber" : ""}`} style={{ marginLeft: 6 }}>
+          {live ? `Live · #${ledger}` : live === false ? "Offline — showing last known" : "Connecting…"}
+        </span>
+      </b>
+      <p style={{ color: "#8a8a91", fontSize: 12.5, marginTop: 6 }}>
+        Real guardian + executor events from Soroban testnet. Click through to stellar.expert.
+      </p>
+      <div className="table" style={{ marginTop: 10 }}>
+        <header><span>CONTRACT</span><span>EVENT</span><span>LEDGER</span><span>TX</span><span></span></header>
+        {events.length === 0 && (
+          <div className="row"><span>No events in window</span><span>—</span><span>—</span><span>—</span><span></span></div>
+        )}
+        {events.map((e) => (
+          <div className="row" key={`${e.txHash}-${e.topic}`}>
+            <span>{nameOf(e.contract)}</span>
+            <span>{e.topic}</span>
+            <span>{e.ledger}</span>
+            <span style={{ color: "#8a8a91" }}>{e.txHash.slice(0, 8)}…</span>
+            <span><a href={EXPERT_TX(e.txHash)} target="_blank" rel="noreferrer">View ↗</a></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function Portfolio() {
@@ -115,6 +172,9 @@ function Portfolio() {
           <button className="btn" type="button">Repay</button>
           <button className="btn" type="button">Simulate</button>
         </div>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <LiveActivity />
       </div>
     </>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { requestAccess, getAddress } from "@stellar/freighter-api";
+import { shortAddress } from "@/lib/chain";
 
 export type AppView =
   | "portfolio"
@@ -90,6 +92,19 @@ export function Shell({
   children: React.ReactNode;
 }) {
   const [credits] = useState(4);
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
+
+  async function connectWallet() {
+    setWalletError(null);
+    try {
+      await requestAccess();
+      const { address } = await getAddress();
+      setWallet(address);
+    } catch {
+      setWalletError("Freighter not found — install it to connect");
+    }
+  }
   const titles: Record<AppView, string> = {
     portfolio: "Portfolio",
     discover: "Discover",
@@ -117,10 +132,10 @@ export function Shell({
         </div>
         <div className="shell-topbar-right">
           <div className="seg-group">
-            <button className="seg-main" type="button">
-              GABC…9F2Q · Testnet
+            <button className="seg-main" type="button" onClick={connectWallet} title={walletError ?? "Connect Freighter (testnet)"}>
+              {wallet ? `${shortAddress(wallet)} · Testnet` : "Connect wallet"}
             </button>
-            <button className="seg-chev" type="button" aria-label="Wallets">
+            <button className="seg-chev" type="button" aria-label="Wallets" onClick={connectWallet}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
           </div>
