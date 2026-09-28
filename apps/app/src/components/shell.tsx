@@ -386,9 +386,9 @@ export function Shell({
             {wallet ? (
               <>
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
-                  <Identicon address={wallet} size={29} square />
+                  <Identicon address={wallet} size={33} square />
                   <span className="wallet-text">
-                    <b>{shortAddress(wallet)}</b>
+                    <b>{shortAddress(wallet)}<span className="wallet-logo" title="Freighter">F</span></b>
                     <small>Testnet</small>
                   </span>
                 </button>
