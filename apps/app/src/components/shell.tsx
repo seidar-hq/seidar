@@ -518,15 +518,17 @@ export function Shell({
               <>
                 <button className="seg-main wallet-main" type="button" onClick={() => setWalletMenuOpen((o) => !o)} title={wallet}>
                   <span className="identicon-wrap">
-                    <Identicon address={wallet} size={36} square />
-                    <span className="provider-badge" title="Freighter">
-                      <img src="/freighter-logo.svg" alt="" />
+                    <Identicon address={wallet} size={32} square />
+                    <span className="provider-badge" title="Connected wallet">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5" /><circle cx="17" cy="12.5" r="1.2" fill="currentColor" stroke="none" /></svg>
                     </span>
                   </span>
                   <span className="wallet-text">
                     <b>{shortAddress(wallet)}</b>
-                    <small>Freighter · {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 0 })} XLM</small>
                     <em>No Smart Account</em>
+                  </span>
+                  <span className="wallet-logo" title="Freighter">
+                    <img src="/freighter-logo.svg" alt="" />
                   </span>
                 </button>
                 <button className="seg-chev wallet-chev" type="button" aria-label="Wallet menu" onClick={() => setWalletMenuOpen((o) => !o)}>
@@ -544,16 +546,15 @@ export function Shell({
             <div className="wallet-drop dfs" role="menu" aria-label="Wallet menu">
               <div className="wdrop-head">
                 <span className="identicon-wrap lg">
-                  <Identicon address={wallet} size={40} square />
-                  <span className="provider-badge" title="Freighter">
-                    <img src="/freighter-logo.svg" alt="" />
+                  <Identicon address={wallet} size={36} square />
+                  <span className="provider-badge" title="Connected wallet">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5" /><circle cx="17" cy="12.5" r="1.2" fill="currentColor" stroke="none" /></svg>
                   </span>
                 </span>
                 <div className="wdrop-identity">
                   <button type="button" className="wdrop-addr" onClick={copyAddress} title="Copy full address">
                     {copied ? "Copied ✓" : shortAddress(wallet)}
                   </button>
-                  <small>Freighter · {balance.xlm.toLocaleString(undefined, { maximumFractionDigits: 0 })} XLM</small>
                 </div>
                 <button type="button" className="wdrop-collapse" aria-label="Close menu" onClick={() => setWalletMenuOpen(false)}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
