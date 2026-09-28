@@ -38,7 +38,7 @@ export type PoolRow = {
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: ("leverage" | "yield" | "passive")[];
-  source: "blend-sdk" | "defillama";
+  source: "blend-sdk" | "xoxno-api";
   available: boolean;
 };
 
@@ -188,21 +188,35 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
   return rows;
 }
 
-/** Contract address -> ticker via DeFiLlama Stellar pools (cached with rows). */
+/** Contract address -> ticker via Soroswap list + DeFiLlama Stellar pools. */
 let codeMap: Record<string, string> | null = null;
 async function resolveCodes(assets: string[]): Promise<(string | null)[]> {
   try {
     if (!codeMap) {
-      const body = (await fetchJson("https://yields.llama.fi/pools", 45000)) as {
-        data?: { chain?: string; symbol?: string; underlyingTokens?: string[] }[];
+      const map: Record<string, string> = {
+        // XLM liquidity token shared by Blend/XOXNO pools (per DeFiLlama).
+        CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA: "XLM",
       };
-      const map: Record<string, string> = {};
-      for (const p of body.data ?? []) {
-        if (p.chain !== "Stellar" || !p.symbol || !p.underlyingTokens) continue;
-        for (const u of p.underlyingTokens) {
-          if (typeof u === "string" && u.startsWith("C") && !map[u]) map[u] = p.symbol;
+      try {
+        const list = (await fetchJson(
+          "https://raw.githubusercontent.com/soroswap/token-list/main/tokenList.json",
+          30000
+        )) as { assets?: { code?: string; contract?: string }[] };
+        for (const a of list.assets ?? []) {
+          if (a.contract && a.code && !map[a.contract]) map[a.contract] = a.code.toUpperCase();
         }
-      }
+      } catch { /* llama fallback below */ }
+      try {
+        const body = (await fetchJson("https://yields.llama.fi/pools", 45000)) as {
+          data?: { chain?: string; symbol?: string; underlyingTokens?: string[] }[];
+        };
+        for (const p of body.data ?? []) {
+          if (p.chain !== "Stellar" || !p.symbol || !p.underlyingTokens) continue;
+          for (const u of p.underlyingTokens) {
+            if (typeof u === "string" && u.startsWith("C") && !map[u]) map[u] = p.symbol;
+          }
+        }
+      } catch { /* pinned + soroswap only */ }
       codeMap = map;
     }
     return assets.map((a) => codeMap?.[a] ?? null);
@@ -211,30 +225,76 @@ async function resolveCodes(assets: string[]): Promise<(string | null)[]> {
   }
 }
 
-/** XOXNO supply rows (live APY/TVL via DeFiLlama; borrow legs pending). */
+/** XOXNO rows via their public REST (supply + borrow APY, LTV per spoke/hub). */
 async function xoxnoRows(): Promise<PoolRow[]> {
   try {
-    const body = (await fetchJson("https://yields.llama.fi/pools", 45000)) as {
-      data?: { chain?: string; project?: string; symbol?: string; apy?: number }[];
+    const reservesRes = await fetchJson("https://api.xoxno.com/stellar-lending/reserves", 30000);
+    const toArr = (d: unknown): Record<string, unknown>[] => {
+      const o = d as { reserves?: unknown[]; data?: unknown[] };
+      if (Array.isArray(d)) return d as Record<string, unknown>[];
+      return (o.reserves ?? o.data ?? []) as Record<string, unknown>[];
     };
+    type R = {
+      spokeId: number; hubId: number; asset: string;
+      supplyApy: number; borrowApy: number;
+      collateralFactorBps: number; useAsCollateral: boolean;
+    };
+    const reserves = toArr(reservesRes)
+      .map((r) => ({
+        spokeId: Number(r.spokeId),
+        hubId: Number(r.hubId),
+        asset: String(r.asset ?? ""),
+        supplyApy: Number(r.supplyApy ?? 0) * 100,
+        borrowApy: Number(r.borrowApy ?? 0) * 100,
+        collateralFactorBps: Number(r.collateralFactorBps ?? 0),
+        useAsCollateral: r.useAsCollateral !== false,
+      }))
+      .filter((r) => r.asset.startsWith("C")) as (R & { code: string })[];
+    // Attach tickers (Soroswap list + llama + pinned XLM).
+    const codes = await resolveCodes(reserves.map((r) => r.asset));
+    // Attach codes ( TS: re-map with code )
+    const coded = reserves
+      .map((r, i) => ({ ...r, code: codes[i] }))
+      .filter((r) => r.code !== null) as (R & { code: string })[];
     const out: PoolRow[] = [];
-    for (const p of body.data ?? []) {
-      if (p.chain !== "Stellar" || p.project !== "xoxno-lending" || !p.symbol) continue;
+    // Supply singles: best APY per asset.
+    const best = new Map<string, (typeof coded)[number]>();
+    for (const r of coded) {
+      const cur = best.get(r.code);
+      if (!cur || r.supplyApy > cur.supplyApy) best.set(r.code, r);
+    }
+    for (const r of best.values()) {
       const cats: PoolRow["cats"] = ["yield"];
-      if (STABLES.has(p.symbol)) cats.push("passive");
+      if (STABLES.has(r.code)) cats.push("passive");
       out.push({
-        collateral: p.symbol,
-        debt: null,
-        supplyApy: p.apy ?? 0,
-        borrowApy: null,
-        maxLev: "—",
-        ltv: null,
-        protocol: "xoxno",
-        protocolLabel: "XOXNO",
-        cats,
-        source: "defillama",
-        available: true,
+        collateral: r.code, debt: null, supplyApy: r.supplyApy, borrowApy: null,
+        maxLev: "—", ltv: null, protocol: "xoxno", protocolLabel: "XOXNO",
+        cats, source: "xoxno-api", available: true,
       });
+    }
+    // Borrow pairs share a spoke+hub risk module.
+    const groups = new Map<string, typeof coded>();
+    for (const r of coded) {
+      const k = `${r.spokeId}:${r.hubId}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)?.push(r);
+    }
+    for (const members of groups.values()) {
+      const coll = members.filter((m) => m.useAsCollateral && m.collateralFactorBps > 0);
+      const debts = members.filter((m) => m.borrowApy > 0);
+      for (const s of coll) {
+        for (const d of debts) {
+          if (s.asset === d.asset) continue;
+          const ltv = s.collateralFactorBps / 10000;
+          out.push({
+            collateral: s.code, debt: d.code,
+            supplyApy: s.supplyApy, borrowApy: d.borrowApy,
+            maxLev: maxLev(ltv), ltv,
+            protocol: "xoxno", protocolLabel: "XOXNO",
+            cats: ["leverage"], source: "xoxno-api", available: true,
+          });
+        }
+      }
     }
     return out;
   } catch {
