@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   healthBps,
@@ -676,6 +676,168 @@ const DV_CATS = [
 
 type DvCat = (typeof DV_CATS)[number]["id"];
 
+/** Multi-select token dropdown: search + checkboxes + logos, caret pinned right. */
+function TokenMultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (updater: (prev: string[]) => string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open ]);
+
+  const shown = options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase()));
+  const title =
+    selected.length === 0 ? `All ${label} tokens` : selected.length === 1 ? selected[0] : `${selected.length} tokens`;
+
+  function toggle(code: string) {
+    onChange((prev) => (prev.includes(code) ? prev.filter((s) => s !== code) : [...prev, code]));
+  }
+
+  return (
+    <div className="dv-select" ref={ref}>
+      <button type="button" className="dv-trigger" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span>{title}</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="dv-drop" role="listbox" aria-label={label}>
+          <div className="dv-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={`Search ${label} tokens…`}
+              aria-label={`Search ${label} tokens`}
+            />
+          </div>
+          <div className="dv-options">
+            {shown.map((code) => {
+              const checked = selected.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  role="option"
+                  aria-selected={checked}
+                  className="dv-option"
+                  onClick={() => toggle(code)}
+                >
+                  <TokenIcon symbol={code} size={20} />
+                  <span>{code}</span>
+                  <span className={`dv-check${checked ? " on" : ""}`} aria-hidden="true">
+                    {checked && (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+            {shown.length === 0 && <p className="dv-noopt">No tokens match “{q}”.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Single-select protocol dropdown with logos. */
+function ProtocolSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open ]);
+
+  return (
+    <div className="dv-select" ref={ref}>
+      <button type="button" className="dv-trigger" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span>{value === "all" ? "All protocols" : value}</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="dv-drop" role="listbox" aria-label="Protocols">
+          <div className="dv-options">
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === "all"}
+              className="dv-option"
+              onClick={() => {
+                onChange("all");
+                setOpen(false);
+              }}
+            >
+              <span>All protocols</span>
+              <span className={`dv-check${value === "all" ? " on" : ""}`} aria-hidden="true" />
+            </button>
+            {options.map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="option"
+                aria-selected={value === p}
+                className="dv-option"
+                onClick={() => {
+                  onChange(p);
+                  setOpen(false);
+                }}
+              >
+                <ProtoIcon protocol={PROTOCOL_META[p.toLowerCase()]?.view ?? p.toLowerCase()} />
+                <span>{p}</span>
+                <span className={`dv-check${value === p ? " on" : ""}`} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiscoverPage() {
   const pathname = usePathname();
   const router = useRouter();
@@ -723,8 +885,8 @@ function DiscoverPage() {
       cancelled = true;
     };
   }, []);
-  const [collateral, setCollateral] = useState("all");
-  const [debt, setDebt] = useState("all");
+  const [collateral, setCollateral] = useState<string[]>([]);
+  const [debt, setDebt] = useState<string[]>([]);
   const [protocol, setProtocol] = useState("all");
   const [estimate, setEstimate] = useState(true);
   const [ownedOnly, setOwnedOnly] = useState(false);
@@ -750,8 +912,8 @@ function DiscoverPage() {
   const filtered = markets.filter(
     (m) =>
       inCat(m) &&
-      (collateral === "all" || m.collateral === collateral) &&
-      (debt === "all" || m.debt === debt) &&
+      (collateral.length === 0 || collateral.includes(m.collateral)) &&
+      (debt.length === 0 || (m.debt != null && debt.includes(m.debt))) &&
       (protocol === "all" || m.protocolLabel === protocol) &&
       (!ownedOnly || m.collateral === "XLM") &&
       (!hideUnavailable || m.available)
@@ -783,8 +945,7 @@ function DiscoverPage() {
     return `$${v.toFixed(2)}`;
   }
 
-  function Toggle({ on, onFlip, label }: { on: boolean; onFlip: () => void; label: string }) {
-    return (
+  function Toggle({ on, onFlip, label }: { on: boolean; onFlip: () => void; label: string }) {    return (
       <button type="button" className="dv-toggle" onClick={onFlip} aria-pressed={on}>
         <span className={`dv-switch${on ? " on" : ""}`} aria-hidden="true" />
         {label}
@@ -843,7 +1004,7 @@ function DiscoverPage() {
               <p className="dz-desc" style={{ maxWidth: "none" }}>Borrow stablecoins against the majors to lever up a long, across the biggest Stellar lending markets.</p>
               <div className="dv-assetlist">
                 {["XLM", "USDC", "EURC"].map((code) => (
-                  <button key={code} type="button" onClick={() => { setCat("leverage"); setCollateral(code); }}>
+                  <button key={code} type="button" onClick={() => { setCat("leverage"); setCollateral([code]); }}>
                     <TokenIcon symbol={code} size={22} />
                     <span>{code}</span>
                     <span aria-hidden="true">→</span>
@@ -880,30 +1041,9 @@ function DiscoverPage() {
       ) : (
         <>
           <div className="dv-filters">
-            <label aria-label="Collateral tokens">
-              <select value={collateral} onChange={(e) => setCollateral(e.target.value)} aria-label="Collateral tokens">
-                <option value="all">All collateral tokens</option>
-                {codes.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-            <label aria-label="Debt tokens">
-              <select value={debt} onChange={(e) => setDebt(e.target.value)} aria-label="Debt tokens">
-                <option value="all">All debt tokens</option>
-                {codes.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-            <label aria-label="Protocols">
-              <select value={protocol} onChange={(e) => setProtocol(e.target.value)} aria-label="Protocols">
-                <option value="all">All protocols</option>
-                {protocols.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </label>
+            <TokenMultiSelect label="collateral" options={codes} selected={collateral} onChange={setCollateral} />
+            <TokenMultiSelect label="debt" options={codes} selected={debt} onChange={setDebt} />
+            <ProtocolSelect options={protocols} value={protocol} onChange={setProtocol} />
           </div>
           <div className="dv-toggles">
             <Toggle on={estimate} onFlip={() => setEstimate(!estimate)} label="Estimate Net APY" />
@@ -965,17 +1105,22 @@ function DiscoverPage() {
                       <input value={collateralAmt} onChange={(e) => setCollateralAmt(e.target.value)} inputMode="decimal" />
                     </label>
                     <div className="dv-slider">
-                      <div className="dv-slider-head"><span>ⓘ Leverage:</span></div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={0.1}
-                        value={lev}
-                        onChange={(e) => setLev(Number(e.target.value))}
-                        aria-label="Leverage"
-                      />
-                      <div className="dv-slider-scale"><span>1x</span><span>10x</span></div>
+                      <div className="dv-slider-line">
+                        <span>ⓘ Leverage:</span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={10}
+                          step={0.1}
+                          value={lev}
+                          onChange={(e) => setLev(Number(e.target.value))}
+                          aria-label="Leverage"
+                          style={{
+                            background: `linear-gradient(to right, var(--blue) 0%, var(--blue) ${((lev - 1) / 9) * 100}%, #232329 ${((lev - 1) / 9) * 100}%, #232329 100%)`,
+                          }}
+                        />
+                      </div>
+                      <div className="dv-slider-scale"><span>1x</span><span>{lev.toFixed(1)}x</span><span>10x</span></div>
                     </div>
                   </div>
                   <p className="dv-result">
