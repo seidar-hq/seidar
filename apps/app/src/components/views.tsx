@@ -641,6 +641,8 @@ type MarketRow = {
   borrowApy: number | null;
   maxLev: string;
   ltv: number | null;
+  marketSizeUsd: number | null;
+  withdrawableUsd: number | null;
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: MarketCat[];
@@ -727,11 +729,12 @@ function DiscoverPage() {
   const [estimate, setEstimate] = useState(true);
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [hideUnavailable, setHideUnavailable] = useState(false);
-  const [hideTable, setHideTable] = useState(false);
   const [mode, setMode] = useState<"borrow" | "leverage">("borrow");
-  const [showHint, setShowHint] = useState(true);
   const [collateralAmt, setCollateralAmt] = useState("100000");
   const [debtAmt, setDebtAmt] = useState("50000");
+  const [lev, setLev] = useState(2);
+  const [supplyAmt, setSupplyAmt] = useState("100000");
+  const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("year");
 
   const codes = useMemo(() => {
     const s = new Set<string>();
@@ -756,13 +759,28 @@ function DiscoverPage() {
 
   const collNum = Number(collateralAmt.replace(/[^0-9.]/g, "")) || 0;
   const debtNum = Number(debtAmt.replace(/[^0-9.]/g, "")) || 0;
+  const resColl = collNum * lev;
+  const resDebt = collNum * (lev - 1);
+  const effColl = mode === "leverage" ? resColl : collNum;
+  const effDebt = mode === "leverage" ? resDebt : debtNum;
 
   function netFor(m: MarketRow): number {
-    if (m.debt == null || m.borrowApy == null || debtNum <= 0) return m.supplyApy;
-    if (!estimate || collNum <= 0) {
+    if (m.debt == null || m.borrowApy == null || effDebt <= 0) return m.supplyApy;
+    if (!estimate || effColl <= 0) {
       return netApy(100000, m.supplyApy * 100, 50000, m.borrowApy * 100) / 100;
     }
-    return netApy(collNum, m.supplyApy * 100, debtNum, m.borrowApy * 100) / 100;
+    return netApy(effColl, m.supplyApy * 100, effDebt, m.borrowApy * 100) / 100;
+  }
+
+  const PERIOD_FRAC = { week: 7 / 365, month: 30 / 365, quarter: 91 / 365, year: 1 } as const;
+  const supplyNum = Number(supplyAmt.replace(/[^0-9.]/g, "")) || 0;
+  const profitFor = (apyPct: number) => supplyNum * (apyPct / 100) * PERIOD_FRAC[period];
+
+  function fmtMoney(v: number | null): string {
+    if (v == null || !Number.isFinite(v)) return "—";
+    if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+    if (v >= 1000) return `$${Math.round(v).toLocaleString()}`;
+    return `$${v.toFixed(2)}`;
   }
 
   function Toggle({ on, onFlip, label }: { on: boolean; onFlip: () => void; label: string }) {
@@ -895,21 +913,43 @@ function DiscoverPage() {
             <span className={`pill ${poolsState === "live" ? "green" : poolsState === "error" ? "red" : ""}`} title={poolsUpdatedAt ? `Markets updated ${new Date(poolsUpdatedAt).toLocaleTimeString()}` : "Loading live markets"}>
               {poolsState === "live" ? "Live · Stellar mainnet" : poolsState === "error" ? "Feed error" : "Loading…"}
             </span>
-            <button type="button" className="dv-hidetable" onClick={() => setHideTable(!hideTable)}>
-              {hideTable ? "Show table" : "Hide table"} ✕
-            </button>
           </div>
-          {!hideTable && (
-            <>
-              <div className="dv-amounts">
-                <div className="dv-mode">
-                  <button type="button" className={mode === "borrow" ? "active" : ""} onClick={() => setMode("borrow")}>Borrow</button>
-                  <button type="button" className={mode === "leverage" ? "active" : ""} onClick={() => setMode("leverage")}>Leverage</button>
-                  <span>Enter amounts to see applicable protocols and net APY estimates.</span>
-                  {showHint && (
-                    <button type="button" aria-label="Dismiss" className="dv-x" onClick={() => setShowHint(false)}>✕</button>
-                  )}
+          {cat === "passive" ? (
+            <div className="dv-amounts">
+              <div className="dv-mode">
+                <span style={{ color: "#8a8a91", fontSize: 13 }}>Estimate profit over time for a given supply amount.</span>
+              </div>
+              <div className="dv-passive-row">
+                <label>ⓘ Amount:
+                  <input value={supplyAmt} onChange={(e) => setSupplyAmt(e.target.value)} inputMode="decimal" />
+                </label>
+                <div className="dv-period">
+                  <span>Est. profit over:</span>
+                  <div className="tabs" role="tablist" aria-label="Profit period">
+                    {(["week", "month", "quarter", "year"] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        role="tab"
+                        aria-selected={period === p}
+                        className={`tab${period === p ? " active" : ""}`}
+                        onClick={() => setPeriod(p)}
+                      >
+                        {p === "week" ? "Week" : p === "month" ? "Month" : p === "quarter" ? "Quarter" : "Year"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              </div>
+            </div>
+          ) : (
+            <div className="dv-amounts">
+              <div className="dv-mode">
+                <button type="button" className={mode === "borrow" ? "active" : ""} onClick={() => setMode("borrow")}>Borrow</button>
+                <button type="button" className={mode === "leverage" ? "active" : ""} onClick={() => setMode("leverage")}>Leverage</button>
+                <span>Enter amounts to see applicable protocols and net APY estimates.</span>
+              </div>
+              {mode === "borrow" ? (
                 <div className="dv-inputs">
                   <label>ⓘ Collateral:
                     <input value={collateralAmt} onChange={(e) => setCollateralAmt(e.target.value)} inputMode="decimal" />
@@ -918,7 +958,72 @@ function DiscoverPage() {
                     <input value={debtAmt} onChange={(e) => setDebtAmt(e.target.value)} inputMode="decimal" />
                   </label>
                 </div>
+              ) : (
+                <>
+                  <div className="dv-inputs dv-lev">
+                    <label>ⓘ Collateral:
+                      <input value={collateralAmt} onChange={(e) => setCollateralAmt(e.target.value)} inputMode="decimal" />
+                    </label>
+                    <div className="dv-slider">
+                      <div className="dv-slider-head"><span>ⓘ Leverage:</span></div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={0.1}
+                        value={lev}
+                        onChange={(e) => setLev(Number(e.target.value))}
+                        aria-label="Leverage"
+                      />
+                      <div className="dv-slider-scale"><span>1x</span><span>10x</span></div>
+                    </div>
+                  </div>
+                  <p className="dv-result">
+                    <span>ⓘ Resulting collateral value: <b>${Math.round(resColl).toLocaleString()}</b></span>
+                    <span>ⓘ Resulting debt value: <b>${Math.round(resDebt).toLocaleString()}</b></span>
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+          {cat === "passive" ? (
+              <div className="dv-tablewrap">
+                <div className="dv-thead">
+                  <span>Supply</span><span>Supply APY</span><span>Est. profits</span><span>Strategy</span><span>Market size</span><span>Withdrawable</span><span>Protocol</span>
+                </div>
+                {filtered.map((m, i) => (
+                  <button
+                    key={`${m.protocol}-${m.collateral}-earn-${i}`}
+                    type="button"
+                    className="dv-trow"
+                    onClick={() => goto(m.protocol)}
+                    title={`Open in ${m.protocolLabel}`}
+                  >
+                    <span className="dv-asset"><TokenIcon symbol={m.collateral} size={22} /> {m.collateral}</span>
+                    <span>{m.supplyApy.toFixed(2)}%</span>
+                    <span className="dv-net">${profitFor(m.supplyApy).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span><span className="dv-strat">Lending</span></span>
+                    <span>{fmtMoney(m.marketSizeUsd)}</span>
+                    <span className="dv-wd">
+                      {m.withdrawableUsd == null ? "—" : (
+                        <>{fmtMoney(m.withdrawableUsd)} <i className={m.withdrawableUsd > 1000000 ? "ok" : "warn"} aria-hidden="true" /></>
+                      )}
+                    </span>
+                    <span className="dv-proto"><ProtoIcon protocol={m.protocol} />{m.protocolLabel}</span>
+                  </button>
+                ))}
+                {filtered.length === 0 && poolsState === "live" && (
+                  <p className="pf-empty">No markets match these filters.</p>
+                )}
+                {filtered.length === 0 && poolsState !== "live" && (
+                  <p className="pf-empty">
+                    {poolsState === "error"
+                      ? "Market feed unreachable — check your connection and retry."
+                      : "Loading live markets…"}
+                  </p>
+                )}
               </div>
+          ) : (
               <div className="dv-tablewrap">
                 <div className="dv-thead">
                   <span>Collateral</span><span>Debt</span><span>Supply APY</span><span>Borrow APY</span><span>Net APY</span>
@@ -987,7 +1092,6 @@ function DiscoverPage() {
                   </p>
                 )}
               </div>
-            </>
           )}
         </>
       )}

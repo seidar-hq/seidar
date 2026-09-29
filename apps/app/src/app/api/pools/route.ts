@@ -35,6 +35,8 @@ export type PoolRow = {
   borrowApy: number | null;
   maxLev: string;
   ltv: number | null;
+  marketSizeUsd: number | null;
+  withdrawableUsd: number | null;
   protocol: "blend" | "xoxno" | "peridot";
   protocolLabel: string;
   cats: ("leverage" | "yield" | "passive")[];
@@ -121,6 +123,19 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
       if (!pid) return;
       try {
         const pool = await PoolV2.load(NETWORK, pid);
+        let poolUsd: { supply: number | null; borrow: number | null } = { supply: null, borrow: null };
+        try {
+          const { PoolEstimate } = await import("@blend-capital/blend-sdk");
+          const oracle = await pool.loadOracle();
+          const est = PoolEstimate.build(pool.reserves, oracle) as {
+            totalSupply?: unknown;
+            totalBorrowed?: unknown;
+          };
+          const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+          poolUsd = { supply: num(est.totalSupply), borrow: num(est.totalBorrowed) };
+        } catch {
+          /* totals stay null; APYs still served */
+        }
         const reserves = [...pool.reserves.entries()]
           .map(([asset, r]) => {
             const res = r as {
@@ -152,6 +167,11 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
             borrowApy: null,
             maxLev: "—",
             ltv: null,
+            marketSizeUsd: poolUsd.supply,
+            withdrawableUsd:
+              poolUsd.supply != null && poolUsd.borrow != null
+                ? Math.max(0, poolUsd.supply - poolUsd.borrow)
+                : null,
             protocol: "blend",
             protocolLabel: "Blend",
             cats,
@@ -170,6 +190,11 @@ async function blendRows(poolIds: string[]): Promise<PoolRow[]> {
               borrowApy: d.borrowApy,
               maxLev: maxLev(s.ltv),
               ltv: s.ltv,
+              marketSizeUsd: poolUsd.supply,
+              withdrawableUsd:
+                poolUsd.supply != null && poolUsd.borrow != null
+                  ? Math.max(0, poolUsd.supply - poolUsd.borrow)
+                  : null,
               protocol: "blend",
               protocolLabel: "Blend",
               cats: ["leverage"],
@@ -238,7 +263,9 @@ async function xoxnoRows(): Promise<PoolRow[]> {
       spokeId: number; hubId: number; asset: string;
       supplyApy: number; borrowApy: number;
       collateralFactorBps: number; useAsCollateral: boolean;
+      totalDepositsUsd: number | null; availableLiquidityUsd: number | null;
     };
+    const numOrNull = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const reserves = toArr(reservesRes)
       .map((r) => ({
         spokeId: Number(r.spokeId),
@@ -248,6 +275,8 @@ async function xoxnoRows(): Promise<PoolRow[]> {
         borrowApy: Number(r.borrowApy ?? 0) * 100,
         collateralFactorBps: Number(r.collateralFactorBps ?? 0),
         useAsCollateral: r.useAsCollateral !== false,
+        totalDepositsUsd: numOrNull(r.totalDepositsUsd),
+        availableLiquidityUsd: numOrNull(r.availableLiquidityUsd),
       }))
       .filter((r) => r.asset.startsWith("C")) as (R & { code: string })[];
     // Attach tickers (Soroswap list + llama + pinned XLM).
@@ -268,7 +297,9 @@ async function xoxnoRows(): Promise<PoolRow[]> {
       if (STABLES.has(r.code)) cats.push("passive");
       out.push({
         collateral: r.code, debt: null, supplyApy: r.supplyApy, borrowApy: null,
-        maxLev: "—", ltv: null, protocol: "xoxno", protocolLabel: "XOXNO",
+        maxLev: "—", ltv: null,
+        marketSizeUsd: r.totalDepositsUsd, withdrawableUsd: r.availableLiquidityUsd,
+        protocol: "xoxno", protocolLabel: "XOXNO",
         cats, source: "xoxno-api", available: true,
       });
     }
@@ -286,10 +317,12 @@ async function xoxnoRows(): Promise<PoolRow[]> {
         for (const d of debts) {
           if (s.asset === d.asset) continue;
           const ltv = s.collateralFactorBps / 10000;
+          const liq = d.availableLiquidityUsd;
           out.push({
             collateral: s.code, debt: d.code,
             supplyApy: s.supplyApy, borrowApy: d.borrowApy,
             maxLev: maxLev(ltv), ltv,
+            marketSizeUsd: s.totalDepositsUsd, withdrawableUsd: liq,
             protocol: "xoxno", protocolLabel: "XOXNO",
             cats: ["leverage"], source: "xoxno-api", available: true,
           });
