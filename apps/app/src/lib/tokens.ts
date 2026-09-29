@@ -74,6 +74,7 @@ async function fetchList(): Promise<Record<string, TokenMeta>> {
 /** Pinned local icons (always available, same-origin). */
 const PINNED: Record<string, TokenMeta> = {
   XLM: { code: "XLM", icon: "/xlm-logo.png", name: "Stellar Lumens" },
+  AQUA: { code: "AQUA", icon: "/aqua-logo.png", name: "AQUA" },
 };
 
 /** Metadata for a symbol; always resolves (fallback when unknown). */
