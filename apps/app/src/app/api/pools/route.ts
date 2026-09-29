@@ -358,7 +358,7 @@ export async function GET() {
  * wallet/token registry — no long-tail dust), no absurd manipulated rates,
  * no empty pools.
  */
-const SUPPORTED_ASSETS = new Set(["XLM", "USDC", "EURC", "AQUA"]);
+const SUPPORTED_ASSETS = new Set(["XLM", "USDC", "EURC", "AQUA", "PYUSD", "CETES", "USTRY", "USDGLO"]);
 
 function curate(rows: PoolRow[]): PoolRow[] {
   return rows.filter(

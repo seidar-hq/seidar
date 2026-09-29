@@ -890,7 +890,7 @@ function DiscoverPage() {
   const [protocol, setProtocol] = useState("all");
   const [estimate, setEstimate] = useState(true);
   const [ownedOnly, setOwnedOnly] = useState(false);
-  const [hideUnavailable, setHideUnavailable] = useState(false);
+  const [hideUnavailable, setHideUnavailable] = useState(true);
   const [mode, setMode] = useState<"borrow" | "leverage">("borrow");
   const [collateralAmt, setCollateralAmt] = useState("100000");
   const [debtAmt, setDebtAmt] = useState("50000");
@@ -916,7 +916,7 @@ function DiscoverPage() {
       (debt.length === 0 || (m.debt != null && debt.includes(m.debt))) &&
       (protocol === "all" || m.protocolLabel === protocol) &&
       (!ownedOnly || m.collateral === "XLM") &&
-      (!hideUnavailable || m.available)
+      (!hideUnavailable || (m.available && (m.debt === null || m.supplyApy > 0.004)))
   );
 
   const collNum = Number(collateralAmt.replace(/[^0-9.]/g, "")) || 0;
@@ -1105,7 +1105,7 @@ function DiscoverPage() {
                       <input value={collateralAmt} onChange={(e) => setCollateralAmt(e.target.value)} inputMode="decimal" />
                     </label>
                     <div className="dv-slider">
-                      <div className="dv-slider-line">
+                      <div className="dv-slider-grid">
                         <span>ⓘ Leverage:</span>
                         <input
                           type="range"
@@ -1119,8 +1119,9 @@ function DiscoverPage() {
                             background: `linear-gradient(to right, var(--blue) 0%, var(--blue) ${((lev - 1) / 9) * 100}%, #232329 ${((lev - 1) / 9) * 100}%, #232329 100%)`,
                           }}
                         />
+                        <span />
+                        <div className="dv-slider-scale"><span>1x</span><span>10x</span></div>
                       </div>
-                      <div className="dv-slider-scale"><span>1x</span><span>{lev.toFixed(1)}x</span><span>10x</span></div>
                     </div>
                   </div>
                   <p className="dv-result">

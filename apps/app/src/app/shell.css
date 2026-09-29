@@ -1866,15 +1866,16 @@
   border-radius: 10px;
   padding: 12px 16px 10px;
 }
-.dv-slider-line {
-  display: flex;
+.dv-slider-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
   align-items: center;
-  gap: 14px;
   color: var(--muted);
   font-size: 13.5px;
   white-space: nowrap;
 }
-.dv-slider-line input[type="range"] {
+.dv-slider-grid input[type="range"] {
   flex: 1;
   -webkit-appearance: none;
   appearance: none;
