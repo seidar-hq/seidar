@@ -7,10 +7,10 @@ import { LoadingMark } from "./loading";
 import { apiFetch } from "@/lib/api";
 
 /* Seidar strategy canvas — node-graph strategy composer on live Stellar
- * markets only (Blend / XOXNO lending rows + DeFindex / Upshift
- * earn vaults, live prices). Deposit source fans out into market nodes
- * with allocation splits; Create compiles real @seidar/sdk supply legs
- * into an unsigned Freighter intent. No mock markets, no invented APYs. */
+ * vaults and RWA assets only (DeFindex / Upshift earn vaults + the RWA
+ * tokens, live prices). Deposit source fans out into vault nodes with
+ * allocation splits; Create compiles real @seidar/sdk legs into an
+ * unsigned Freighter intent. No mock markets, no invented APYs. */
 
 type ProtoId = "blend" | "xoxno" | "defindex" | "upshift";
 
@@ -102,6 +102,10 @@ const PROTO_META: Record<ProtoId, { label: string; logo: string | null }> = {
   defindex: { label: "DeFindex", logo: "/defindex-mark.svg" },
   upshift: { label: "Upshift", logo: "/upshift-logo.png" },
 };
+
+/** RWA assets pinned to the top of the sidebar: live vault rows where a
+    vault exists, an honest disabled row otherwise. */
+const RWA_CODES = ["USDY", "CETES", "USTRY", "TESOURO"] as const;
 
 function CanvasProtoIcon({ id, size = 18 }: { id: string; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -236,7 +240,6 @@ export function StrategyCanvas() {
   const [selNode, setSelNode] = useState<string | null>(null);
   const [selEdge, setSelEdge] = useState<string | null>(null);
   const [proto, setProto] = useState<"all" | ProtoId>("all");
-  const [kind, setKind] = useState<"all" | "lending" | "yield">("all");
   const [sort, setSort] = useState<"apy" | "tvl">("apy");
   const [q, setQ] = useState("");
   const [scale, setScale] = useState(1);
@@ -266,8 +269,7 @@ export function StrategyCanvas() {
   /* Custom dropdowns (native <select> can't render token logos). */
   const [kindOpen, setKindOpen] = useState(false);
   const [assetOpen, setAssetOpen] = useState(false);
-  /* Sidebar filter dropdowns (single-value, custom caret). */
-  const [fTypeOpen, setFTypeOpen] = useState(false);
+  /* Sidebar filter dropdown (single-value, custom caret). */
   const [fSortOpen, setFSortOpen] = useState(false);
   /* Handle arm: set by clicking a node's + circle, completed by clicking
      an opposite-side + circle (output → input only, never same-side).
@@ -367,153 +369,14 @@ export function StrategyCanvas() {
     let cancelled = false;
     async function load() {
       try {
-        const [p, v] = await Promise.all([
-          apiFetch("/api/pools", { cache: "no-store" }).then((r) => r.json()),
-          apiFetch("/api/vaults?limit=100", { cache: "no-store" }).then((r) => r.json()),
-        ]);
+        const v = await apiFetch("/api/vaults?limit=100", { cache: "no-store" }).then((r) => r.json());
         if (cancelled) return;
-        // Same pool+asset can repeat (e.g. XOXNO spokes share a hub): dedupe
-        // by id keeping the best supply APY so list keys stay unique.
+        // Dedupe by id keeping the best APY so list keys stay unique.
         const seen = new Map<string, Market>();
         const put = (m: Market) => {
           const cur = seen.get(m.id);
           if (!cur || (m.apy ?? -1) > (cur.apy ?? -1)) seen.set(m.id, m);
         };
-        // Lending pools group ALL their assets into one sidebar row (whole
-        // pool, not per currency): "YieldBlox", never "YieldBlox PYUSD".
-        // Nodes pick their asset from the pool on the card.
-        type PoolGroup = {
-          protocol: string;
-          pool: string;
-          poolName: string;
-          tvl: number | null;
-          assets: {
-            code: string;
-            supplyApy: number | null;
-            borrowApy: number | null;
-            ltvPct: number | null;
-            canBorrow: boolean;
-          }[];
-        };
-        const groups = new Map<string, PoolGroup>();
-        const tvlOf = (pool: string): number | null => {
-          const hit = (
-            p as { rows?: { pool?: unknown; poolSupplied?: unknown }[] }
-          )?.rows?.find((r) => String(r?.pool ?? "") === pool);
-          const tvl = Number(hit?.poolSupplied);
-          return Number.isFinite(tvl) ? tvl : null;
-        };
-        const addAsset = (
-          protocol: string,
-          pool: string,
-          poolName: string,
-          code: string,
-          supplyApy: number | null,
-          borrowApy: number | null,
-          ltvPct: number | null,
-          canBorrow: boolean,
-        ) => {
-          let g = groups.get(pool);
-          if (!g) {
-            g = { protocol, pool, poolName, tvl: tvlOf(pool), assets: [] };
-            groups.set(pool, g);
-          }
-          if (!g.assets.some((a) => a.code === code)) {
-            g.assets.push({ code, supplyApy, borrowApy, ltvPct, canBorrow });
-          } else {
-            const cur = g.assets.find((a) => a.code === code)!;
-            if ((supplyApy ?? -1) > (cur.supplyApy ?? -1)) cur.supplyApy = supplyApy;
-            if ((borrowApy ?? -1) > (cur.borrowApy ?? -1)) cur.borrowApy = borrowApy;
-            if (cur.ltvPct == null && ltvPct != null) cur.ltvPct = ltvPct;
-            cur.canBorrow = cur.canBorrow || canBorrow;
-          }
-        };
-        const pAssets = Array.isArray(
-          (p as { assets?: unknown })?.assets,
-        )
-          ? ((p as { assets?: unknown }).assets as {
-              protocol?: unknown;
-              pool?: unknown;
-              poolName?: unknown;
-              code?: unknown;
-              supplyApy?: unknown;
-              borrowApy?: unknown;
-              ltvPct?: unknown;
-              canCollateral?: unknown;
-              canBorrow?: unknown;
-            }[])
-          : [];
-        if (pAssets.length > 0) {
-          for (const a of pAssets) {
-            const protocol = String(a?.protocol ?? "");
-            if (protocol !== "blend" && protocol !== "xoxno") continue;
-            const code = String(a?.code ?? "").toUpperCase();
-            if (!code) continue;
-            const apy = Number(a?.supplyApy);
-            const bapy = Number(a?.borrowApy);
-            const ltv = Number(a?.ltvPct);
-            addAsset(
-              protocol,
-              String(a.pool),
-              String((a as { poolName?: unknown })?.poolName ?? "Pool"),
-              code,
-              Number.isFinite(apy) ? apy : null,
-              Number.isFinite(bapy) ? bapy : null,
-              Number.isFinite(ltv) ? ltv : null,
-              a?.canBorrow !== false,
-            );
-          }
-        } else if (p?.ok && Array.isArray(p.rows)) {
-          for (const r of p.rows as {
-            protocol?: unknown;
-            pool?: unknown;
-            poolName?: unknown;
-            collateral?: unknown;
-            debt?: unknown;
-            supplyApy?: unknown;
-            marketSizeUsd?: unknown;
-            available?: unknown;
-          }[]) {
-            if (r?.available === false) continue;
-            const protocol = String(r?.protocol ?? "");
-            if (protocol !== "blend" && protocol !== "xoxno") continue;
-            // Supply legs only — borrow pairs can't take a deposit split.
-            if (r?.debt != null) continue;
-            const code = String(r?.collateral ?? "").toUpperCase();
-            if (!code) continue;
-            const apy = Number(r?.supplyApy);
-            addAsset(
-              protocol,
-              String(r.pool),
-              String(r?.poolName ?? "Pool"),
-              code,
-              Number.isFinite(apy) ? apy : null,
-              null,
-              null,
-              true,
-            );
-          }
-        }
-        for (const g of groups.values()) {
-          if (g.assets.length === 0) continue;
-          const ordered = [...g.assets].sort(
-            (a, b) => (b.supplyApy ?? -1) - (a.supplyApy ?? -1),
-          );
-          const best = ordered[0];
-          const n = g.assets.length;
-          put({
-            id: `pool|${g.pool}`,
-            protocol: g.protocol as ProtoId,
-            kind: "lending",
-            name: g.poolName,
-            sub: `${PROTO_META[g.protocol as ProtoId].label} · Lending · ${n} asset${n === 1 ? "" : "s"}`,
-            asset: best.code,
-            assets: ordered,
-            apy: best.supplyApy,
-            borrowApy: best.borrowApy,
-            tvl: g.tvl,
-          });
-        }
         if (v?.ok && Array.isArray(v.rows)) {
           for (const r of v.rows as {
             protocol?: unknown;
@@ -576,7 +439,6 @@ export function StrategyCanvas() {
     const rows = markets.filter(
       (m) =>
         (proto === "all" || m.protocol === proto) &&
-        (kind === "all" || m.kind === kind) &&
         (!needle ||
           m.name.toUpperCase().includes(needle) ||
           m.asset.includes(needle) ||
@@ -591,7 +453,7 @@ export function StrategyCanvas() {
       if (bv == null) return -1;
       return bv - av;
     });
-  }, [markets, proto, kind, sort, q]);
+  }, [markets, proto, sort, q]);
 
   /* Token registry for sizing compile legs in exact base units. */
   const [swapTokens, setSwapTokens] = useState<{ code: string; contract: string; decimals: number }[]>([]);
@@ -1154,7 +1016,6 @@ export function StrategyCanvas() {
       setEditing(null);
       setKindOpen(false);
       setAssetOpen(false);
-      setFTypeOpen(false);
       setFSortOpen(false);
       setDragAction(null);
       setDragOver(null);
@@ -2323,11 +2184,82 @@ export function StrategyCanvas() {
      (addMarketRef) or ref-safe handlers (onRowDown) so the closure never
      goes stale. */
   const sidePanel = useMemo(
-    () => (
+    () => {
+      const needle = q.trim().toUpperCase();
+      const showRwa = proto === "all" || proto === "defindex";
+      const rwaLive = markets.filter(
+        (m) =>
+          m.kind === "yield" &&
+          (RWA_CODES as readonly string[]).includes(m.asset),
+      );
+      /* RWA group: every live vault of the four RWA assets, plus one
+         disabled row per asset that has no live vault yet. */
+      const rwaVisible = showRwa
+        ? RWA_CODES.flatMap((code): { code: string; market: Market | null }[] => {
+            const live = rwaLive.filter((m) => m.asset === code);
+            if (live.length) return live.map((market) => ({ code, market }));
+            return [{ code, market: null }];
+          }).filter(
+            ({ code, market }) =>
+              !needle ||
+              code.includes(needle) ||
+              (market ? market.name.toUpperCase().includes(needle) : false),
+          )
+        : [];
+      const rwaIds = new Set(rwaLive.map((m) => m.id));
+      const rest = filtered.filter((m) => !rwaIds.has(m.id));
+      const shown = rest.length + rwaVisible.length;
+      /* One sidebar row: draggable onto the canvas (or +), pre-blocked
+         when the effective source already feeds this market, and blocked
+         with a note when the row itself can't be added (no live vault). */
+      const renderRow = (m: Market, note?: string) => {
+        const effSrc = selNode ?? "source";
+        const fed = edges.some(
+          (e) =>
+            e.from === effSrc &&
+            nodes.find((n) => n.id === e.to)?.marketId === m.id,
+        );
+        const blocked = fed || !!note;
+        const blockedTitle =
+          note ??
+          `${effSrc === "source" ? "Deposit" : (byId.get(nodes.find((n) => n.id === effSrc)?.marketId ?? "")?.name ?? "Selected node")} already feeds ${m.name} — reconnect that node instead.`;
+        return (
+          <div
+            className={`sc-row${ghost?.market.id === m.id ? " dragging" : ""}${blocked ? " blocked" : ""}`}
+            role="listitem"
+            key={m.id}
+            onPointerDown={blocked ? undefined : (e) => onRowDown(e, m.id)}
+            title={blocked ? blockedTitle : undefined}
+          >
+            <MarketIcon m={m} size={22} />
+            <span className="sc-row-main">
+              <b title={m.name}>{m.name}</b>
+              <small>{m.sub}</small>
+            </span>
+            <span className="sc-row-stats">
+              <b className={m.apy != null ? "pos" : ""}>
+                {m.apy != null ? `${m.apy.toFixed(2)}%` : "—"}
+              </b>
+              <small>{m.tvl != null ? fmtCompactUsd(m.tvl) : "—"}</small>
+            </span>
+            <button
+              type="button"
+              className="sc-add"
+              disabled={blocked}
+              onClick={() => addMarketRef.current(m.id)}
+              aria-label={`Add ${m.name}`}
+              title={blocked ? blockedTitle : undefined}
+            >
+              +
+            </button>
+          </div>
+        );
+      };
+      return (
       <div className="sc-panel">
         <p className="sc-cap">Protocol</p>
         <div className="sc-chips" role="group" aria-label="Protocol filter">
-          {(["all", "blend", "xoxno", "defindex", "upshift"] as const).map(
+          {(["all", "defindex", "upshift"] as const).map(
             (p) => (
               <button
                 key={p}
@@ -2345,43 +2277,6 @@ export function StrategyCanvas() {
         </div>
         <div className="sc-frow">
           <div className="sc-fld">
-            <span className="sc-cap">Market type</span>
-            <div className="sc-dd sc-fdd">
-              <button
-                type="button"
-                className="sc-dd-btn sc-fbtn"
-                aria-haspopup="listbox"
-                aria-expanded={fTypeOpen}
-                onClick={() => {
-                  setFSortOpen(false);
-                  setFTypeOpen((o) => !o);
-                }}
-              >
-                <span>{kind === "all" ? "All" : kind === "lending" ? "Lending" : "Yield"}</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
-              </button>
-              {fTypeOpen && (
-                <div className="sc-dd-list" role="listbox" aria-label="Market type">
-                  {(["all", "lending", "yield"] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      role="option"
-                      aria-selected={kind === t}
-                      className={`sc-dd-opt${kind === t ? " sel" : ""}`}
-                      onClick={() => {
-                        setKind(t);
-                        setFTypeOpen(false);
-                      }}
-                    >
-                      {t === "all" ? "All" : t === "lending" ? "Lending" : "Yield"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="sc-fld">
             <span className="sc-cap">Sort by</span>
             <div className="sc-dd sc-fdd">
               <button
@@ -2390,7 +2285,6 @@ export function StrategyCanvas() {
                 aria-haspopup="listbox"
                 aria-expanded={fSortOpen}
                 onClick={() => {
-                  setFTypeOpen(false);
                   setFSortOpen((o) => !o);
                 }}
               >
@@ -2436,77 +2330,59 @@ export function StrategyCanvas() {
           {feedState === "error" && (
             <p className="sc-note">Market feed unreachable — check connection.</p>
           )}
-          {feedState === "live" &&
-            filtered.slice(0, 100).map((m) => {
-              // Pre-blocked: the effective source already feeds this market,
-              // so adding it could never connect. Blurred, undraggable and
-              // unclickable with the reason on hover — no dead dragging.
-              const effSrc = selNode ?? "source";
-              const fed = edges.some(
-                (e) =>
-                  e.from === effSrc &&
-                  nodes.find((n) => n.id === e.to)?.marketId === m.id,
-              );
-              const fedName =
-                effSrc === "source"
-                  ? "Deposit"
-                  : (byId.get(
-                      nodes.find((n) => n.id === effSrc)?.marketId ?? "",
-                    )?.name ?? "Selected node");
-              return (
-                <div
-                  className={`sc-row${ghost?.market.id === m.id ? " dragging" : ""}${fed ? " blocked" : ""}`}
-                  role="listitem"
-                  key={m.id}
-                  onPointerDown={fed ? undefined : (e) => onRowDown(e, m.id)}
-                  title={
-                    fed
-                      ? `${fedName} already feeds ${m.name} — reconnect that node instead.`
-                      : undefined
-                  }
-                >
-                  <MarketIcon m={m} size={22} />
-                  <span className="sc-row-main">
-                    <b title={m.name}>{m.name}</b>
-                    <small>{m.sub}</small>
-                  </span>
-                  <span className="sc-row-stats">
-                    <b className={m.apy != null ? "pos" : ""}>
-                      {m.apy != null ? `${m.apy.toFixed(2)}%` : "—"}
-                    </b>
-                    <small>
-                      {m.tvl != null ? fmtCompactUsd(m.tvl) : "—"}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    className="sc-add"
-                    disabled={fed}
-                    onClick={() => addMarketRef.current(m.id)}
-                    aria-label={`Add ${m.name}`}
-                    title={
-                      fed
-                        ? `${fedName} already feeds ${m.name} — reconnect that node instead.`
-                        : undefined
-                    }
+          {feedState === "live" && rwaVisible.length > 0 && (
+            <>
+              <p className="sc-cap sc-group-cap">RWA</p>
+              {rwaVisible.map(({ code, market }) =>
+                market ? (
+                  renderRow(market)
+                ) : (
+                  <div
+                    key={code}
+                    className="sc-row blocked"
+                    role="listitem"
+                    title={`No live ${code} vault yet`}
                   >
-                    +
-                  </button>
-                </div>
-              );
-            })}
-          {feedState === "live" && filtered.length === 0 && (
+                    <TokenIcon symbol={code} size={22} />
+                    <span className="sc-row-main">
+                      <b>{code}</b>
+                      <small>RWA · no live vault yet</small>
+                    </span>
+                    <span className="sc-row-stats">
+                      <b>—</b>
+                      <small>—</small>
+                    </span>
+                    <button
+                      type="button"
+                      className="sc-add"
+                      disabled
+                      aria-label={`Add ${code}`}
+                      title={`No live ${code} vault yet`}
+                    >
+                      +
+                    </button>
+                  </div>
+                ),
+              )}
+            </>
+          )}
+          {feedState === "live" && showRwa && rest.length > 0 && (
+            <p className="sc-cap sc-group-cap">Vaults</p>
+          )}
+          {feedState === "live" && rest.slice(0, 100).map((m) => renderRow(m))}
+          {feedState === "live" && shown === 0 && (
             <p className="sc-note">No markets match these filters.</p>
           )}
         </div>
         <p className="sc-count">
           {feedState === "live"
-            ? `${filtered.length} market${filtered.length === 1 ? "" : "s"}`
+            ? `${shown} market${shown === 1 ? "" : "s"}`
             : "—"}
         </p>
       </div>
-    ),
-    [filtered, feedState, ghost, proto, kind, sort, q, fTypeOpen, fSortOpen, selNode, edges, nodes, byId],
+    );
+    },
+    [filtered, markets, feedState, ghost, proto, sort, q, fSortOpen, selNode, edges, nodes, byId],
   );
 
   return (
