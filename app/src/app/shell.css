@@ -2653,6 +2653,22 @@
   justify-content: center;
   gap: 10px;
 }
+/* Anchor buttons don't centre their label on their own. */
+.pf-empty-cta .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Secondary action in the standard grey, not black. */
+.pf-empty-cta .btn:not(.primary) {
+  background: #262626;
+  border-color: #474747;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pf-empty-cta .btn:not(.primary):hover {
+  background: #323232;
+  border-color: #5c5c5c;
+}
 /* Empty positions: fisherman art in the old empty-state gray (#3a3a3a). */
 .pf-empty-fisher {
   width: 48px;

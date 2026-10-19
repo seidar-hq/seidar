@@ -2375,18 +2375,17 @@ function InfoDot({ text }: { text: string }) {
                     </span>
                   </p>
                 ) : (
-                  <>
-                    <p>{`No ${emptyKind} positions found for ${scopeLabel}.`}</p>
-                    <div className="pf-empty-cta">
-                      <a className="btn primary" href="/vaults">
-                        Explore Vaults
-                      </a>
-                      <a className="btn" href="/strategies">
-                        Create Strategies
-                      </a>
-                    </div>
-                  </>
+                  <p>{`No ${emptyKind} positions found for ${scopeLabel}.`}</p>
                 )}
+                {/* Kept in the loading state too, so the card never resizes. */}
+                <div className="pf-empty-cta">
+                  <a className="btn primary" href="/vaults">
+                    Explore Vaults
+                  </a>
+                  <a className="btn" href="/strategies">
+                    Create Strategies
+                  </a>
+                </div>
               </div>
             ) : (
             <div className="posx-list">
