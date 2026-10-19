@@ -13265,7 +13265,8 @@ button.proto-tab:hover {
 }
 .proto-trow.mh-click:hover,
 .proto-trow.mh-click:focus-visible {
-  background: #262626;
+  background: #2f2f2f;
+  border-color: #474747;
 }
 .mk-card.mh-click:hover,
 .mk-card.mh-click:focus-visible,
