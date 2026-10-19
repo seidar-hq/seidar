@@ -216,31 +216,32 @@ export type AppView =
 type NavChild = { id: AppView; label: string; icon?: React.ReactNode };
 type NavItem = { id: AppView; label: string; icon: React.ReactNode; children?: NavChild[]; menu?: boolean };
 
-/** View <-> URL mapping. Portfolio lives at `/`; markets nest under `/markets`. */
+/** View <-> URL mapping. Portfolio lives at `/`; venue vault browsers nest
+    under `/markets`. Retired lending/pool views land on the vaults hub. */
 export function viewToPath(v: AppView): string {
   if (v === "portfolio") return "/";
+  if (v === "defindex" || v === "upshift") return `/markets/${v}`;
   if (
+    v === "markets" ||
     v === "blend" ||
     v === "xoxno" ||
-    v === "defindex" ||
-    v === "upshift" ||
     v === "soroswap" ||
     v === "phoenix" ||
     v === "aqua" ||
-    v === "sushi"
+    v === "sushi" ||
+    v === "lend-borrow" ||
+    v === "pools" ||
+    v === "automate"
   )
-    return `/markets/${v}`;
-  if (v === "lend-borrow" || v === "pools") return `/markets/${v}`;
+    return "/vaults";
   if (v === "vaults") return "/vaults";
   if (v === "recipes") return "/strategies";
   if (v === "exchange") return "/exchange/swap";
   return `/${v}`;
 }
 
-/** Sidebar highlight: venue pages live under their Markets section. */
+/** Topbar highlight: venue vault pages live under the Vaults section. */
 function navSection(v: AppView): AppView {
-  if (v === "blend" || v === "xoxno") return "lend-borrow";
-  if (v === "aqua" || v === "phoenix" || v === "soroswap" || v === "sushi") return "pools";
   if (v === "defindex" || v === "upshift") return "vaults";
   return v;
 }
@@ -249,64 +250,13 @@ export function pathToView(pathname: string | null): AppView {
   const seg = (pathname ?? "/").split("/").filter(Boolean);
   if (seg.length === 0) return "portfolio";
   if (seg[0] === "markets") {
-    if (
-      seg[1] === "blend" ||
-      seg[1] === "xoxno" ||
-      seg[1] === "defindex" ||
-      seg[1] === "upshift" ||
-      seg[1] === "soroswap" ||
-      seg[1] === "phoenix" ||
-      seg[1] === "aqua" ||
-      seg[1] === "sushi" ||
-      seg[1] === "lend-borrow" ||
-      seg[1] === "pools"
-    )
-      return seg[1];
-    return "markets";
+    if (seg[1] === "defindex" || seg[1] === "upshift") return seg[1];
+    return "vaults";
   }
   if (seg[0] === "vaults") return "vaults";
   if (seg[0] === "strategies") return "recipes";
-  const known: AppView[] = ["exchange", "earn", "refinance", "automate", "markets", "portfolio"];
+  const known: AppView[] = ["exchange", "earn", "refinance", "markets", "portfolio"];
   return known.includes(seg[0] as AppView) ? (seg[0] as AppView) : "portfolio";
-}
-
-/** Protocol mark for nav menus (letter fallback when the file is missing). */
-function NavProtoIcon({ id }: { id: string }) {
-  const src =
-    id === "blend"
-      ? "/protocol-blend.png"
-      : id === "xoxno"
-        ? "/protocol-xoxno.png"
-            : id === "defindex"
-              ? "/defindex-mark.svg"
-            : id === "upshift"
-              ? "/upshift-logo.png"
-          : id === "soroswap"
-            ? "/dex-soroswap.png"
-            : id === "phoenix"
-              ? "/dex-phoenix.png"
-              : id === "aqua"
-                ? "/aqua-logo.png"
-                : id === "sushi"
-                  ? "/sushi-logo.png"
-                  : null;
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <span className="nav-child-fb" aria-hidden="true">
-        {id.slice(0, 1).toUpperCase()}
-      </span>
-    );
-  }
-  return (
-    <img loading="lazy"
-      src={src}
-      alt=""
-      width={20}
-      height={20}
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 const NAV: NavItem[] = [
@@ -318,36 +268,11 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    id: "markets",
-    label: "Markets",
+    id: "vaults",
+    label: "Vaults",
     icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="12" cy="12" r="3.4" /><path d="M15.4 12h3.1" /></svg>
     ),
-    /* Dropdown menu, not a page: the row toggles the protocol list. */
-    menu: true,
-    children: [
-      {
-        id: "lend-borrow",
-        label: "Lend & Borrow",
-        icon: (
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M8.5 15.5l7-7" /><circle cx="9.2" cy="9.2" r="1.1" /><circle cx="14.8" cy="14.8" r="1.1" /></svg>
-        ),
-      },
-      {
-        id: "pools",
-        label: "Pools",
-        icon: (
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.2c3.4 3.9 5.8 6.7 5.8 9.7a5.8 5.8 0 0 1-11.6 0c0-3 2.4-5.8 5.8-9.7z" /></svg>
-        ),
-      },
-      {
-        id: "vaults",
-        label: "Vaults",
-        icon: (
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="12" cy="12" r="3.4" /><path d="M15.4 12h3.1" /></svg>
-        ),
-      },
-    ],
   },
   {
     id: "exchange",
@@ -701,22 +626,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   type QuickAction = { label: string; hint: string; view: AppView };
   const QUICK_ACTIONS: QuickAction[] = [
-    { label: "Boost / Repay on Blend", hint: "Leverage", view: "blend" },
-    { label: "Open a leveraged position", hint: "Blend", view: "blend" },
-    { label: "Arm liquidation protection", hint: "Automation", view: "automate" },
-    { label: "Set a stop-loss", hint: "Automation", view: "automate" },
     { label: "Refinance a position", hint: "Refinance", view: "refinance" },
     { label: "Build a strategy", hint: "Strategy", view: "recipes" },
+    { label: "Browse all vaults", hint: "Vaults", view: "vaults" },
     { label: "View savings vaults", hint: "DeFindex", view: "defindex" },
-    { label: "Browse XOXNO markets", hint: "XOXNO", view: "xoxno" },
     { label: "Portfolio overview", hint: "Portfolio", view: "portfolio" },
   ];
 
   const sq = query.trim().toLowerCase();
   const PROTOCOL_SEARCH: { id: AppView; label: string }[] = [
-    { id: "blend", label: "Blend" },
-    { id: "xoxno", label: "XOXNO" },
     { id: "defindex", label: "DeFindex" },
+    { id: "upshift", label: "Upshift" },
   ];
   const SEARCH_SECTIONS = [
     ...NAV.flatMap((item) => [
@@ -726,7 +646,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     ...PROTOCOL_SEARCH.map((p) => ({
       id: p.id,
       label: p.label,
-      icon: NAV.find((n) => n.id === "markets")!.icon,
+      icon: NAV.find((n) => n.id === "vaults")!.icon,
     })),
   ];
   const matchedSections = SEARCH_SECTIONS.filter((item) => item.label.toLowerCase().includes(sq));

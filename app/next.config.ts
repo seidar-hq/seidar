@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
       { source: "/protocols/:path*", destination: "/vaults", permanent: true },
       { source: "/savings", destination: "/earn", permanent: true },
       { source: "/mover", destination: "/refinance", permanent: true },
+      { source: "/automate", destination: "/vaults", permanent: true },
       { source: "/markets/lend-borrow", destination: "/vaults", permanent: true },
       { source: "/markets/pools", destination: "/vaults", permanent: true },
       { source: "/markets/blend", destination: "/vaults", permanent: true },

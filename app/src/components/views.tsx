@@ -22,7 +22,7 @@ import { EarnView } from "./earn";
 import { LoadingMark } from "./loading";
 import { TokenIcon } from "./token-icon";
 import { ProtoMark } from "./proto-mark";
-import { LendBorrowHub, PoolsHub, VaultsHub } from "./markets-hub";
+import { VaultsHub } from "./markets-hub";
 import { LendSection } from "./lend-section";
 import { PoolMove, VaultMove } from "./refinance-moves";
 import { PoolAutomate } from "./pool-automate";
@@ -712,24 +712,7 @@ type EarnCard = {
     | { type: "deposit"; id: "stable" | "rwa-pool" };
   desc?: string;
 };
-const EARN_START: { features: FeatureCard[]; earns: EarnCard[] } = {
-    features: [
-      {
-        asset: "XLM",
-        tint: "#3b82f6",
-        titleA: "Go long on",
-        leverage: "3.2x",
-        leverageColor: "#8ea2ff",
-        primary: "Long",
-        secondary: "Short",
-        browse: "Browse all XLM markets",
-        view: "blend",
-        spark: "0,34 20,30 40,32 60,22 80,26 100,16 120,20 140,10 160,14",
-        img: "/dz-long-xlm.jpg",
-        live: "XLM",
-        openModal: true,
-      },
-    ],
+const EARN_START: { earns: EarnCard[] } = {
     earns: [
       {
         tag: "DeFindex",
@@ -751,15 +734,6 @@ const EARN_START: { features: FeatureCard[]; earns: EarnCard[] } = {
         iconSize: 22,
         cta: "Add liquidity",
         action: { type: "deposit", id: "rwa-pool" },
-      },
-      {
-        tag: "Automation",
-        title: "Protect your position",
-        assets: [],
-        inlineCodes: false,
-        cta: "Set up protection",
-        action: { type: "href", href: "/markets/blend/automate" },
-        desc: "Hands-off liquidation protection: repays debt with collateral the moment health drops below your trigger.",
       },
     ],
 };
@@ -1167,7 +1141,6 @@ function DzTicker({
 function EarnStart() {
   const router = useRouter();
   const data = EARN_START;
-  const [leverage, setLeverage] = useState<null | { asset: string; direction: "long" | "short" }>(null);
   const [liveApy, setLiveApy] = useState<Record<string, number> | null>(null);
   /* APY of the top DeFindex vault per asset (the deposit modal's targets). */
   const [vaultApy, setVaultApy] = useState<Record<string, number> | null>(null);
@@ -1189,37 +1162,6 @@ function EarnStart() {
       cancelled = true;
     };
   }, []);
-  /* Live max XLM leverage from Blend LTVs (replaces the old static text). */
-  const [maxXlmLev, setMaxXlmLev] = useState<number | null>(null);
-  /* Live spot + 24h change for cards carrying a `live` asset (same feed
-     the Exchange inputs use — never invented). */
-  const [liveTick, setLiveTick] = useState<{
-    px: Record<string, number | null>;
-    chg: Record<string, number | null>;
-  }>({ px: {}, chg: {} });
-  useEffect(() => {
-    let cancelled = false;
-    function load() {
-      apiFetch("/api/prices?codes=XLM", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => {
-          if (!cancelled && d?.ok)
-            setLiveTick({
-              px: d.prices ?? {},
-              chg: d.changes ?? {},
-            });
-        })
-        .catch(() => {
-          /* subline stays hidden until the feed serves */
-        });
-    }
-    load();
-    const t = setInterval(load, 45000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
   useEffect(() => {
     let cancelled = false;
     apiFetch("/api/pools")
@@ -1236,25 +1178,9 @@ function EarnStart() {
           best[k] = Math.max(best[k] ?? 0, m.supplyApy);
         }
         setLiveApy(best);
-        let top: number | null = null;
-        for (const a of (Array.isArray(d.assets) ? d.assets : []) as {
-          protocol?: unknown;
-          code?: unknown;
-          ltvPct?: unknown;
-          canCollateral?: unknown;
-        }[]) {
-          if (String(a?.protocol ?? "") !== "blend") continue;
-          if (String(a?.code ?? "").toUpperCase() !== "XLM") continue;
-          if (a?.canCollateral === false) continue;
-          const ltv = Number(a?.ltvPct);
-          if (!Number.isFinite(ltv)) continue;
-          const lev = maxLeverageForLtv(ltv);
-          if (lev != null) top = Math.max(top ?? 0, lev);
-        }
-        if (!cancelled) setMaxXlmLev(top);
       })
       .catch(() => {
-        /* keep null -> loading state, never fake numbers */
+        /* the badge stays without a number, never fake ones */
       });
     return () => {
       cancelled = true;
@@ -1304,109 +1230,22 @@ function EarnStart() {
           </svg>{" "}
         </button>{" "}
       </div>{" "}
-      <LeverageModal
-        open={leverage != null}
-        onClose={() => setLeverage(null)}
-        asset={leverage?.asset ?? "XLM"}
-        direction={leverage?.direction ?? "long"}
-      />{" "}
       {deposit === "stable" && <StableVaultDeposit onClose={() => setDeposit(null)} />}
       {deposit === "rwa-pool" && <AquaRwaDeposit onClose={() => setDeposit(null)} />}
       <div className="dz-grid">
         {" "}
         <div className="dz-col">
           {" "}
-          {data.features.map((f) => (
-            <div
-              className="dz-card"
-              key={f.titleA + f.asset + f.leverage}
-            >
-              {" "}
-              <div
-                className="dz-visual"
-                style={{
-                  background: `linear-gradient(180deg, ${f.tint}26, transparent)`,
-                }}
-              >
-                {" "}
-                <DzVisual f={f} />{" "}
-                <span
-                  className="dz-big-icon"
-                  style={{
-                    background: `${f.tint}30`,
-                    boxShadow: `0 0 40px ${f.tint}55`,
-                  }}
-                >
-                  {" "}
-                  <TokenIcon symbol={f.asset} size={40} />{" "}
-                </span>{" "}
-              </div>{" "}
-              <div className="dz-body">
-                {" "}
-                <p className="dz-title">
-                  {" "}
-                  {f.titleA} <TokenIcon symbol={f.asset} size={18} />{" "}
-                  {f.against ?? f.asset} up to{" "}
-                  <b style={{ color: f.leverageColor }}>
-                    {f.asset === "XLM"
-                      ? maxXlmLev != null
-                        ? `${maxXlmLev.toFixed(1)}x`
-                        : "…"
-                      : f.leverage}
-                  </b>{" "}
-                </p>{" "}
-                {f.live && (
-                  <DzTicker
-                    px={liveTick.px[f.live] ?? null}
-                    chg={liveTick.chg[f.live] ?? null}
-                  />
-                )}{" "}
-                <div className="dz-btnrow">
-                  {" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      f.openModal
-                        ? setLeverage({ asset: f.asset, direction: "long" })
-                        : goto(f.view)
-                    }
-                  >
-                    <DirArrow dir="up" /> {f.primary}
-                  </button>{" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      f.openModal
-                        ? setLeverage({ asset: f.asset, direction: "short" })
-                        : goto(f.view)
-                    }
-                  >
-                    <DirArrow dir="down" /> {f.secondary}
-                  </button>{" "}
-                  <button
-                    type="button"
-                    className="dz-link"
-                    onClick={() => goto(f.view)}
-                  >
-                    {f.browse}
-                  </button>{" "}
-                </div>{" "}
-              </div>{" "}
-            </div>
-          ))}{" "}
           <div className="dz-card dz-explore">
             {" "}
             <p className="dz-explore-title">Explore more options</p>{" "}
             <p className="dz-explore-sub">
-              Compare all markets across protocols.
+              Compare every vault across protocols.
             </p>{" "}
             <div className="dz-chips">
               {" "}
-              <button
-                type="button"
-                onClick={() => showOpportunities("leveraged-borrowing")}
-              >
-                Leveraged borrowing <span aria-hidden="true">→</span>
+              <button type="button" onClick={() => showOpportunities("all")}>
+                All vaults <span aria-hidden="true">→</span>
               </button>{" "}
               <button type="button" onClick={() => showOpportunities("earn")}>
                 Earn <span aria-hidden="true">→</span>
@@ -10654,7 +10493,7 @@ const CATEGORY_META: Record<
   },
 };
 
-function MarketsSection({ kind }: { kind: "lend-borrow" | "pools" | "vaults" }) {
+function MarketsSection({ kind }: { kind: "vaults" }) {
   if (kind === "vaults") {
     return (
       <div className="dc">
@@ -10662,13 +10501,6 @@ function MarketsSection({ kind }: { kind: "lend-borrow" | "pools" | "vaults" }) 
       </div>
     );
   }
-  const meta = CATEGORY_META[kind];
-  return (
-    <div className="dc">
-      <SectionHero title={meta.title} blurb={meta.blurb} cells={meta.cells} />
-      {kind === "pools" ? <PoolsHub /> : <LendBorrowHub />}
-    </div>
-  );
 }
 
 /* ------------------------------ Refinance -------------------------------
@@ -13195,35 +13027,32 @@ function agoText(t: number): string {
    other protocol page, tinted with the protocol card color, plus the
    reason there is no board — Soroswap exposes quotes only, Sushi has no
    verified Stellar pool source. No numbers, nothing mocked. */
-export function Views({
-  view,
-  section = "manage",
-}: {
-  view: AppView;
-  section?: ProtocolSection;
-}) {
+export function Views({ view }: { view: AppView }) {
   // Re-render on smart-account renames (names replace C… addresses).
   useAccountNames();
   if (view === "portfolio") return <Portfolio />;
+  // Vaults + RWA only: every retired lending / pool view lands on the hub.
   if (
     view === "markets" ||
     view === "blend" ||
-    view === "xoxno"
+    view === "xoxno" ||
+    view === "aqua" ||
+    view === "phoenix" ||
+    view === "soroswap" ||
+    view === "sushi" ||
+    view === "lend-borrow" ||
+    view === "pools" ||
+    view === "automate"
   )
-    return <ProtocolsView active={view} section={section} />;
+    return <RedirectTo href="/vaults" />;
   if (view === "defindex") return <EarnView only="defindex" />;
   if (view === "upshift") return <EarnView only="upshift" />;
   // Earn = the live opportunity feed only (vault browsers live on the
   // DeFindex / Upshift protocol pages; Getting Started is on the home page).
   if (view === "earn") return <EarnFeed />;
-  if (view === "aqua" || view === "phoenix" || view === "soroswap" || view === "sushi")
-    return <DexBoard id={view} />;
   if (view === "refinance") return <RefinanceView />;
-  // New Markets sections — blank pages carrying the hero card only.
-  if (view === "lend-borrow" || view === "pools" || view === "vaults")
-    return <MarketsSection kind={view} />;
+  if (view === "vaults") return <MarketsSection kind="vaults" />;
   if (view === "recipes") return <StrategyBuilder />;
-  if (view === "automate") return <RedirectTo href="/markets/blend/automate" />;
   if (view === "exchange") return <ExchangeView />;
   return <RedirectTo href="/" />;
 }
