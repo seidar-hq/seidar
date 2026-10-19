@@ -2377,8 +2377,9 @@ function InfoDot({ text }: { text: string }) {
                 ) : (
                   <p>{`No ${emptyKind} positions found for ${scopeLabel}.`}</p>
                 )}
-                {/* Kept in the loading state too, so the card never resizes. */}
-                <div className="pf-empty-cta">
+                {/* Hidden while loading, but its space is kept so the card
+                    never resizes. */}
+                <div className={`pf-empty-cta${ownerAddr && walletData == null ? " pending" : ""}`}>
                   <a className="btn primary" href="/vaults">
                     Explore Vaults
                   </a>

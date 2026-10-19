@@ -2653,6 +2653,10 @@
   justify-content: center;
   gap: 10px;
 }
+/* Loading: buttons out of sight, their space still held. */
+.pf-empty-cta.pending {
+  visibility: hidden;
+}
 /* Anchor buttons don't centre their label on their own. */
 .pf-empty-cta .btn {
   display: inline-flex;
