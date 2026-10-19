@@ -587,10 +587,21 @@ function SortCaret({ dir }: { dir: "asc" | "desc" | null }) {
 const VC_ROTATE_MS = 4200;
 const VC_SLIDE_MS = 660;
 
+/* Featured vaults for the strip — a fixed showcase in exactly this order,
+   independent of the table's venue filter, search, asset filter and sort. */
+const SHOWCASE_VAULT_NAMES = [
+  "Gami earnUSDC",
+  "Gami earnXLM",
+  "Beans Eurc Vault",
+  "Beans Usdc Vault",
+  "USDC Soroswap Earn",
+];
+const normalizeVaultName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 /* Top-vaults strip: three cards visible; every few seconds the row slides one
    card left — the first card leaves to the left, the next enters from the
    right (clones at the end make the loop seamless). */
-function VaultCarousel({ vaults, sort, onToggleSort }: { vaults: VaultRow[]; sort: VaultSort; onToggleSort: (k: VaultSortKey) => void }) {
+function VaultCarousel({ vaults }: { vaults: VaultRow[] }) {
   const n = vaults.length;
   const rotate = n > 3;
   const [pos, setPos] = useState(0);
@@ -631,16 +642,10 @@ function VaultCarousel({ vaults, sort, onToggleSort }: { vaults: VaultRow[]; sor
               <div className="vc-row">
                 <span className="vc-label">APY</span>
                 <b>{r.apyPct != null ? `${r.apyPct.toFixed(2)}%` : "—"}</b>
-                <button type="button" className="vc-sort" aria-label="Sort by APY" onClick={() => onToggleSort("apy")}>
-                  <SortCaret dir={sort.key === "apy" ? sort.dir : null} />
-                </button>
               </div>
               <div className="vc-row">
                 <span className="vc-label">TVL</span>
                 <b>{fmtUsd(r.tvlUsd)}</b>
-                <button type="button" className="vc-sort" aria-label="Sort by TVL" onClick={() => onToggleSort("tvl")}>
-                  <SortCaret dir={sort.key === "tvl" ? sort.dir : null} />
-                </button>
               </div>
             </div>
             <Link className="btn mk-create vc-cta" href={`/markets/${r.protocol}/vault/${r.address}`}>
@@ -688,7 +693,9 @@ export function VaultsHub() {
   const slice = sorted.slice((cur - 1) * perPage, cur * perPage);
   const tvl = inVenue.reduce((s, r) => s + (r.tvlUsd ?? 0), 0);
   const label = (id: string) => VAULT_VENUES.find((v) => v.id === id)?.label ?? id;
-  const strip = sorted.slice(0, 9);
+  const strip = SHOWCASE_VAULT_NAMES.map((want) =>
+    list.find((r) => normalizeVaultName(r.name) === normalizeVaultName(want)),
+  ).filter((r): r is VaultRow => !!r);
   function toggleSort(key: VaultSortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "desc" ? "asc" : "desc" } : { key, dir: "desc" }));
     setPage(1);
@@ -696,9 +703,7 @@ export function VaultsHub() {
 
   return (
     <>
-      {strip.length > 0 && (
-        <VaultCarousel key={`${venue}|${q}|${asset}|${sort.key}|${sort.dir}`} vaults={strip} sort={sort} onToggleSort={toggleSort} />
-      )}
+      {strip.length > 0 && <VaultCarousel vaults={strip} />}
       <HubCard
         venues={VAULT_VENUES}
         venue={venue}
@@ -772,8 +777,14 @@ export function VaultsHub() {
                 <span className="mh-apy">{r.apyPct != null ? `${r.apyPct.toFixed(2)}%` : "—"}</span>
                 <span>{fmtUsd(r.tvlUsd)}</span>
                 <span className="mh-act">
-                  <Link className="btn mk-create" href={`/markets/${r.protocol}/vault/${r.address}`}>
-                    Manage
+                  <Link
+                    className="btn mk-create mh-chev"
+                    href={`/markets/${r.protocol}/vault/${r.address}`}
+                    aria-label={`Open ${r.name}`}
+                  >
+                    <svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M1 1l4.5 4.5L1 10" />
+                    </svg>
                   </Link>
                 </span>
               </ClickRow>

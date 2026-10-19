@@ -2368,15 +2368,25 @@ function InfoDot({ text }: { text: string }) {
             {noRows ? (
               <div className="pf-empty-block">
                 <img className="pf-empty-fisher" src="/fisherman-gray.png" alt="" width={48} height={90} draggable={false} />
-                <p>
-                  {ownerAddr && walletData == null ? (
+                {ownerAddr && walletData == null ? (
+                  <p>
                     <span className="load-row">
                       <LoadingMark size={12} /> Loading positions…
                     </span>
-                  ) : (
-                    `No ${emptyKind} positions found for ${scopeLabel}.`
-                  )}
-                </p>
+                  </p>
+                ) : (
+                  <>
+                    <p>{`No ${emptyKind} positions found for ${scopeLabel}.`}</p>
+                    <div className="pf-empty-cta">
+                      <a className="btn primary" href="/vaults">
+                        Explore Vaults
+                      </a>
+                      <a className="btn" href="/strategies">
+                        Create Strategies
+                      </a>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
             <div className="posx-list">

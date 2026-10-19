@@ -2398,7 +2398,7 @@
   top: 50%;
   transform: translateY(-50%);
   width: 1px;
-  height: calc(100% + 6px);
+  height: calc(100% - 6px);
   background: var(--border);
 }
 .pf-ovx-label {
@@ -2474,9 +2474,14 @@
   gap: 16px;
   margin: 44px -20px -24px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
   font-size: 13px;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.site-footer.seen {
+  opacity: 1;
+  transform: none;
 }
 .site-footer-brand {
   display: inline-flex;
@@ -2491,6 +2496,7 @@
   height: 18px;
   border-radius: 4px;
   object-fit: contain;
+  filter: grayscale(1);
 }
 .site-footer-links {
   display: inline-flex;
@@ -2503,11 +2509,21 @@
   text-decoration: none;
   transition: color 0.15s;
 }
-.site-footer-links a:hover {
+.site-footer-links a:not(.site-footer-social):hover {
   color: #fff;
 }
 .site-footer-social {
   display: inline-flex;
+}
+.site-footer-social:hover {
+  filter: brightness(1.2);
+}
+/* Brand colors on the marks. */
+.site-footer-social.x {
+  color: #fff;
+}
+.site-footer-social.tg {
+  color: #229ed9;
 }
 .site-footer-copy {
   justify-self: end;
@@ -2629,6 +2645,13 @@
   color: var(--muted);
   font-size: 14px;
   text-align: center;
+}
+/* Empty state: two ways out, side by side. */
+.pf-empty-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 /* Empty positions: fisherman art in the old empty-state gray (#3a3a3a). */
 .pf-empty-fisher {
@@ -14425,9 +14448,22 @@ button.proto-tab:hover {
 }
 
 /* Vaults top-cards carousel: three cards visible, auto-slides left. */
+/* Slides in softly once the vault feed lands (the page's own fade already
+   played). */
+@keyframes vc-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 .vc-strip {
   overflow: hidden;
   margin-bottom: 16px;
+  animation: vc-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .vc-track {
   display: flex;
@@ -14448,6 +14484,12 @@ button.proto-tab:hover {
   border: 1px solid #323232;
   border-radius: 14px;
   background: #1a1a1a;
+  transition: background 0.18s, border-color 0.18s, transform 0.2s;
+}
+.vc-card:hover {
+  background: #222;
+  border-color: #4a4a4a;
+  transform: translateY(-2px);
 }
 .vc-chip {
   display: inline-flex;
@@ -14489,27 +14531,21 @@ button.proto-tab:hover {
   letter-spacing: 0.06em;
   color: var(--muted);
 }
-.vc-sort {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 5px;
-  background: none;
-  border: 0;
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-}
-.vc-sort:hover {
-  background: #262626;
-  color: var(--text);
-}
 .vc-cta {
   width: 100%;
   height: 36px;
   margin-top: auto;
   font-size: 13px;
   border-radius: 9px;
+}
+/* Table rows end in a slim "open" chevron instead of a Manage button. */
+.mh-chev {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 /* Sortable table headers stay plain but clickable. */
 .mh-sort {

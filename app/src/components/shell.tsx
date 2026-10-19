@@ -538,8 +538,29 @@ function FeedbackDialog({
 /* Shared page footer — vaults, dashboard and strategies end with this.
    Social URLs are placeholders until the accounts exist. */
 function SiteFooter() {
+  const ref = useRef<HTMLElement | null>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seen) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.2 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
   return (
-    <footer className="site-footer">
+    <footer ref={ref} className={`site-footer${seen ? " seen" : ""}`}>
       <span className="site-footer-brand">
         <img src="/seidar-mark.png" alt="" className="site-footer-logo" />
         seidar
@@ -552,7 +573,7 @@ function SiteFooter() {
           target="_blank"
           rel="noreferrer"
           aria-label="X"
-          className="site-footer-social"
+          className="site-footer-social x"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z" />
@@ -563,7 +584,7 @@ function SiteFooter() {
           target="_blank"
           rel="noreferrer"
           aria-label="Telegram"
-          className="site-footer-social"
+          className="site-footer-social tg"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M22 2 11 13" />
