@@ -349,8 +349,8 @@
 .seg-group.wallet:not(.connected) .seg-main {
   height: 36px;
   padding: 0 18px;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.02em;
