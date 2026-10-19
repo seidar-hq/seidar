@@ -2443,6 +2443,11 @@
   opacity: 0.7;
 }
 /* Strategies landing: the pitch lives in one well-placed card. */
+.strat-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .strat-hero {
   display: flex;
   flex-direction: column;
@@ -2465,6 +2470,77 @@
 }
 .strat-hero-cta {
   margin-top: 6px;
+}
+.strat-body {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 24px;
+}
+.strat-preview {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+}
+.sp-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 86px;
+  padding: 12px 8px;
+  background: #141414;
+  border: 1px solid #2b2b2b;
+  border-radius: 12px;
+}
+.sp-node b {
+  font-size: 12.5px;
+}
+.sp-node small {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sp-node svg {
+  display: block;
+}
+.sp-wire {
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, #3a3a3a, #57c36b);
+  flex: 0 0 auto;
+}
+.sp-wire + .sp-node,
+.sp-node + .sp-wire {
+  align-self: center;
+}
+.strat-body-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.strat-body-copy h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.strat-body-copy p {
+  margin: 0;
+  max-width: 560px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 900px) {
+  .strat-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 /* ------------------------------ Site footer ------------------------------ */
 .site-footer {
