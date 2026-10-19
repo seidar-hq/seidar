@@ -3,14 +3,10 @@ import { Views } from "@/components/views";
 import type { AppView } from "@/components/shell";
 
 const PROTOCOL_VIEWS: Record<string, AppView> = {
-  blend: "blend",
-  xoxno: "xoxno",
+  // Vaults + RWA only: the venue pages that survive are the vault
+  // browsers. Lending (blend/xoxno) and pool (dex) pages are retired.
   defindex: "defindex",
   upshift: "upshift",
-  soroswap: "soroswap",
-  phoenix: "phoenix",
-  aqua: "aqua",
-  sushi: "sushi",
 };
 
 export default async function ProtocolPage({

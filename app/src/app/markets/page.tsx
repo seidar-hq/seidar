@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-// No main markets page: the sidebar Markets entry is a dropdown menu,
-// so a bare /markets visit lands on the first market.
+// Markets are retirement: Seidar works with vaults + RWA only, so a bare
+// /markets visit lands on the vaults hub.
 export default function MarketsPage() {
-  redirect("/markets/blend");
+  redirect("/vaults");
 }
