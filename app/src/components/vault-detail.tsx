@@ -1,9 +1,8 @@
 "use client";
 
-/* Vault page (DeFindex / Upshift): Manage = header + live stats, your
-   deposit, vault attributes (strategies, fees, curator) and a deposit /
-   withdraw panel run from the smart account; History = the account's own
-   transactions with this vault. Every number is live from the API. */
+/* Vault page (DeFindex / Upshift): header + live stats, your deposit, vault
+   attributes (strategies, fees, curator) and a deposit / withdraw panel run
+   from the smart account. Every number is live from the API. */
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
@@ -11,14 +10,13 @@ import { accountLabel } from "@/lib/account-names";
 import { explorerBase } from "@/lib/network";
 import { signAndSend, toBase, type TxStep } from "@/lib/tx";
 import { LoadingMark } from "./loading";
-import { ProtocolHistory } from "./protocol-history";
 import { ProtoMark } from "./proto-mark";
 import { useTxActive } from "./shell";
 import { isSmartAddress, smartGate, useSmartAccount } from "./smart-gate";
 import { TokenIcon } from "./token-icon";
 import { TxModal, type TxSpec } from "./tx-modal";
 import { ModeSwitch, PositionOverview } from "./position-overview";
-import { VenueTopbar, type VenueSection } from "./views";
+import { PageHero } from "./views";
 
 type Detail = {
   protocol: string;
@@ -68,7 +66,7 @@ async function postJson(path: string, body: unknown) {
   return r.json();
 }
 
-export function VaultDetail({ protocol, address, section = "manage" }: { protocol: string; address: string; section?: VenueSection }) {
+export function VaultDetail({ protocol, address }: { protocol: string; address: string }) {
   const { owner, smarts } = useSmartAccount();
   const active = useTxActive(owner) ?? owner;
   const gate = !isSmartAddress(active) ? smartGate(owner, smarts) : null;
@@ -217,15 +215,12 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
   const sharePct = has && valueUsd != null && tvl ? (valueUsd / tvl) * 100 : null;
   return (
     <div className="ev-wrap">
-      <VenueTopbar
+      <PageHero
         back={{ href: "/vaults", label: "Vaults" }}
-        base={`/vaults/${protocol}/${address}`}
-        section={section}
-        sections={["manage", "history"]}
-        hero={{
-          logo: <TokenIcon symbol={code} size={52} />,
-          title: d ? d.name : detail === "error" ? "Vault" : "Loading vault…",
-          facts: d
+        logo={<TokenIcon symbol={code} size={52} />}
+        title={d ? d.name : detail === "error" ? "Vault" : "Loading vault…"}
+        facts={
+          d
             ? [
                 { text: `${pctS(d.apyPct ?? row?.apyPct)} APY`, strong: true },
                 { icon: <ProtoMark id={protocol} size={18} />, text: `${venueLabel(protocol)} vault` },
@@ -234,8 +229,8 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
                 ...(d.curator ? [{ text: `Curated by ${d.curator}` }] : []),
                 { text: <span title={address}>{short(address)}</span> },
               ]
-            : [],
-        }}
+            : []
+        }
       />
       {detail === null ? (
         <p className="pf-empty load-row">
@@ -249,11 +244,7 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
           </button>
         </div>
       ) : (
-        <>
-          {section === "history" ? (
-            <ProtocolHistory protocol={protocol} address={active ?? null} owner={owner ?? null} contract={address} />
-          ) : (
-            <div className="pd-layout">
+        <div className="pd-layout">
               <div className="pd-col">
               <PositionOverview
                 account={active ?? null}
@@ -349,26 +340,26 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
                     </b>
                   </div>
                 </div>
-                {d!.assets.some((a) => a.strategies.length > 0) && (
-                  <>
-                    <h3 className="pd-sec">Strategies</h3>
-                    <div className="vd-strats">
-                      {d!.assets.flatMap((a) =>
-                        a.strategies.map((s) => (
-                          <div key={s.address} className="vd-strat">
-                            <TokenIcon symbol={a.code} size={18} />
-                            <span>
-                              <b>{stratLabel(s.name)}</b>
-                              <small title={s.address}>{short(s.address)}</small>
-                            </span>
-                            <em className={`pill${s.paused ? "" : " green"}`}>{s.paused ? "Paused" : "Active"}</em>
-                          </div>
-                        )),
-                      )}
-                    </div>
-                  </>
-                )}
               </div>
+              {d!.assets.some((a) => a.strategies.length > 0) && (
+                <div className="pd-card vd-strats-card">
+                  <h3 className="pd-sec">Strategies</h3>
+                  <div className="vd-strats">
+                    {d!.assets.flatMap((a) =>
+                      a.strategies.map((s) => (
+                        <div key={s.address} className="vd-strat">
+                          <TokenIcon symbol={a.code} size={18} />
+                          <span>
+                            <b>{stratLabel(s.name)}</b>
+                            <small title={s.address}>{short(s.address)}</small>
+                          </span>
+                          <em className={`pill${s.paused ? "" : " green"}`}>{s.paused ? "Paused" : "Active"}</em>
+                        </div>
+                      )),
+                    )}
+                  </div>
+                </div>
+              )}
               </div>
               <aside className="pd-side" aria-label="Vault deposit">
                 <ModeSwitch
@@ -435,9 +426,7 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
                   {gate ? gate.label : mode === "deposit" ? "Deposit" : "Withdraw"}
                 </button>
               </aside>
-            </div>
-          )}
-        </>
+        </div>
       )}
       <TxModal spec={spec} onClose={() => setSpec(null)} />
     </div>

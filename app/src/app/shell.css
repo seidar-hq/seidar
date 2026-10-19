@@ -12828,6 +12828,15 @@ button.proto-tab:hover {
 .pd-claim:not(:disabled):hover {
   border-color: rgba(87, 195, 107, 0.6);
 }
+.vd-strats-card {
+  background: #1c1c1c;
+  border: 1px solid #2b2b2b;
+  border-radius: 14px;
+  padding: 18px 20px 20px;
+}
+.vd-strats-card .pd-sec {
+  margin-top: 0;
+}
 .vd-strats {
   display: flex;
   flex-direction: column;

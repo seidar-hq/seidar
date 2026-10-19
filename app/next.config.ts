@@ -12,7 +12,8 @@ const nextConfig: NextConfig = {
       { source: "/savings", destination: "/earn", permanent: true },
       { source: "/mover", destination: "/refinance", permanent: true },
       { source: "/markets/:market/vault/:address", destination: "/vaults/:market/:address", permanent: true },
-      { source: "/markets/:market/vault/:address/:section", destination: "/vaults/:market/:address/:section", permanent: true },
+      { source: "/markets/:market/vault/:address/:section", destination: "/vaults/:market/:address", permanent: true },
+      { source: "/vaults/:market/:address/history", destination: "/vaults/:market/:address", permanent: true },
     ];
   },
 };
