@@ -340,26 +340,26 @@ export function VaultDetail({ protocol, address }: { protocol: string; address: 
                     </b>
                   </div>
                 </div>
+                {d!.assets.some((a) => a.strategies.length > 0) && (
+                  <>
+                    <h3 className="pd-sec">Strategies</h3>
+                    <div className="vd-strats">
+                      {d!.assets.flatMap((a) =>
+                        a.strategies.map((s) => (
+                          <div key={s.address} className="vd-strat">
+                            <TokenIcon symbol={a.code} size={18} />
+                            <span>
+                              <b>{stratLabel(s.name)}</b>
+                              <small title={s.address}>{short(s.address)}</small>
+                            </span>
+                            <em className={`pill${s.paused ? "" : " green"}`}>{s.paused ? "Paused" : "Active"}</em>
+                          </div>
+                        )),
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-              {d!.assets.some((a) => a.strategies.length > 0) && (
-                <div className="pd-card vd-strats-card">
-                  <h3 className="pd-sec">Strategies</h3>
-                  <div className="vd-strats">
-                    {d!.assets.flatMap((a) =>
-                      a.strategies.map((s) => (
-                        <div key={s.address} className="vd-strat">
-                          <TokenIcon symbol={a.code} size={18} />
-                          <span>
-                            <b>{stratLabel(s.name)}</b>
-                            <small title={s.address}>{short(s.address)}</small>
-                          </span>
-                          <em className={`pill${s.paused ? "" : " green"}`}>{s.paused ? "Paused" : "Active"}</em>
-                        </div>
-                      )),
-                    )}
-                  </div>
-                </div>
-              )}
               </div>
               <aside className="pd-side" aria-label="Vault deposit">
                 <ModeSwitch
