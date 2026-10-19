@@ -9,25 +9,21 @@ import { useRouter } from "next/navigation";
 export function StrategyBuilder() {
   const router = useRouter();
   return (
-    <>
-      <div className="pf-head">
-        <span className="pf-title">Strategy</span>
-      </div>
-      <p style={{ color: "#8a8a91", fontSize: 13, marginTop: 4 }}>
+    <div className="pf-card strat-hero">
+      <h1 className="strat-hero-title">Strategy</h1>
+      <p className="strat-hero-desc">
         Compose flash loans, lending legs, swaps and earn deposits into one
         atomic Soroban execution — quoted, validated and signed in your
         wallet.
       </p>
-      <div style={{ marginTop: 16 }}>
-        <button
-          type="button"
-          className="btn primary"
-          onClick={() => router.push("/strategies/create")}
-        >
-          {" "}
-          Create your strategy{" "}
-        </button>
-      </div>
-    </>
+      <button
+        type="button"
+        className="btn primary strat-hero-cta"
+        onClick={() => router.push("/strategies/create")}
+      >
+        {" "}
+        Create your strategy{" "}
+      </button>
+    </div>
   );
 }

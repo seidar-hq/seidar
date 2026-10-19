@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The floating indicator sits on top of the footer's brand in dev.
+  devIndicators: false,
   // Protocol pages moved to /markets; Earn moved to /earn — old links keep
   // working.
   async redirects() {

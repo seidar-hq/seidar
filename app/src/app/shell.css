@@ -54,10 +54,10 @@
 .shell-section {
   background: none;
   border: none;
-  padding: 11px 17px;
+  padding: 10px 16px;
   border-radius: 999px;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   line-height: 1;
   color: var(--muted-foreground);
@@ -2398,7 +2398,7 @@
   top: 50%;
   transform: translateY(-50%);
   width: 1px;
-  height: calc(100% + 18px);
+  height: calc(100% + 6px);
   background: var(--border);
 }
 .pf-ovx-label {
@@ -2441,6 +2441,91 @@
 .pf-ovx-marks.idle .pf-ovx-mark {
   filter: grayscale(1);
   opacity: 0.7;
+}
+/* Strategies landing: the pitch lives in one well-placed card. */
+.strat-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 24px;
+}
+.strat-hero-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.strat-hero-desc {
+  margin: 0;
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.strat-hero-cta {
+  margin-top: 6px;
+}
+/* ------------------------------ Site footer ------------------------------ */
+.site-footer {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  margin: 44px -20px -24px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 13px;
+}
+.site-footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+}
+.site-footer-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.site-footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  justify-content: center;
+}
+.site-footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.site-footer-links a:hover {
+  color: #fff;
+}
+.site-footer-social {
+  display: inline-flex;
+}
+.site-footer-copy {
+  justify-self: end;
+  color: var(--muted);
+}
+/* In-app legal pages. */
+.legal-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+.legal-page p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 .pf-ovx-more {
   margin-left: 8px;

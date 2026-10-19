@@ -535,6 +535,47 @@ function FeedbackDialog({
   );
 }
 
+/* Shared page footer — vaults, dashboard and strategies end with this.
+   Social URLs are placeholders until the accounts exist. */
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <span className="site-footer-brand">
+        <img src="/seidar-mark.png" alt="" className="site-footer-logo" />
+        seidar
+      </span>
+      <nav className="site-footer-links" aria-label="Footer">
+        <a href="/terms">Terms of Use</a>
+        <a href="/privacy">Privacy Policy</a>
+        <a
+          href="https://x.com/seidar"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="X"
+          className="site-footer-social"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z" />
+          </svg>
+        </a>
+        <a
+          href="https://t.me/seidar"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Telegram"
+          className="site-footer-social"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M22 2 11 13" />
+            <path d="M22 2 15 22 11 13 2 9z" />
+          </svg>
+        </a>
+      </nav>
+      <span className="site-footer-copy">© 2026 Seidar</span>
+    </footer>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -1767,7 +1808,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       )}
       {fbOpen && <FeedbackDialog wallet={wallet} onClose={() => setFbOpen(false)} />}
       <div className="shell-layout">
-        <main ref={mainRef} className="shell-main full"><div className="shell-content" key={pathname ?? "/"}>{children}</div></main>
+        <main ref={mainRef} className="shell-main full"><div className="shell-content" key={pathname ?? "/"}>{children}{(pathname === "/" || pathname === "/vaults" || pathname === "/strategies") && <SiteFooter />}</div></main>
         {scrollThumb && (
           <div className="shell-scroll" aria-hidden="true">
             <div
