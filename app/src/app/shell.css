@@ -2477,11 +2477,13 @@
   font-size: 13px;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* Transition lives on the revealed state: smooth in, instant reset when it
+   scrolls back out (the footer is off-screen by then). */
 .site-footer.seen {
   opacity: 1;
   transform: none;
+  transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .site-footer-brand {
   display: inline-flex;

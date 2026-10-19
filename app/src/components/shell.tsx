@@ -540,25 +540,27 @@ function FeedbackDialog({
 function SiteFooter() {
   const ref = useRef<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);
+  /* Reveals whenever a fifth of the footer is in view and resets once it is
+     fully out, so the animation replays on every scroll back. */
   useEffect(() => {
     const el = ref.current;
-    if (!el || seen) return;
+    if (!el) return;
     if (typeof IntersectionObserver === "undefined") {
       setSeen(true);
       return;
     }
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setSeen(true);
-          io.disconnect();
+        for (const e of entries) {
+          if (e.isIntersecting && e.intersectionRatio >= 0.2) setSeen(true);
+          else if (!e.isIntersecting) setSeen(false);
         }
       },
-      { threshold: 0.2 },
+      { threshold: [0, 0.2] },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [seen]);
+  }, []);
   return (
     <footer ref={ref} className={`site-footer${seen ? " seen" : ""}`}>
       <span className="site-footer-brand">
