@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
       { source: "/protocols/:path*", destination: "/markets/:path*", permanent: true },
       { source: "/savings", destination: "/earn", permanent: true },
       { source: "/mover", destination: "/refinance", permanent: true },
+      { source: "/markets/:market/vault/:address", destination: "/vaults/:market/:address", permanent: true },
+      { source: "/markets/:market/vault/:address/:section", destination: "/vaults/:market/:address/:section", permanent: true },
     ];
   },
 };

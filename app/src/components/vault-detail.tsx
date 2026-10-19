@@ -219,7 +219,7 @@ export function VaultDetail({ protocol, address, section = "manage" }: { protoco
     <div className="ev-wrap">
       <VenueTopbar
         back={{ href: "/vaults", label: "Vaults" }}
-        base={`/markets/${protocol}/vault/${address}`}
+        base={`/vaults/${protocol}/${address}`}
         section={section}
         sections={["manage", "history"]}
         hero={{

@@ -648,7 +648,7 @@ function VaultCarousel({ vaults }: { vaults: VaultRow[] }) {
                 <b>{fmtUsd(r.tvlUsd)}</b>
               </div>
             </div>
-            <Link className="btn mk-create vc-cta" href={`/markets/${r.protocol}/vault/${r.address}`}>
+            <Link className="btn mk-create vc-cta" href={`/vaults/${r.protocol}/${r.address}`}>
               Deposit
             </Link>
           </article>
@@ -758,7 +758,7 @@ export function VaultsHub() {
               <span />
             </div>
             {slice.map((r) => (
-              <ClickRow key={r.address} href={`/markets/${r.protocol}/vault/${r.address}`} className="proto-trow mh-grid mh-vaults">
+              <ClickRow key={r.address} href={`/vaults/${r.protocol}/${r.address}`} className="proto-trow mh-grid mh-vaults">
                 <span className="mh-name">
                   <VaultLogo token={r.assetCode} proto={r.protocol} />
                   <span>
@@ -779,7 +779,7 @@ export function VaultsHub() {
                 <span className="mh-act">
                   <Link
                     className="btn mk-create mh-chev"
-                    href={`/markets/${r.protocol}/vault/${r.address}`}
+                    href={`/vaults/${r.protocol}/${r.address}`}
                     aria-label={`Open ${r.name}`}
                   >
                     <svg width="7" height="11" viewBox="0 0 7 11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
