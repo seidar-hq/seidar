@@ -2378,7 +2378,6 @@
 .pf-ovx {
   display: grid;
   grid-template-columns: 1.3fr 1fr 0.9fr 0.8fr 0.6fr;
-  align-items: start;
 }
 .pf-ovx-cell {
   display: flex;
@@ -2386,12 +2385,21 @@
   gap: 7px;
   padding: 2px 22px;
   min-width: 0;
+  position: relative;
 }
 .pf-ovx-cell:first-child {
   padding-left: 0;
 }
-.pf-ovx-cell + .pf-ovx-cell {
-  border-left: 1px solid var(--border);
+/* Divider runs a touch past the content and stays centred on the row. */
+.pf-ovx-cell + .pf-ovx-cell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: calc(100% + 18px);
+  background: var(--border);
 }
 .pf-ovx-label {
   display: inline-flex;
