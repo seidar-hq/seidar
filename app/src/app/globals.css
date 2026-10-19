@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "labGrotesque", Arial, sans-serif;
+}
+
+:root {
+  --black: #000;
+  --border: #2b2b2b;
+  --border-2: #3d3d3d;
+  --text: #f7f7f7;
+  --muted: #8a8a91;
+  --muted-foreground: #79716b;
+  --blue: #3b82f6;
+  --blue-hover: #2f6fe0;
+  --green: #57c36b;
+  --amber: #ffad15;
+  --red: #e66b6b;
+  --sidebar-w: 212px;
+  --sidebar-w-open: 212px;
+  --topbar-h: 60px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar: slim dark thumb on a transparent track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3d3d3d transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2e2e2e;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+body {
+  background: #0f0f0f;
+  color: #fff;
+  /* Lab Grotesque files live in public/fonts when licensed; until then
+     Arial (next in the stack) carries rendering. */
+  font-family: "labGrotesque", Arial, sans-serif;
+}

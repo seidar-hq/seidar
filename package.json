@@ -1,0 +1,17 @@
+{
+  "name": "seidar",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Seidar frontend copy — dashboard design, app + workspace packages",
+  "workspaces": [
+    "app",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:app": "npm run dev --workspace app",
+    "build:packages": "tsc -b tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

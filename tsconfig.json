@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true
+  },
+  "references": [
+    { "path": "packages/tokens" },
+    { "path": "packages/positions-sdk" },
+    { "path": "packages/automation-sdk" },
+    { "path": "packages/seidar-sdk" },
+    { "path": "packages/vaults" }
+  ],
+  "files": []
+}
