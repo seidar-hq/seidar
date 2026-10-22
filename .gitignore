@@ -2,6 +2,12 @@ node_modules/
 dist/
 .next/
 .turbo/
+build/
+.docusaurus/
+.wrangler/
+out/
+.interceptor-research/
 *.log
 *.tsbuildinfo
+.env
 .env*.local
