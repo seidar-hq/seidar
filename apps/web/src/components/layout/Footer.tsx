@@ -151,8 +151,8 @@ export default function Footer() {
         <Brand>
           <BrandMark src="/logos/seidar-mark-white.svg" alt="Seidar Logo" />
           <ResponsiveTypography variant="subtitle1" smallFontSize={16} sx={{ lineHeight: 1.4, maxWidth: "400px" }}>
-            Execute transactions, turn portfolio data into intelligence, and power agentic workflows across chains,
-            protocols and venues.
+            Execute transactions, turn portfolio data into intelligence, and power agentic workflows across Stellar
+            DeFi protocols.
           </ResponsiveTypography>
           {isTablet && <ArrowButton text="Contact Us" handleClick={openContact} />}
         </Brand>
