@@ -28,13 +28,13 @@ const BENEFITS: Benefit[] = [
     img: "/images/home/benefits/ai-agents.png",
   },
   {
-    title: "Granular, Traceable Analysis",
-    description: "Every position and transaction traces back to its source, across wallets and strategies.",
+    title: "Every Position, Fully Traceable",
+    description: "Follow each balance, swap and yield back to the exact Stellar protocol and wallet it came from.",
     img: "/images/home/benefits/traceable-analysis.jpg",
   },
   {
-    title: "360 view and detailed insights",
-    description: "Full visibility across all Token and Yield position details with AI Analytics.",
+    title: "Your Whole Stellar Portfolio at a Glance",
+    description: "Tokens, RWAs, lending and yield positions in one view, with AI insights on what matters most.",
     img: "/images/home/benefits/insights-360.jpg",
   },
 ];

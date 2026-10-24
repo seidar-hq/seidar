@@ -436,11 +436,11 @@ export default function SeidarAi() {
               [theme.breakpoints.down("md")]: { lineHeight: 1.1, letterSpacing: "-0.96px" },
             })}
           >
-            An Intelligent Workspace for Digital Assets
+            Your AI Copilot for Stellar DeFi
           </Typography>
           <Typography variant="body4" sx={{ opacity: 0.7, lineHeight: 1.4, letterSpacing: "-0.32px", maxWidth: "620px" }}>
-            Ask questions grounded in your connected positions, market data and objectives. Analyse exposure, research
-            opportunities, test scenarios and prepare actions for review in one workspace.
+            Ask questions grounded in your Stellar positions, market data and goals. Analyse exposure, research
+            opportunities, test scenarios and prepare actions for review, all in one workspace.
           </Typography>
         </Intro>
 

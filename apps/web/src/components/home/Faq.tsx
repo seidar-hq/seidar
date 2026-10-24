@@ -72,17 +72,17 @@ const FAQS = [
   {
     question: "What is Seidar?",
     answer:
-      "Seidar is the Digital Asset Copilot for Stellar DeFi. It helps teams monitor positions, understand risk, approve actions, execute with control, and report on digital asset activity across Stellar wallets and protocols.",
+      "Seidar is your home for DeFi on Stellar. It brings every Stellar protocol, wallet and position into one place, so you can discover where to put your assets to work, track how they perform, and act on opportunities without jumping between apps.",
   },
   {
     question: "Who is Seidar built for?",
     answer:
-      "Seidar is built for teams managing digital assets professionally, including funds, trading teams, treasury teams, vault curators, family offices and institutional operators.",
+      "Anyone putting capital to work on Stellar. If you are new and looking for where to invest in the ecosystem, Seidar shows you the options in one place. If you manage digital assets or RWAs professionally on Stellar, Seidar gives your team the tools to run them. Whatever you need from Stellar DeFi, Seidar is built for you.",
   },
   {
     question: "How is Seidar different from a portfolio tracker?",
     answer:
-      "Beyond viewing your portfolio, Seidar is built around the complete workflows institutions need to understand risk, decide what to do, approve actions, execute through connected protocols, and keep a clear record afterwards.",
+      "Beyond viewing your portfolio, Seidar is built around the complete workflow you need to understand risk, decide what to do, approve actions, execute through connected protocols, and keep a clear record afterwards.",
   },
   {
     question: "How does Seidar help me understand risk?",
@@ -98,11 +98,6 @@ const FAQS = [
     question: "How does Seidar use AI?",
     answer:
       "Today, Seidar uses AI to help teams make sense of fragmented digital asset activity by building context around the assets, protocols and strategies that are relevant to you.",
-  },
-  {
-    question: "How can I get started?",
-    answer:
-      "You can request a demo, or join the public beta where key features are being tested in a live environment. Please note the public beta is not representative of the complete Seidar solution, and is for testing purposes.",
   },
 ];
 

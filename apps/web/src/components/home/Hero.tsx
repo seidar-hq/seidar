@@ -20,7 +20,7 @@ const Section = styled(Box)(({ theme }) => ({
   padding: "170px 80px 0",
   overflow: "hidden",
   backgroundColor: theme.palette.primary.blackBackground,
-  [theme.breakpoints.down("md")]: { padding: "120px 24px 48px", gap: "40px" },
+  [theme.breakpoints.down("md")]: { padding: "150px 24px 48px", gap: "40px" },
   [theme.breakpoints.between("sm", "md")]: { padding: "145px 48px 64px" },
 })) as unknown as PolymorphicBox<object>;
 
@@ -238,7 +238,7 @@ export default function Hero() {
           Discover protocols, manage portfolios, and turn portfolio data into intelligence. Power agentic workflows
           across Stellar DeFi.
         </Typography>
-        <Box sx={{ display: "flex", gap: "16px", flexDirection: { xs: "column", sm: "row" }, width: { xs: "100%", sm: "auto" } }}>
+        <Box sx={{ display: "flex", gap: "16px", flexDirection: { xs: "column", sm: "row" }, width: "auto", minWidth: { xs: "190px", sm: "auto" } }}>
           <Button variant="primary" size="large" sx={{ width: { xs: "100%", sm: "200px" } }} onClick={openApp}>
             Launch Seidar
           </Button>
