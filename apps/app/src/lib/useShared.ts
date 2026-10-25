@@ -13,14 +13,46 @@ const listeners = new Set<() => void>();
 
 const notify = () => listeners.forEach((l) => l());
 
+// Public lists (markets, pools, vaults, token catalogue, perps market, bridge routes) are mirrored
+// in localStorage, like real_seidar's mirrors: a revisit paints from the last copy at once and
+// refreshes behind it. Never wallet-specific data. Keys ending in ":" are prefixes.
+const PERSIST = ["pools:", "dexpools:", "xoxno:markets", "lend:markets", "vaults:list", "tokens", "zenex:market", "bridge:routes"];
+const LS_PREFIX = "seidar.cache.";
+const MAX_CHARS = 1_500_000;
+const persists = (k: string) => PERSIST.some((p) => (p.endsWith(":") ? k.startsWith(p) : k === p));
+
+/** Seed `key` from its localStorage mirror as a stale entry (shown now, refetched right away). */
+function hydrate(key: string) {
+  if (store.has(key) || typeof window === "undefined" || !persists(key)) return;
+  try {
+    const raw = window.localStorage.getItem(LS_PREFIX + key);
+    if (raw) store.set(key, { at: 0, value: JSON.parse(raw), error: false });
+  } catch {}
+}
+
+function mirror(key: string, value: unknown) {
+  if (typeof window === "undefined" || !persists(key) || value == null) return;
+  try {
+    const raw = JSON.stringify(value);
+    if (raw.length <= MAX_CHARS) window.localStorage.setItem(LS_PREFIX + key, raw);
+  } catch {}
+}
+
 export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number, force = false): Promise<T> {
+  hydrate(key);
   const hit = store.get(key);
   if (!force && hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.value as T);
   const pending = inflight.get(key);
   if (pending) return pending as Promise<T>;
   const job = loader()
     .then((value) => {
+      // A failed refresh (null) never replaces a good copy.
+      if (value == null && hit?.value != null) {
+        store.set(key, { ...hit, at: Date.now() });
+        return hit.value as T;
+      }
       store.set(key, { at: Date.now(), value, error: false });
+      mirror(key, value);
       return value;
     })
     .catch((e) => {
@@ -53,6 +85,11 @@ export function useSharedMany<T>(
   useEffect(() => {
     const l = () => bump((n) => n + 1);
     listeners.add(l);
+    // After mount (never during render: the static HTML must hydrate unchanged), seed mirrored
+    // lists from localStorage so they show before the network answers.
+    const before = keys.filter((k) => store.has(k)).length;
+    keys.forEach(hydrate);
+    if (keys.filter((k) => store.has(k)).length > before) l();
     const run = () => keys.forEach((k) => void loadShared(k, loaderFor(k), ttl).catch(() => {}));
     run();
     const t = setInterval(run, ttl);

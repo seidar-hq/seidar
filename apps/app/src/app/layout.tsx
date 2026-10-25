@@ -15,7 +15,8 @@ export const viewport: Viewport = { themeColor: "#1a1a1a", width: "device-width"
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    // The wallet kit writes its CSS variables onto <html> before React hydrates.
+    <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeRegistry>
           <WalletProvider>
