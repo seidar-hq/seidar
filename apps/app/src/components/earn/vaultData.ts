@@ -3,7 +3,7 @@
 import { apiJson } from "@/lib/api";
 import { useShared } from "@/lib/useShared";
 
-// Yield vaults: DeFindex (strategy vaults), Upshift (curated) and Sentora (incentivised deposits).
+// Yield vaults: DeFindex (strategy vaults), Upshift (curated) and Sentora (incentivised deposits + Evergreen share vault).
 
 export type VaultListRow = {
   protocol: string;
@@ -55,7 +55,7 @@ export const VAULT_PROTOCOLS: Record<string, { name: string; logo: string; about
     name: "Sentora",
     logo: "/protocols/sentora.png",
     about:
-      "Sentora (formerly IntoTheBlock) runs incentivized deposit vaults through Stellar DeFi Hub. Your principal stays in the vault contract and can be withdrawn at any time; the quoted APY is paid as rewards by the curator.",
+      "Sentora (formerly IntoTheBlock) runs vaults through Stellar DeFi Hub. In the XLM, USDC and PYUSD deposit vaults your principal stays in the contract and the quoted APY is paid as rewards by the curator. Evergreen USDC is a share vault: your sentUSDC shares grow in value as the vault earns. All can be withdrawn at any time.",
   },
 };
 

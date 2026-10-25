@@ -139,6 +139,8 @@ async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string
   const rows: VaultRow[] = [];
   const sources: Record<string, string> = {};
   const now = Date.now();
+  // Merkl incentives cover Upshift and the Sentora share vault; fetched once per build.
+  const merkl = merklStellar();
 
   try {
     const cat = await defindexCatalog();
@@ -153,7 +155,7 @@ async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string
   }
 
   try {
-    const opps = await merklStellar();
+    const opps = await merkl;
     const upshiftCodes = [...new Set(UPSHIFT_VAULTS.map((v) => v.assetCode))];
     const { prices: upx } = await livePrices(upshiftCodes);
     for (const v of UPSHIFT_VAULTS) {
@@ -207,11 +209,14 @@ async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string
 
   sources.untangled = "pending-registry (address unpublished)";
 
-  // Sentora incentivized deposit vaults (principal on chain, curator-quoted APY).
+  // Sentora: incentivized deposit vaults (principal on chain, curator-quoted APY) + the sentUSDC share vault.
   try {
     const { sentoraRows } = await import("./sentora.js");
     const { prices } = await livePrices(["XLM", "USDC", "PYUSD"]);
-    rows.push(...((await sentoraRows(prices)) as VaultRow[]));
+    const opps = await merkl;
+    const apr: Record<string, number | null> = {};
+    for (const [k, o] of Object.entries(opps)) apr[k] = Number(o.totalApr) > 0 ? Number(o.totalApr) : null;
+    rows.push(...((await sentoraRows(prices, apr)) as VaultRow[]));
     sources.sentora = "live";
   } catch {
     sources.sentora = "error";
