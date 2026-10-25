@@ -28,7 +28,7 @@ import {
   upsertWatch,
 } from "./vaults.js";
 import { buildSwap, getIcon, getSwapTokens, quoteSwap, sendSwap, sendTx } from "./swap.js";
-import { buildBlendTx } from "./blend.js";
+import { buildBlendClaim, buildBlendTx } from "./blend.js";
 import { buildBlendToXoxno, buildLending, xoxnoAccounts, xoxnoMarkets } from "./lending.js";
 import { feeInfo } from "./fees.js";
 import { horizonUrl, isTestnet, netKey, parseNet, withNetwork } from "./net.js";
@@ -385,6 +385,11 @@ app.post("/lending/build", async (c) => {
 
 // Leverage loops: how much can be borrowed in the next Blend submit while
 // health stays >= minHealth (oracle prices, reserve factors).
+// Blend: claim pending BLND emissions in one pool.
+app.post("/lending/claim", async (c) => {
+  const r = await buildBlendClaim(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
 app.get("/lending/borrow-capacity", async (c) => {
   const pool = c.req.query("pool") ?? "";
   const account = c.req.query("account") ?? "";

@@ -59,3 +59,37 @@ export async function buildBlendTx(body: {
     return { status: 200, body: { ok: false, error: err(e) } };
   }
 }
+
+/**
+ * Claim every pending BLND emission the user has in one Blend pool (pool.claim). The reserve
+ * token ids come from the user's own emission entries, so nothing is claimed twice.
+ */
+export async function buildBlendClaim(body: { pool?: string; from?: string } | null) {
+  try {
+    const pool = String(body?.pool ?? "");
+    const from = String(body?.from ?? "");
+    if (!isContract(pool) || !isAccount(from)) return { status: 200, body: { ok: false, error: "pool contract + from G address required" } };
+    const { PoolV2, PoolUser } = await import("@blend-capital/blend-sdk");
+    const { rpcUrl } = await import("./rpc.js");
+    const { networkPassphrase } = await import("./net.js");
+    const net = { rpc: rpcUrl(), passphrase: networkPassphrase() };
+    const p = await PoolV2.load(net, pool);
+    const user = await PoolUser.load(net, pool, p, from);
+    const em = user.estimateEmissions([...p.reserves.values()]);
+    if (!em.claimedTokens.length || !(em.emissions > 0)) return { status: 200, body: { ok: false, error: "No BLND rewards to claim in this pool." } };
+    const Ctor = PoolContract as unknown as new (id: string) => { claim(a: unknown): string };
+    const opB64 = new Ctor(pool).claim({ from, reserve_token_ids: em.claimedTokens, to: from });
+    let built: string;
+    try {
+      built = (await buildInvoke({ from, op: opB64 })).xdr;
+    } catch (e) {
+      // The pool pays emissions out of its backstop's BLND; when that is empty the claim reverts.
+      if (/insufficient balance/i.test(err(e)))
+        return { status: 200, body: { ok: false, error: "This pool's backstop has no BLND to pay out right now, so its rewards can't be claimed yet. They keep accruing." } };
+      throw e;
+    }
+    return { status: 200, body: { ok: true, xdr: built, label: `Claim ${em.emissions.toFixed(4)} BLND` } };
+  } catch (e) {
+    return { status: 200, body: { ok: false, error: err(e) } };
+  }
+}

@@ -99,6 +99,8 @@ export async function getPositions(address: string, only?: PositionProtocol) {
   let blendEffLia = 0;
   /** Unclaimed BLND emissions across pools (claimable via pool.claim). */
   let claimableBlnd = 0;
+  /** Per Blend pool (pools are isolated): emissions, health and remaining borrow capacity in USD. */
+  const byPool: Record<string, { claimableBlnd: number; healthFactor: number | null; borrowCapacityUsd: number; suppliedUsd: number; borrowedUsd: number; netApy: number | null }> = {};
   let xoxnoSupplied = 0;
   let xoxnoBorrowed = 0;
   let xoxnoEffColl = 0;
@@ -153,11 +155,25 @@ export async function getPositions(address: string, only?: PositionProtocol) {
       }
       const est = PositionsEstimate.build(pool, oracle, user.positions);
       // Emissions accrue even after a position is closed, so count them first.
+      let poolEmissions = 0;
       try {
         const em = user.estimateEmissions([...pool.reserves.values()]);
-        if (Number.isFinite(em.emissions) && em.emissions > 0) claimableBlnd += em.emissions;
+        if (Number.isFinite(em.emissions) && em.emissions > 0) {
+          claimableBlnd += em.emissions;
+          poolEmissions = em.emissions;
+        }
       } catch {
         /* no emission data for this user */
+      }
+      if (poolEmissions > 0 || est.totalSupplied > 0.01 || est.totalBorrowed > 0.01) {
+        byPool[pid] = {
+          claimableBlnd: poolEmissions,
+          healthFactor: est.totalEffectiveLiabilities > 0 ? est.totalEffectiveCollateral / est.totalEffectiveLiabilities : null,
+          borrowCapacityUsd: Math.max(0, est.totalEffectiveCollateral - est.totalEffectiveLiabilities),
+          suppliedUsd: est.totalSupplied,
+          borrowedUsd: est.totalBorrowed,
+          netApy: Number.isFinite(est.netApy) ? est.netApy : null,
+        };
       }
       if (est.totalSupplied > 0.01 || est.totalBorrowed > 0.01) {
         blendSupplied += est.totalSupplied;
@@ -355,6 +371,8 @@ export async function getPositions(address: string, only?: PositionProtocol) {
     totalBorrowed: blendBorrowed + xoxnoBorrowed,
     /** Unclaimed Blend BLND emissions (tokens, USD at the live BLND price). */
     claimable: { blnd: claimableBlnd, usd: claimableUsd },
+    /** Blend per pool: claimable BLND, health factor, borrow capacity (USD). */
+    blendPools: byPool,
     perProtocol: {
       blend: {
         supplied: blendSupplied,

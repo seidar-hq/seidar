@@ -1,320 +1,413 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import ButtonBase from "@mui/material/ButtonBase";
-import InputBase from "@mui/material/InputBase";
 import Typography from "@mui/material/Typography";
-import { styled } from "@mui/material/styles";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DataTable, { type Column } from "@/components/common/DataTable";
-import TokenComponent from "@/components/common/TokenComponent";
-import { SearchIcon } from "@/components/icons/HeaderIcons";
+import Tabs from "@/components/common/Tabs";
+import TokenLogo from "@/components/common/TokenLogo";
+import TxDialog from "@/components/tx/TxDialog";
 import { apiJson } from "@/lib/api";
 import { formatAmount, formatUsd } from "@/lib/format";
-import { toBase } from "@/lib/tx";
+import { runBuilt, type TxStep } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
-import { usePortfolio, useTokenCatalogue } from "@/portfolio/usePortfolio";
 import { useBalances } from "@/wallet/useBalances";
-import { useWallet } from "@/wallet/WalletContext";
-import ActionDialog, { type ActionSpec } from "./ActionDialog";
-import { EarnGrid, SideCard } from "./EarnParts";
+import { useWallet, walletLabel } from "@/wallet/WalletContext";
+import { EarnGrid } from "./EarnParts";
+import { LabeledSwitch, ProtocolChips, ProtocolSection, RowAction, SearchBox, StatusPill, TopList } from "./EarnUI";
+import {
+  LEND_PROTOCOLS,
+  actionBlock,
+  compactUsd,
+  marketHref,
+  marketStatus,
+  pct,
+  useLendMarkets,
+  useLendPositions,
+  type LendProtocol,
+  type Market,
+  type UserLeg,
+} from "./lendData";
 
-type PoolAsset = {
-  pool: string;
-  poolName: string;
-  protocol: "blend" | "xoxno";
-  code: string;
-  asset?: string;
-  decimals?: number;
-  suppliedUsd?: number;
-  borrowedUsd?: number;
-  supplyApy: number | null;
-  borrowApy: number | null;
-  ltvPct?: number | null;
-  canBorrow?: boolean;
-  canCollateral?: boolean;
-};
+const Num = ({ children, color = "black.main100" }: { children: React.ReactNode; color?: string }) => (
+  <Typography variant="body1" sx={{ color, fontSize: "1rem" }}>
+    {children}
+  </Typography>
+);
 
-type XoxnoMarket = {
-  sac: string;
-  symbol: string;
-  decimals: number;
-  hubId: number;
-  priceUsd?: number;
-  spokes: { spokeId: number; spokeName: string; ltvBps: number; canSupply: boolean; canBorrow: boolean }[];
-};
+const healthColor = (h: number | null | undefined) => (h == null ? "grey.200" : h < 1.1 ? "error.main" : h < 1.5 ? "orange.main" : "green.main");
 
-export type Market = PoolAsset & { key: string; contract: string | null; issuer: string | null; decimals: number; xoxno?: XoxnoMarket };
-
-const Chip = styled(ButtonBase, { shouldForwardProp: (p) => p !== "active" })<{ active?: boolean }>(({ theme, active }) => ({
-  padding: "0.375rem 0.875rem",
-  borderRadius: "999rem",
-  fontSize: "0.8125rem",
-  color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText,
-  backgroundColor: active ? theme.palette.sidebar.primary : theme.palette.overlay.white05,
-}));
-
-const Search = styled(Box)(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  height: "2.5rem",
-  padding: "0 0.875rem",
-  borderRadius: "999rem",
-  backgroundColor: theme.palette.surfaceBg.softInset,
-  minWidth: "14rem",
-}));
-
-const pct = (v: number | null | undefined) => (v == null ? "—" : `${v >= 100 ? v.toFixed(0) : v.toFixed(2)}%`);
-
-/** Blend pools + XOXNO hubs as one market list, with token contracts resolved for building. */
-export function useLendMarkets() {
-  const { byContract, tokens } = useTokenCatalogue();
-  const blend = useShared<{ assets?: PoolAsset[] } | null>("pools:blend", () => apiJson("/api/pools?protocol=blend", undefined, 120_000), 300_000);
-  const xoxnoPools = useShared<{ assets?: PoolAsset[] } | null>("pools:xoxno", () => apiJson("/api/pools?protocol=xoxno", undefined, 120_000), 300_000);
-  const xoxnoMk = useShared<{ assets?: XoxnoMarket[] } | null>("xoxno:markets", () => apiJson("/api/lending/xoxno/markets", undefined, 120_000), 300_000);
-
-  const markets = useMemo<Market[]>(() => {
-    const out: Market[] = [];
-    for (const a of blend.value?.assets ?? []) {
-      const meta = a.asset ? byContract.get(a.asset) : undefined;
-      out.push({ ...a, protocol: "blend", key: `blend:${a.pool}:${a.code}`, contract: a.asset ?? null, issuer: meta?.issuer ?? null, decimals: a.decimals ?? meta?.decimals ?? 7 });
-    }
-    for (const a of xoxnoPools.value?.assets ?? []) {
-      const hub = Number(String(a.pool).split("-").pop());
-      const mk = xoxnoMk.value?.assets?.find((m) => m.symbol === a.code && m.hubId === hub);
-      const t = mk ? byContract.get(mk.sac) : tokens.find((x) => x.code === a.code);
-      out.push({
-        ...a,
-        protocol: "xoxno",
-        key: `xoxno:${a.pool}:${a.code}`,
-        contract: mk?.sac ?? (t && "contract" in t ? (t as { contract: string }).contract : null),
-        issuer: t?.issuer ?? null,
-        decimals: mk?.decimals ?? 7,
-        xoxno: mk,
-      });
-    }
-    return out;
-  }, [blend.value, xoxnoPools.value, xoxnoMk.value, byContract, tokens]);
-
-  return { markets, loading: blend.loading || xoxnoPools.loading };
+/** Token logo, symbol (+ status pill) and the pool name underneath. */
+function AssetCell({ code, issuer, contract, sub, status }: { code: string; issuer?: string | null; contract?: string | null; sub: string; status?: number | null }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <TokenLogo code={code} issuer={issuer} contract={contract} size="2.5rem" />
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Typography sx={{ fontSize: "1rem", color: "common.black" }}>{code}</Typography>
+          <StatusPill info={marketStatus(status)} small />
+        </Box>
+        <Typography sx={{ fontSize: "0.75rem", color: "grey.200", textTransform: "uppercase", maxWidth: "11rem", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {sub}
+        </Typography>
+      </Box>
+    </Box>
+  );
 }
 
-type Dialog = { market: Market; initial: string } | null;
+function CollateralMark({ ok }: { ok: boolean }) {
+  return (
+    <Box
+      sx={{
+        width: "2.5rem",
+        height: "2.5rem",
+        borderRadius: "50%",
+        backgroundColor: "overlay.white08",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {ok ? <CheckRoundedIcon sx={{ color: "green.main", fontSize: "1.25rem" }} /> : <CloseRoundedIcon sx={{ color: "error.main", fontSize: "1.25rem" }} />}
+    </Box>
+  );
+}
 
 export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
-  const { activeWallet } = useWallet();
+  const router = useRouter();
+  const { activeWallet, portfolioAddresses, portfolioWallets } = useWallet();
   const { markets, loading } = useLendMarkets();
-  const portfolio = usePortfolio();
+  const positions = useLendPositions(portfolioAddresses);
   const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
-  const held = activeWallet ? byAddress[activeWallet.address]?.tokens ?? [] : [];
-  const xoxnoAccounts = useShared<{ accounts?: { accountId: string; spokeId: number; hubId: number }[] } | null>(
-    activeWallet ? `xoxno:accounts:${activeWallet.address}` : null,
-    () => apiJson(`/api/lending/xoxno/accounts?owner=${activeWallet!.address}`, undefined, 120_000),
-    120_000,
-  );
-  const [proto, setProto] = useState<"all" | "blend" | "xoxno">("all");
+  const held = activeWallet ? (byAddress[activeWallet.address]?.tokens ?? []) : [];
+  const [proto, setProto] = useState<string>("all");
+  const [mode, setMode] = useState<string>("lend");
   const [q, setQ] = useState("");
-  const [shown, setShown] = useState(20);
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const [showAll, setShowAll] = useState(true);
+  const [claim, setClaim] = useState<{ steps: TxStep[]; error: string | null; open: boolean }>({ steps: [], error: null, open: false });
+  const blndPrice = useShared<{ prices?: Record<string, number | null> } | null>("prices:BLND", () => apiJson("/api/prices?codes=BLND"), 300_000).value?.prices?.BLND ?? null;
 
-  const rows = useMemo(
-    () =>
-      markets
-        .filter((m) => (proto === "all" || m.protocol === proto) && (!q || m.code.toLowerCase().includes(q.toLowerCase()) || m.poolName.toLowerCase().includes(q.toLowerCase())))
-        .sort((a, b) => (b.suppliedUsd ?? 0) - (a.suppliedUsd ?? 0)),
-    [markets, proto, q],
-  );
+  const multi = portfolioWallets.length > 1 && portfolioAddresses.length > 1;
+  const walletName = (a: string) => {
+    const w = portfolioWallets.find((x) => x.address === a);
+    return w ? walletLabel(w) : a.slice(0, 6);
+  };
+  const balanceOf = (m: Market) => held.find((h) => h.code === m.code && (h.issuer ?? null) === (m.issuer ?? null))?.amount ?? 0;
+  const marketOf = (l: UserLeg) => markets.find((m) => m.protocol === l.protocol && m.pool === l.pool && m.contract === l.contract);
+  const query = q.trim().toLowerCase();
+  const matches = (m: Market) => !query || m.code.toLowerCase().includes(query) || m.poolName.toLowerCase().includes(query);
 
-  const walletAmount = (m: Market) => held.find((h) => h.code === m.code && (h.issuer ?? null) === (m.issuer ?? null))?.amount ?? 0;
-  const priceOf = (m: Market) => held.find((h) => h.code === m.code)?.price ?? m.xoxno?.priceUsd ?? null;
-  const mine = (m: Market) => ({
-    supplied: portfolio.supplied.find((s) => s.kind === "lend" && s.protocol === m.protocol && s.code === m.code && (m.protocol === "xoxno" || s.pool === m.pool) && s.wallet === activeWallet?.address),
-    borrowed: portfolio.borrowed.find((s) => s.protocol === m.protocol && s.code === m.code && (m.protocol === "xoxno" || s.pool === m.pool) && s.wallet === activeWallet?.address),
-  });
+  const venues = (["blend", "xoxno"] as LendProtocol[]).filter((p) => proto === "all" || proto === p);
+  const open = (m: Market, a: "supply" | "borrow" | "withdraw" | "repay") => router.push(marketHref(m, a));
 
-  const buildBody = (m: Market, action: string, amount: string) => {
-    const base = amount === "max" ? "max" : (toBase(amount, m.decimals) ?? "0");
-    const from = activeWallet!.address;
-    if (m.protocol === "blend") return { protocol: "blend", from, pool: m.pool, actions: [{ action, asset: m.contract, amount: base }] };
-    const spoke = m.xoxno?.spokes.find((s) => (action === "borrow" ? s.canBorrow : s.canSupply)) ?? m.xoxno?.spokes[0];
-    const acct = xoxnoAccounts.value?.accounts?.find((a) => a.hubId === m.xoxno?.hubId);
-    return {
-      protocol: "xoxno",
-      from,
-      actions: [{ action, asset: m.contract, amount: base }],
-      xoxno: { hubId: m.xoxno?.hubId, spokeId: acct?.spokeId ?? spoke?.spokeId, accountId: acct?.accountId },
-    };
+  const runClaim = async (pool: string) => {
+    if (!activeWallet) return;
+    setClaim({ steps: [{ key: "s0", label: "Claim BLND rewards", status: "building" }], error: null, open: true });
+    try {
+      await runBuilt("/api/lending/claim", { from: activeWallet.address, pool }, activeWallet, (steps) => setClaim((c) => ({ ...c, steps })));
+    } catch (e) {
+      setClaim((c) => ({ ...c, error: e instanceof Error ? e.message : String(e) }));
+    }
   };
 
-  const specsFor = (m: Market): ActionSpec[] => {
-    const { supplied, borrowed } = mine(m);
-    const label = `${m.protocol === "blend" ? "Blend" : "XOXNO"} · ${m.poolName}`;
-    const missing = !m.contract ? "MARKET UNAVAILABLE" : null;
-    const mk = (id: string, name: string, available: number | null, availableLabel: string, extra: Partial<ActionSpec> = {}): ActionSpec => ({
-      id,
-      label: name,
-      available,
-      availableLabel,
-      disabledReason: missing,
-      build: (amount) => ({ path: "/api/lending/build", body: buildBody(m, id, amount), label: `${name} ${m.code} on ${label}` }),
-      ...extra,
-    });
-    return [
-      mk("supply", "Supply", walletAmount(m), "Wallet balance", {
-        details: [
-          { label: "Supply APY", value: pct(m.supplyApy) },
-          { label: "Collateral factor", value: m.ltvPct != null ? `${m.ltvPct}%` : "—" },
-        ],
-      }),
-      mk("withdraw", "Withdraw", supplied?.amount ?? 0, "Supplied", { allowMax: true }),
-      mk("borrow", "Borrow", null, "Limited by your collateral", {
-        details: [
-          { label: "Borrow APY", value: pct(m.borrowApy) },
-          { label: "Health factor now", value: portfolio.healthFactor != null ? portfolio.healthFactor.toFixed(2) : "—" },
-        ],
-        disabledReason: missing ?? (m.canBorrow === false ? "BORROWING DISABLED" : null),
-      }),
-      mk("repay", "Repay", Math.min(borrowed?.amount ?? 0, walletAmount(m)), "Debt (payable)", { allowMax: true }),
-    ];
-  };
-
-  const columns: Column<Market>[] = [
+  // ---- columns ----
+  const supplyCols: Column<Market>[] = [
+    { id: "asset", header: "Asset", cell: (m) => <AssetCell code={m.code} issuer={m.issuer} contract={m.contract} sub={m.poolName} status={m.status} />, sortValue: (m) => m.code },
     {
-      id: "asset",
-      header: "Asset",
-      cell: (m) => <TokenComponent header={m.code} subtitle={`${m.protocol === "blend" ? "Blend" : "XOXNO"} · ${m.poolName}`} token={{ code: m.code, issuer: m.issuer }} isTooltip maxTextWidth="12rem" />,
-    },
-    { id: "supplyApy", header: "Supply APY", cell: (m) => <Typography variant="body1" color="green.main">{pct(m.supplyApy)}</Typography> },
-    { id: "borrowApy", header: "Borrow APY", cell: (m) => <Typography variant="body1" color="black.main100">{pct(m.borrowApy)}</Typography> },
-    { id: "supplied", header: "Total supplied", cell: (m) => <Typography variant="body1" color="common.black">{m.suppliedUsd != null ? formatUsd(m.suppliedUsd) : "—"}</Typography> },
-    { id: "borrowed", header: "Total borrowed", cell: (m) => <Typography variant="body1" color="black.main100">{m.borrowedUsd != null ? formatUsd(m.borrowedUsd) : "—"}</Typography> },
-    {
-      id: "actions",
-      header: "",
+      id: "wallet",
+      header: "Wallet Balance",
       cell: (m) => (
-        <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="solid" color="primary" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ market: m, initial: "supply" })}>
-            Supply
-          </Button>
-          <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} disabled={m.canBorrow === false || m.borrowApy == null} onClick={() => setDialog({ market: m, initial: "borrow" })}>
-            Borrow
-          </Button>
-        </Box>
+        <Num>
+          {formatAmount(balanceOf(m), 4)} {m.code}
+        </Num>
       ),
+      sortValue: balanceOf,
+    },
+    { id: "supplied", header: "Total Supplied", cell: (m) => <Num>{compactUsd(m.suppliedUsd)}</Num>, sortValue: (m) => m.suppliedUsd },
+    { id: "apy", header: "Supply APY", cell: (m) => <Num color="green.main">{pct(m.supplyApy)}</Num>, sortValue: (m) => m.supplyApy },
+    { id: "ltv", header: "LTV", cell: (m) => <Num>{m.ltvPct != null ? pct(m.ltvPct, 0) : "—"}</Num> },
+    { id: "collateral", header: "Collateral", align: "center", cell: (m) => <CollateralMark ok={m.canCollateral} /> },
+    {
+      id: "action",
+      header: "Action",
+      align: "center",
+      cell: (m) => {
+        const block = actionBlock(m, "supply");
+        return <RowAction label="Supply" disabled={!!block} tip={block} onClick={() => open(m, "supply")} />;
+      },
     },
   ];
 
-  const myRows = [...portfolio.supplied.filter((s) => s.kind === "lend"), ...portfolio.borrowed.map((b) => ({ ...b, borrowedRow: true as const }))];
+  const borrowCols: Column<Market>[] = [
+    { id: "asset", header: "Asset", cell: (m) => <AssetCell code={m.code} issuer={m.issuer} contract={m.contract} sub={m.poolName} status={m.status} />, sortValue: (m) => m.code },
+    { id: "available", header: "Available", cell: (m) => <Num>{compactUsd(m.availableUsd)}</Num>, sortValue: (m) => m.availableUsd },
+    { id: "borrowed", header: "Total Borrowed", cell: (m) => <Num>{compactUsd(m.borrowedUsd)}</Num>, sortValue: (m) => m.borrowedUsd },
+    { id: "util", header: "Utilization", cell: (m) => <Num>{pct(m.utilPct, 1)}</Num>, sortValue: (m) => m.utilPct },
+    { id: "apy", header: "Borrow APY", cell: (m) => <Num color="green.main">{pct(m.borrowApy)}</Num>, sortValue: (m) => m.borrowApy },
+    {
+      id: "action",
+      header: "Action",
+      align: "center",
+      cell: (m) => {
+        const block = actionBlock(m, "borrow");
+        return <RowAction label="Borrow" disabled={!!block} tip={block} onClick={() => open(m, "borrow")} />;
+      },
+    },
+  ];
+
+  const legCell = (l: UserLeg) => {
+    const m = marketOf(l);
+    return <AssetCell code={l.code} issuer={m?.issuer} contract={l.contract} sub={`${m?.poolName ?? ""}${multi ? ` · ${walletName(l.wallet)}` : ""}`} status={m?.status} />;
+  };
+  const healthOf = (l: UserLeg) => (l.protocol === "blend" ? positions.pools[l.wallet]?.[l.pool]?.healthFactor : positions.xoxnoHealth[l.wallet]) ?? null;
+
+  const yourSupplyCols: Column<UserLeg>[] = [
+    { id: "asset", header: "Asset", cell: legCell },
+    {
+      id: "amount",
+      header: "Supplied",
+      cell: (l) => (
+        <Box>
+          <Num color="common.black">
+            {formatAmount(l.supplied, 4)} {l.code}
+          </Num>
+          <Typography variant="caption" color="grey.200">
+            {formatUsd(l.suppliedUsd)}
+          </Typography>
+        </Box>
+      ),
+      sortValue: (l) => l.suppliedUsd,
+    },
+    { id: "apy", header: "Supply APY", cell: (l) => <Num color="green.main">{pct(marketOf(l)?.supplyApy)}</Num> },
+    { id: "collateral", header: "Collateral", align: "center", cell: (l) => <CollateralMark ok={l.protocol === "xoxno" || l.supplied - l.lent > 1e-9} /> },
+    {
+      id: "action",
+      header: "Action",
+      align: "center",
+      cell: (l) => {
+        const m = marketOf(l);
+        return <RowAction label="Withdraw" disabled={!m} onClick={() => m && open(m, "withdraw")} />;
+      },
+    },
+  ];
+
+  const yourBorrowCols: Column<UserLeg>[] = [
+    { id: "asset", header: "Asset", cell: legCell },
+    {
+      id: "debt",
+      header: "Debt",
+      cell: (l) => (
+        <Box>
+          <Num color="common.black">
+            {formatAmount(l.borrowed, 4)} {l.code}
+          </Num>
+          <Typography variant="caption" color="grey.200">
+            {formatUsd(l.borrowedUsd)}
+          </Typography>
+        </Box>
+      ),
+      sortValue: (l) => l.borrowedUsd,
+    },
+    { id: "apy", header: "Borrow APY", cell: (l) => <Num color="green.main">{pct(marketOf(l)?.borrowApy)}</Num> },
+    {
+      id: "health",
+      header: "Health Factor",
+      cell: (l) => {
+        const h = healthOf(l);
+        return <Num color={healthColor(h)}>{h == null ? "—" : h.toFixed(2)}</Num>;
+      },
+    },
+    {
+      id: "action",
+      header: "Action",
+      align: "center",
+      cell: (l) => {
+        const m = marketOf(l);
+        return <RowAction label="Repay" disabled={!m} onClick={() => m && open(m, "repay")} />;
+      },
+    },
+  ];
+
+  const rewardsStrip = (p: LendProtocol) => {
+    if (p !== "blend" || !activeWallet) return null;
+    const pools = Object.entries(positions.pools[activeWallet.address] ?? {}).filter(([, v]) => v.claimableBlnd > 0.0001);
+    if (pools.length === 0) return null;
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem", p: "1rem 1.25rem", borderRadius: "1.25rem", backgroundColor: "overlay.white04", border: (t) => `0.0625rem solid ${t.palette.overlay.white08}` }}>
+        <Typography variant="h6" sx={{ fontSize: "1.125rem", fontWeight: 500, color: "purple.main100" }}>
+          Your Rewards
+        </Typography>
+        {pools.map(([pool, v]) => {
+          const name = markets.find((m) => m.pool === pool)?.poolName ?? `${pool.slice(0, 6)}…`;
+          return (
+            <Box key={pool} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", py: "0.5rem", flexWrap: "wrap" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <TokenLogo code="BLND" size="2.5rem" />
+                <Box>
+                  <Typography sx={{ fontSize: "1rem", color: "common.black" }}>
+                    {formatAmount(v.claimableBlnd, 4)} BLND
+                  </Typography>
+                  <Typography variant="caption" color="grey.200">
+                    {name} pool emissions{blndPrice ? ` · ${formatUsd(v.claimableBlnd * blndPrice)}` : ""}
+                  </Typography>
+                </Box>
+              </Box>
+              <RowAction label="Claim" onClick={() => void runClaim(pool)} />
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
+  const section = (p: LendProtocol) => {
+    const meta = LEND_PROTOCOLS[p];
+    const list = markets.filter((m) => m.protocol === p && matches(m));
+    const legs = positions.legs.filter((l) => l.protocol === p && (!query || l.code.toLowerCase().includes(query)));
+    const supplies = legs.filter((l) => l.supplied > 0);
+    const borrows = legs.filter((l) => l.borrowed > 0);
+    const lendRows = showAll ? list : list.filter((m) => balanceOf(m) > 0);
+    const borrowRows = list.filter((m) => m.borrowApy != null && m.canBorrow);
+    const venueSupplied = supplies.reduce((s, l) => s + l.suppliedUsd, 0);
+    const venueBorrowed = borrows.reduce((s, l) => s + l.borrowedUsd, 0);
+    return (
+      <ProtocolSection
+        key={p}
+        name={meta.name}
+        logo={meta.logo}
+        right={
+          (venueSupplied > 0 || venueBorrowed > 0) && (
+            <Box sx={{ display: "flex", gap: "1.5rem" }}>
+              <Typography variant="subtitle1" color="grey.200">
+                Supplied <Box component="span" sx={{ color: "common.black" }}>{formatUsd(venueSupplied)}</Box>
+              </Typography>
+              <Typography variant="subtitle1" color="grey.200">
+                Borrowed <Box component="span" sx={{ color: "common.black" }}>{formatUsd(venueBorrowed)}</Box>
+              </Typography>
+            </Box>
+          )
+        }
+      >
+        {mode === "lend" ? (
+          <>
+            {rewardsStrip(p)}
+            {supplies.length > 0 && (
+              <DataTable
+                variant="inset"
+                title="Your Supplies"
+                columns={yourSupplyCols}
+                rows={supplies}
+                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}`}
+                onRowClick={(l) => {
+                  const m = marketOf(l);
+                  if (m) open(m, "withdraw");
+                }}
+                defaultSort={{ id: "amount", dir: "desc" }}
+              />
+            )}
+            <DataTable
+              variant="inset"
+              title="Assets To Supply"
+              toolbar={<LabeledSwitch label="Show all assets" tip="Off: only assets you hold in the active wallet" checked={showAll} onChange={setShowAll} />}
+              columns={supplyCols}
+              rows={lendRows}
+              isLoading={loading}
+              emptyDataText={showAll ? "No markets match your search" : "You hold none of these assets. Turn on Show all assets."}
+              emptyMinHeight="12rem"
+              getRowId={(m) => m.key}
+              onRowClick={(m) => open(m, "supply")}
+              pageSize={10}
+              defaultSort={{ id: "supplied", dir: "desc" }}
+            />
+          </>
+        ) : (
+          <>
+            {borrows.length > 0 && (
+              <DataTable
+                variant="inset"
+                title="Your Borrows"
+                columns={yourBorrowCols}
+                rows={borrows}
+                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}`}
+                onRowClick={(l) => {
+                  const m = marketOf(l);
+                  if (m) open(m, "repay");
+                }}
+                defaultSort={{ id: "debt", dir: "desc" }}
+              />
+            )}
+            <DataTable
+              variant="inset"
+              title={<Typography variant="h6" sx={{ fontSize: "1.125rem", fontWeight: 500, color: "common.black" }}>Assets To Borrow</Typography>}
+              columns={borrowCols}
+              rows={borrowRows}
+              isLoading={loading}
+              emptyDataText="No borrowable markets match your search"
+              emptyMinHeight="12rem"
+              getRowId={(m) => m.key}
+              onRowClick={(m) => open(m, "borrow")}
+              pageSize={10}
+              defaultSort={{ id: "available", dir: "desc" }}
+            />
+          </>
+        )}
+      </ProtocolSection>
+    );
+  };
+
+  const top = useMemo(
+    () =>
+      [...markets]
+        .filter((m) => m.suppliedUsd >= 50_000 && m.supplyApy != null && !actionBlock(m, "supply"))
+        .sort((a, b) => (b.supplyApy ?? 0) - (a.supplyApy ?? 0))
+        .slice(0, 7),
+    [markets],
+  );
 
   const main = (
     <>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", mb: "1rem" }}>
-        <Box sx={{ display: "flex", gap: "0.5rem" }}>
-          {(["all", "blend", "xoxno"] as const).map((p) => (
-            <Chip key={p} active={proto === p} onClick={() => setProto(p)}>
-              {p === "all" ? "All markets" : p === "blend" ? "Blend" : "XOXNO"}
-            </Chip>
-          ))}
-        </Box>
-        <Search>
-          <Box sx={{ display: "inline-flex", color: "grey.200" }}>
-            <SearchIcon size="1rem" />
-          </Box>
-          <InputBase value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search asset or pool" sx={{ fontSize: "0.875rem", color: "common.black" }} />
-        </Search>
+      <ProtocolChips items={(["blend", "xoxno"] as LendProtocol[]).map((p) => ({ id: p, label: LEND_PROTOCOLS[p].name, logo: LEND_PROTOCOLS[p].logo }))} value={proto} onChange={setProto} />
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", mt: "1.25rem", mb: "0.25rem" }}>
+        <Tabs
+          tabs={[
+            { id: "lend", label: "Lend", padding: "0 1rem" },
+            { id: "borrow", label: "Borrow", padding: "0 1rem" },
+          ]}
+          activeTab={mode}
+          setActiveTab={setMode}
+          isPathProvided={false}
+        />
+        <SearchBox value={q} onChange={setQ} placeholder="Search asset or pool" />
       </Box>
-      <DataTable columns={columns} rows={rows.slice(0, shown)} isLoading={loading && rows.length === 0} emptyDataText="No lending markets found" getRowId={(m) => m.key} />
-      {rows.length > shown && (
-        <Button variant="outlined" color="cancel" size="small" onClick={() => setShown((n) => n + 20)} sx={{ alignSelf: "center", mt: "1rem" }}>
-          Show more ({rows.length - shown})
-        </Button>
-      )}
+      {venues.map(section)}
     </>
   );
 
   const side = (
-    <>
-        <SideCard title="Your lending" icon="/assets/topPools.svg">
-          {portfolio.lendingLoading ? (
-            <Typography variant="subtitle3" color="grey.200">
-              Loading your positions…
-            </Typography>
-          ) : myRows.length === 0 ? (
-            <Typography variant="subtitle3" color="grey.200">
-              No lending positions yet. Supply an asset to start earning.
-            </Typography>
-          ) : (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {portfolio.healthFactor != null && (
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="subtitle3" color="grey.200">
-                    Health factor
-                  </Typography>
-                  <Typography variant="subtitle1" color={portfolio.healthFactor < 1.2 ? "error.main" : "green.main"}>
-                    {portfolio.healthFactor.toFixed(2)}
-                  </Typography>
-                </Box>
-              )}
-              {myRows.map((r, i) => {
-                const isBorrow = "borrowedRow" in r;
-                const m = markets.find((x) => x.protocol === r.protocol && x.code === r.code && (r.protocol === "xoxno" || x.pool === r.pool));
-                return (
-                  <Box key={i} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-                    <TokenComponent
-                      header={`${isBorrow ? "Borrowed" : "Supplied"} ${r.code}`}
-                      subtitle={`${r.amount != null ? formatAmount(r.amount, 4) : ""} · ${formatUsd(r.usd)}`}
-                      token={{ code: r.code, issuer: r.issuer }}
-                      width="1.75rem"
-                      height="1.75rem"
-                    />
-                    {m && (
-                      <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ market: m, initial: isBorrow ? "repay" : "withdraw" })}>
-                        {isBorrow ? "Repay" : "Withdraw"}
-                      </Button>
-                    )}
-                  </Box>
-                );
-              })}
-            </Box>
-          )}
-        </SideCard>
-        <SideCard title="Top supply rates" icon="/assets/newPools.svg">
-          <Box sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {[...markets]
-              .filter((m) => (m.suppliedUsd ?? 0) > 10_000 && m.supplyApy != null)
-              .sort((a, b) => (b.supplyApy ?? 0) - (a.supplyApy ?? 0))
-              .slice(0, 6)
-              .map((m) => (
-                <Box key={m.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <TokenComponent header={m.code} subtitle={m.poolName} token={{ code: m.code, issuer: m.issuer }} width="1.75rem" height="1.75rem" />
-                  <ButtonBase onClick={() => setDialog({ market: m, initial: "supply" })}>
-                    <Typography variant="subtitle1" color="green.main">
-                      {pct(m.supplyApy)}
-                    </Typography>
-                  </ButtonBase>
-                </Box>
-              ))}
-          </Box>
-        </SideCard>
-    </>
+    <TopList
+      title="Top Markets"
+      nameLabel="Markets"
+      valueLabel="Supply APY"
+      emptyText="Loading markets…"
+      items={top.map((m) => ({
+        key: m.key,
+        icon: <TokenLogo code={m.code} issuer={m.issuer} contract={m.contract} size="2.75rem" />,
+        title: m.code,
+        subtitle: m.poolName,
+        badge: { name: LEND_PROTOCOLS[m.protocol].name, logo: LEND_PROTOCOLS[m.protocol].logo },
+        value: pct(m.supplyApy),
+        onClick: () => open(m, "supply"),
+      }))}
+    />
   );
 
   return (
     <>
       <EarnGrid tabs={tabs} main={main} side={side} />
-      {dialog && (
-        <ActionDialog
-          open
-          onClose={() => setDialog(null)}
-          title={`${dialog.market.code} · ${dialog.market.protocol === "blend" ? "Blend" : "XOXNO"} ${dialog.market.poolName}`}
-          token={{ code: dialog.market.code, issuer: dialog.market.issuer }}
-          price={priceOf(dialog.market)}
-          actions={specsFor(dialog.market)}
-          initial={dialog.initial}
-        />
-      )}
+      <TxDialog open={claim.open} title="Claim rewards" steps={claim.steps} error={claim.error} onClose={() => setClaim((c) => ({ ...c, open: false }))} />
     </>
   );
 }
