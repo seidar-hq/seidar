@@ -6,7 +6,6 @@ import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
-import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import {
   InsetCard,
@@ -16,7 +15,6 @@ import {
   fadedBorder,
 } from "@/components/common/SectionCard";
 import { LockedChartArt, LockedChartRoot, LockedCopy, WATERMARK_ICON } from "@/components/common/locked/LockedParts";
-import TourGuideModal from "@/components/layout/tour/TourGuideModal";
 import { useWallet } from "@/wallet/WalletContext";
 
 const Root = styled(SectionCard)(({ theme }) => ({
@@ -104,23 +102,6 @@ const ConnectPill = styled(ButtonBase)(({ theme }) => ({
   boxShadow: theme.palette.mode === "dark" ? `0rem 0.25rem 1.25rem 0rem ${theme.palette.shadow.elevated}` : "none",
 }));
 
-const TourPill = styled(ButtonBase)(({ theme }) => {
-  const dark = theme.palette.mode === "dark";
-  const line = dark ? theme.palette.overlay.white08 : theme.palette.border.main600;
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.625rem",
-    height: "2.0625rem",
-    padding: "0.375rem 0.375rem 0.375rem 0.5rem",
-    borderRadius: "6.25rem",
-    backgroundColor: theme.palette.overlay.white05,
-    borderTop: `0.0625rem solid ${line}`,
-    borderBottom: `0.0625rem solid ${line}`,
-    boxShadow: dark ? `0rem 0.25rem 2.5rem 0rem ${theme.palette.shadow.elevated}` : "none",
-  };
-});
-
 const PillIcon = styled("img")({ width: "1.125rem", height: "1.125rem" });
 
 const KpiStack = styled(Box)(({ theme }) => ({
@@ -178,7 +159,6 @@ const KPI_LABELS = ["Total Balance", "Performance", "Total Utilised"];
 
 export default function PortfolioLocked() {
   const [tab] = useState("timeline");
-  const [tourOpen, setTourOpen] = useState(false);
   const { openConnectModal } = useWallet();
 
   return (
@@ -203,12 +183,6 @@ export default function PortfolioLocked() {
                   </Typography>
                   <PillIcon src="/assets/locked/walletGradient.svg" alt="" />
                 </ConnectPill>
-                <TourPill onClick={() => setTourOpen(true)}>
-                  <Typography variant="caption" color="common.black">
-                    Watch Tour Guide
-                  </Typography>
-                  <PlayCircleOutlineIcon sx={{ fontSize: "1.125rem", color: "common.black" }} />
-                </TourPill>
               </ButtonsRow>
             </IntroColumn>
             <KpiStack>
@@ -264,7 +238,6 @@ export default function PortfolioLocked() {
         </BalancePanel>
         <Watermark src={WATERMARK_ICON} alt="" />
       </Root>
-      <TourGuideModal open={tourOpen} handleClose={() => setTourOpen(false)} />
     </>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import SwapLockedWidget from "@/components/swap/SwapLockedWidget";
-import { MarketLocked, PerpsLocked, SpotLocked } from "./TradeLocked";
+import { MarketLocked, PerpsLocked } from "./TradeLocked";
 
 function SwapTab() {
   return (
@@ -30,8 +30,7 @@ function SwapTab() {
 
 const TABS: (TabItem & { component: React.ReactNode })[] = [
   { id: "dex", label: "Swap", path: "/trade-swap/dex", component: <SwapTab /> },
-  { id: "cex", label: "Spot", path: "/trade-swap/cex", component: <SpotLocked /> },
-  { id: "perps", label: "Derivatives", path: "/trade-swap/perps", component: <PerpsLocked /> },
+  { id: "perps", label: "Perps", path: "/trade-swap/perps", component: <PerpsLocked /> },
 ];
 
 export default function TradeSwap() {

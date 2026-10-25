@@ -9,33 +9,33 @@ import Tabs, { type TabItem } from "@/components/common/Tabs";
 import { ConnectPill } from "@/components/trade/TradeLocked";
 import { useWallet } from "@/wallet/WalletContext";
 
-type EarnTab = "staking" | "lending&borrow" | "liquidity";
+type EarnTab = "lending&borrow" | "pools" | "vaults";
 
 const COPY: Record<EarnTab, { promoText: string; promoIllustration: string; topText: string; newText: string }> = {
-  staking: {
-    promoText: "Connect a wallet to stake supported assets and start tracking your staking rewards.",
-    promoIllustration: "/assets/earnStakingLocked.svg",
-    topText: "Connect a wallet to discover the highest APY staking pools.",
-    newText: "Connect a wallet to explore newly added staking opportunities.",
-  },
   "lending&borrow": {
     promoText: "Connect a wallet to lend assets, borrow liquidity, and manage DeFi credit positions.",
     promoIllustration: "/assets/earnLendLocked.svg",
-    topText: "Connect a wallet to discover the highest APY lending and borrowing pools.",
+    topText: "Connect a wallet to discover the highest APY lending and borrowing markets.",
     newText: "Connect a wallet to explore newly added lending and borrowing opportunities.",
   },
-  liquidity: {
+  pools: {
     promoText: "Connect a wallet to provide liquidity, manage LP positions, and track pool rewards.",
     promoIllustration: "/assets/earnLiquidityLocked.svg",
     topText: "Connect a wallet to discover the highest-performing liquidity pools.",
     newText: "Connect a wallet to explore newly added liquidity pools.",
   },
+  vaults: {
+    promoText: "Connect a wallet to deposit into vaults and track your automated yield.",
+    promoIllustration: "/assets/earnStakingLocked.svg",
+    topText: "Connect a wallet to discover the highest APY vaults.",
+    newText: "Connect a wallet to explore newly added vaults.",
+  },
 };
 
 const TABS: TabItem[] = [
-  { id: "staking", label: "Stake", path: "/earn/staking", padding: "0rem 0.625rem" },
   { id: "lending&borrow", label: "Lend & Borrow", path: "/earn/lending&borrow", padding: "0rem 0.625rem" },
-  { id: "liquidity", label: "Liquidity", path: "/earn/liquidity", padding: "0rem 0.500rem" },
+  { id: "pools", label: "Pools", path: "/earn/pools", padding: "0rem 0.625rem" },
+  { id: "vaults", label: "Vaults", path: "/earn/vaults", padding: "0rem 0.625rem" },
 ];
 
 const PromoRoot = styled(Box)(({ theme }) => ({
@@ -196,7 +196,7 @@ function PoolsLocked({ tab }: { tab: EarnTab }) {
 }
 
 const tabFromPath = (path: string): EarnTab =>
-  path.startsWith("/earn/liquidity") ? "liquidity" : path.startsWith("/earn/lending&borrow") ? "lending&borrow" : "staking";
+  path.startsWith("/earn/pools") ? "pools" : path.startsWith("/earn/vaults") ? "vaults" : "lending&borrow";
 
 export default function Earn() {
   const theme = useTheme();
@@ -211,7 +211,7 @@ export default function Earn() {
     } catch {}
   }, [pathname]);
 
-  const current = (TABS.some((t) => t.id === tab) ? tab : "staking") as EarnTab;
+  const current = (TABS.some((t) => t.id === tab) ? tab : "lending&borrow") as EarnTab;
 
   return (
     <Box sx={{ backgroundColor: "transparent", minHeight: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>

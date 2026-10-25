@@ -17,7 +17,7 @@ import { styled, useTheme, type Theme } from "@mui/material/styles";
 import type { SvgIconComponent } from "@mui/icons-material";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import DonutLargeOutlinedIcon from "@mui/icons-material/DonutLargeOutlined";
+import WaterOutlinedIcon from "@mui/icons-material/WaterOutlined";
 import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -26,21 +26,10 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import ConnectWalletButton from "@/components/common/ConnectWalletButton";
-import ThemeButton from "@/components/common/ThemeButton";
-import {
-  DerivativesDropdownIcon,
-  LayoutIcon,
-  MoonIcon,
-  PlayIcon,
-  SearchIcon,
-  SpotDropdownIcon,
-  SwapDropdownIcon,
-  ThemeIcon,
-} from "@/components/icons/HeaderIcons";
+import { DerivativesDropdownIcon, LayoutIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
 import { DOCS_URL, X_URL } from "@/lib/links";
 import { useThemeMode } from "@/theme/ThemeModeContext";
 import SearchDialog from "./SearchDialog";
-import TourGuideModal from "./tour/TourGuideModal";
 
 const Root = styled(AppBar)(({ theme }) => ({
   position: "fixed",
@@ -203,15 +192,14 @@ const NAV: NavEntry[] = [
 ];
 
 const TRADE_ITEMS: SubEntry[] = [
-  { title: "Swap", subtitle: "DEX aggregator best route", path: "/trade-swap/dex", Icon: SwapDropdownIcon },
-  { title: "Spot", subtitle: "Orderbook trading on Stellar", path: "/trade-swap/cex", Icon: SpotDropdownIcon },
-  { title: "Derivatives", subtitle: "Access advanced markets.", path: "/trade-swap/perps", Icon: DerivativesDropdownIcon },
+  { title: "Swap", subtitle: "Best route across Stellar DEXs", path: "/trade-swap/dex", Icon: SwapDropdownIcon },
+  { title: "Perps", subtitle: "Perpetual futures on Zenex", path: "/trade-swap/perps", Icon: DerivativesDropdownIcon },
 ];
 
 const EARN_ITEMS: SubEntry[] = [
-  { title: "Stake", subtitle: "Stake assets for rewards.", path: "/earn/staking", Icon: DonutLargeOutlinedIcon },
   { title: "Lend & Borrow", subtitle: "Lend or borrow with ease.", path: "/earn/lending&borrow", Icon: HandshakeOutlinedIcon },
-  { title: "Liquidity", subtitle: "Discover DeFi yields.", path: "/earn/liquidity", Icon: SavingsOutlinedIcon },
+  { title: "Pools", subtitle: "Provide liquidity to DEX pools.", path: "/earn/pools", Icon: WaterOutlinedIcon },
+  { title: "Vaults", subtitle: "Automated yield strategies.", path: "/earn/vaults", Icon: SavingsOutlinedIcon },
 ];
 
 const HISTORY_ITEMS: SubEntry[] = [
@@ -240,22 +228,19 @@ export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isDarkMode, toggleThemeMode } = useThemeMode();
+  const { isDarkMode } = useThemeMode();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [tourAnchor, setTourAnchor] = useState<HTMLElement | null>(null);
   const [resourcesAnchor, setResourcesAnchor] = useState<HTMLElement | null>(null);
   const [earnAnchor, setEarnAnchor] = useState<HTMLElement | null>(null);
   const [tradeAnchor, setTradeAnchor] = useState<HTMLElement | null>(null);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
-  const [tourOpen, setTourOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const earnTimer: HoverTimer = useRef(null);
   const tradeTimer: HoverTimer = useRef(null);
   const historyTimer: HoverTimer = useRef(null);
   const resourcesTimer: HoverTimer = useRef(null);
-  const tourTimer: HoverTimer = useRef(null);
 
   const scheduleClose = (timer: HoverTimer, close: () => void) => {
     if (timer.current) clearTimeout(timer.current);
@@ -483,27 +468,6 @@ export default function Header() {
           >
             <LayoutIcon size="1.25rem" />
           </CircleIconButton>
-          <CircleIconButton
-            onClick={(e) => setTourAnchor(e.currentTarget)}
-            onMouseEnter={(e) => {
-              cancelClose(tourTimer);
-              setTourAnchor(e.currentTarget);
-            }}
-            onMouseLeave={() => scheduleClose(tourTimer, () => setTourAnchor(null))}
-            aria-label="Tour guide"
-            sx={{ color: theme.palette.sidebar.heading }}
-          >
-            <PlayIcon size="1.25rem" />
-          </CircleIconButton>
-          <Tooltip title={isDarkMode ? "Switch to light theme" : "Switch to dark theme"} arrow placement="bottom">
-            <CircleIconButton
-              onClick={toggleThemeMode}
-              aria-label="Toggle theme"
-              sx={{ color: theme.palette.sidebar.heading }}
-            >
-              {isDarkMode ? <ThemeIcon size="1.25rem" /> : <MoonIcon size="1.25rem" />}
-            </CircleIconButton>
-          </Tooltip>
           <ConnectWalletButton />
         </RightCluster>
 
@@ -556,47 +520,6 @@ export default function Header() {
         {subMenu(historyAnchor, () => setHistoryAnchor(null), historyTimer, HISTORY_ITEMS, isHistoryItemActive)}
         {subMenu(tradeAnchor, () => setTradeAnchor(null), tradeTimer, TRADE_ITEMS, (p) => pathname.startsWith(p))}
 
-        <Menu
-          anchorEl={tourAnchor}
-          open={!!tourAnchor}
-          onClose={() => setTourAnchor(null)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
-          slotProps={{
-            root: { sx: { pointerEvents: "none" } },
-            paper: {
-              onMouseEnter: () => cancelClose(tourTimer),
-              onMouseLeave: () => scheduleClose(tourTimer, () => setTourAnchor(null)),
-              sx: { ...menuPaperSx(theme, "unset"), width: "16.5rem", padding: "1rem" },
-            },
-            list: { sx: { padding: 0 } },
-          }}
-        >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <Typography variant="caption" sx={{ textTransform: "uppercase", color: theme.palette.sidebar.heading }}>
-              Tour Guide
-            </Typography>
-            <Box
-              component="img"
-              src={isDarkMode ? "/assets/startTourDark.webp" : "/assets/startTourLight.webp"}
-              alt="start tour"
-              sx={{ width: "100%", height: "9.375rem", objectFit: "cover", borderRadius: "0.5rem" }}
-            />
-            <ThemeButton
-              isLightPurple
-              noDarkBg
-              borderColor={theme.palette.overlay.white40}
-              fullWidth
-              onClick={() => {
-                setTourOpen(true);
-                setTourAnchor(null);
-              }}
-              sx={{ textTransform: "none", height: "3rem" }}
-            >
-              Start Tour
-            </ThemeButton>
-          </Box>
-        </Menu>
       </Root>
 
       <Drawer
@@ -635,7 +558,6 @@ export default function Header() {
         </MobileDrawerList>
       </Drawer>
 
-      <TourGuideModal open={tourOpen} handleClose={() => setTourOpen(false)} />
       <SearchDialog open={searchOpen} handleClose={() => setSearchOpen(false)} />
     </>
   );

@@ -11,12 +11,10 @@ import type { SvgIconComponent } from "@mui/icons-material";
 import CloseIcon from "@mui/icons-material/Close";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
-import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import AltRouteOutlinedIcon from "@mui/icons-material/AltRouteOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
-import DonutLargeOutlinedIcon from "@mui/icons-material/DonutLargeOutlined";
 import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import WaterOutlinedIcon from "@mui/icons-material/WaterOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
@@ -125,9 +123,9 @@ const SUGGESTIONS = [
   { label: "Dashboard", route: "/dashboard" },
   { label: "Bridge", route: "/bridge" },
   { label: "Swap", route: "/trade-swap/dex" },
-  { label: "Spot", route: "/trade-swap/cex" },
-  { label: "Derivatives", route: "/trade-swap/perps" },
-  { label: "Liquidity", route: "/earn/liquidity" },
+  { label: "Perps", route: "/trade-swap/perps" },
+  { label: "Pools", route: "/earn/pools" },
+  { label: "Vaults", route: "/earn/vaults" },
 ];
 
 type Page = { id: string; name: string; route: string; Icon: SvgIconComponent };
@@ -136,14 +134,13 @@ const PAGES: Page[] = [
   { id: "dashboard", name: "Dashboard", route: "/dashboard", Icon: SpaceDashboardOutlinedIcon },
   { id: "trade-swap", name: "Trade / Swap", route: "/trade-swap", Icon: SwapHorizOutlinedIcon },
   { id: "dex", name: "Swap", route: "/trade-swap/dex", Icon: SwapHorizOutlinedIcon },
-  { id: "cex", name: "Spot", route: "/trade-swap/cex", Icon: StorefrontOutlinedIcon },
-  { id: "perps", name: "Derivatives", route: "/trade-swap/perps", Icon: ShowChartOutlinedIcon },
+  { id: "perps", name: "Perps", route: "/trade-swap/perps", Icon: ShowChartOutlinedIcon },
   { id: "bridge", name: "Bridge", route: "/bridge", Icon: AltRouteOutlinedIcon },
   { id: "transactions", name: "History", route: "/transactions", Icon: ReceiptLongOutlinedIcon },
   { id: "earn", name: "Earn", route: "/earn", Icon: SavingsOutlinedIcon },
-  { id: "staking", name: "Stake", route: "/earn/staking", Icon: DonutLargeOutlinedIcon },
   { id: "lend-borrow", name: "Lend & Borrow", route: "/earn/lending&borrow", Icon: HandshakeOutlinedIcon },
-  { id: "liquidity", name: "Liquidity", route: "/earn/liquidity", Icon: WaterOutlinedIcon },
+  { id: "pools", name: "Pools", route: "/earn/pools", Icon: WaterOutlinedIcon },
+  { id: "vaults", name: "Vaults", route: "/earn/vaults", Icon: SavingsOutlinedIcon },
   { id: "settings", name: "Settings", route: "/settings", Icon: SettingsOutlinedIcon },
 ];
 

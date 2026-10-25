@@ -216,7 +216,6 @@ const SlippageInput = styled(Box)(({ theme }) => ({
 
 export const SWAP_TABS: TabItem[] = [
   { id: "swap", label: "Swap" },
-  { id: "cross-chain-swap", label: "Cross-Chain Swap" },
   { id: "send", label: "Send" },
   { id: "receive", label: "Receive" },
 ];
