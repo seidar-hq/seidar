@@ -9,25 +9,33 @@ import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 
+// Modal surface (matches the wallet account modal): solid dark card, hairline border, round corners.
+export const MODAL = {
+  bg: "#1F1F1F",
+  border: "#323232",
+  inset: "#2A2A2A",
+  insetHover: "#333333",
+  muted: "#8A8A8A",
+  dangerBg: "#402522",
+  danger: "#C74430",
+} as const;
+
 export const GlassPaper = styled(Dialog)(({ theme }) => ({
+  "& .MuiBackdrop-root": { backgroundColor: "rgba(0, 0, 0, 0.6)" },
   "& .MuiDialog-paper": {
     width: "90vw",
     maxWidth: "29.4375rem",
     maxHeight: "90vh",
-    padding: "1rem",
+    padding: "1.25rem",
     display: "flex",
     flexDirection: "column",
     gap: "1.5rem",
-    borderRadius: "1.5rem",
-    border: `0.0625rem solid ${theme.palette.overlay.white18}`,
-    backgroundColor: theme.palette.surfaceBg.section,
+    borderRadius: "2rem",
+    border: `0.0625rem solid ${MODAL.border}`,
+    backgroundColor: MODAL.bg,
     backgroundImage: "none",
-    backdropFilter: "blur(2.6875rem)",
-    WebkitBackdropFilter: "blur(2.6875rem)",
-    boxShadow: `0 0 1.25rem ${theme.palette.shadow.heavy}`,
+    boxShadow: `0 0.5rem 2.5rem ${theme.palette.shadow.heavy}`,
     position: "relative",
-    isolation: "isolate",
-    transform: "translateZ(0)",
     color: theme.palette.common.black,
   },
 }));
@@ -35,33 +43,25 @@ export const GlassPaper = styled(Dialog)(({ theme }) => ({
 const HeaderRow = styled(Box)({ display: "flex", alignItems: "flex-start", gap: "0.5rem", width: "100%" });
 const HeaderText = styled(Box)({ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.5rem" });
 
-export const DialogCloseButton = styled(IconButton)(({ theme }) => {
-  const dark = theme.palette.mode === "dark";
-  return {
-    width: "2rem",
-    height: "2rem",
-    padding: 0,
-    flexShrink: 0,
-    borderRadius: "3.125rem",
-    color: theme.palette.common.black,
-    backgroundColor: dark ? theme.palette.overlay.white08 : theme.palette.surfaceBg.main,
-    ...(dark && {
-      borderTop: `0.0625rem solid ${theme.palette.overlay.white08}`,
-      borderBottom: `0.0625rem solid ${theme.palette.overlay.white08}`,
-      boxShadow: `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}`,
-    }),
-    "&:hover": { backgroundColor: dark ? theme.palette.overlay.white18 : theme.palette.surfaceBg.main },
-    "& svg": { fontSize: "1.125rem" },
-  };
+export const DialogCloseButton = styled(IconButton)({
+  width: "2.25rem",
+  height: "2.25rem",
+  padding: 0,
+  flexShrink: 0,
+  borderRadius: "50%",
+  color: "#E3E3E3",
+  backgroundColor: "transparent",
+  "&:hover": { backgroundColor: MODAL.inset },
+  "& svg": { fontSize: "1.5rem" },
 });
 
-const DividerRow = styled(Box)(({ theme }) => ({
+const DividerRow = styled(Box)({
   display: "flex",
   alignItems: "center",
   gap: "1rem",
   width: "100%",
-  "&::before, &::after": { content: '""', flex: 1, borderTop: `0.0625rem dashed ${theme.palette.border.main700}` },
-}));
+  "&::before, &::after": { content: '""', flex: 1, borderTop: `0.0625rem dashed ${MODAL.border}` },
+});
 const DividerLabel = styled(Box)({ display: "inline-flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 });
 const ScrollBody = styled(Box)({
   display: "flex",

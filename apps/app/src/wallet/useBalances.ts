@@ -32,10 +32,24 @@ async function fetchWallet(address: string): Promise<WalletBalances> {
   const p = codes.length
     ? await apiJson<{ prices?: Record<string, number | null> }>(`/api/prices?codes=${encodeURIComponent(codes.join(","))}`)
     : null;
+  // The price feed misses some listed assets (e.g. BLND): use the last Horizon market price instead.
+  const fallback: Record<string, number> = {};
+  await Promise.all(
+    rows
+      .filter((r) => r.listed !== false && r.issuer && p?.prices?.[r.code] == null)
+      .slice(0, 10)
+      .map(async (r) => {
+        const c = await apiJson<{ ok?: boolean; points?: { px: number }[] }>(
+          `/api/prices/chart?asset=${encodeURIComponent(`${r.code}:${r.issuer}`)}&range=1d`,
+        );
+        const last = c?.ok ? c.points?.[c.points.length - 1]?.px : undefined;
+        if (last) fallback[`${r.code}:${r.issuer}`] = last;
+      }),
+  );
   const tokens: TokenBalance[] = rows
     .map((r) => {
       const listed = r.listed !== false;
-      const price = listed ? (p?.prices?.[r.code] ?? null) : null;
+      const price = listed ? (p?.prices?.[r.code] ?? fallback[`${r.code}:${r.issuer}`] ?? null) : null;
       return { code: r.code, issuer: r.issuer, amount: r.amount, price, usd: price ? price * r.amount : 0, listed };
     })
     .sort((a, b) => b.usd - a.usd || b.amount - a.amount);

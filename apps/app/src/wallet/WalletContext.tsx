@@ -2,13 +2,20 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAlerts } from "@/components/common/Alerts";
-import { kitDisconnect, kitOpenAuthModal, walletMeta, type KitWalletId } from "@/lib/wallets";
+import {
+  WATCH_ENABLED,
+  isStellarAddress,
+  kitDisconnect,
+  kitOpenAuthModal,
+  walletMeta,
+  type WalletKind,
+} from "@/lib/wallets";
 import { shortAddress } from "@/lib/format";
 
 // Wallet session for the whole app. Several Stellar wallets can be linked at once: one is the
 // active signer, and the portfolio selection ("all" or one address) drives what the dashboard shows.
 
-export type LinkedWallet = { address: string; walletId: KitWalletId; name: string };
+export type LinkedWallet = { address: string; walletId: WalletKind; name: string };
 export type PortfolioSelection = "all" | string;
 
 type WalletValue = {
@@ -23,6 +30,8 @@ type WalletValue = {
   setPortfolio: (p: PortfolioSelection) => void;
   /** Opens the wallet picker and links (or re-activates) the chosen wallet. */
   openConnectModal: () => Promise<void>;
+  /** Links a read-only mainnet address for testing (no signing). Dev builds only. */
+  watchAddress: (address: string, name?: string) => boolean;
   switchWallet: (address: string) => void;
   renameWallet: (address: string, name: string) => void;
   disconnect: (address?: string) => void;
@@ -39,6 +48,7 @@ const WalletContext = createContext<WalletValue>({
   portfolioAddresses: [],
   setPortfolio: noop,
   openConnectModal: async () => {},
+  watchAddress: () => false,
   switchWallet: noop,
   renameWallet: noop,
   disconnect: noop,
@@ -66,7 +76,10 @@ function save(key: string, value: unknown) {
 }
 
 const isLinkedWallet = (w: unknown): w is LinkedWallet =>
-  !!w && typeof (w as LinkedWallet).address === "string" && !!walletMeta((w as LinkedWallet).walletId);
+  !!w &&
+  typeof (w as LinkedWallet).address === "string" &&
+  !!walletMeta((w as LinkedWallet).walletId) &&
+  ((w as LinkedWallet).walletId !== "watch" || WATCH_ENABLED);
 
 export const walletLabel = (w: LinkedWallet) => w.name || `${walletMeta(w.walletId)?.name ?? "Wallet"} ${shortAddress(w.address)}`;
 
@@ -113,6 +126,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     successAlert({ message: exists ? "Wallet switched" : "Wallet connected" });
   }, [wallets, commit, successAlert]);
 
+  const watchAddress = useCallback(
+    (target: string, name = "Test wallet") => {
+      if (!WATCH_ENABLED || !isStellarAddress(target)) return false;
+      setWallets((prev) => {
+        const next = prev.some((w) => w.address === target)
+          ? prev
+          : [...prev, { address: target, walletId: "watch" as const, name }];
+        save(WALLETS_KEY, next);
+        return next;
+      });
+      setAddress(target);
+      save(ACTIVE_KEY, target);
+      return true;
+    },
+    [],
+  );
+
+  // Test hooks: /dashboard?watch=G... or window.seidar.watch("G...") in the console.
+  useEffect(() => {
+    if (!WATCH_ENABLED) return;
+    const q = new URLSearchParams(window.location.search).get("watch");
+    if (q) watchAddress(q.trim());
+    (window as unknown as { seidar?: object }).seidar = {
+      watch: (a: string, name?: string) => watchAddress(a, name),
+      wallets: () => load(WALLETS_KEY, []),
+    };
+  }, [watchAddress]);
+
   const switchWallet = useCallback(
     (target: string) => {
       if (!wallets.some((w) => w.address === target)) return errorAlert({ message: "Wallet not found" });
@@ -158,12 +199,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       portfolioAddresses: portfolio === "all" ? wallets.map((w) => w.address) : [portfolio],
       setPortfolio,
       openConnectModal,
+      watchAddress,
       switchWallet,
       renameWallet,
       disconnect,
       disconnectAll,
     };
-  }, [wallets, address, portfolio, setPortfolio, openConnectModal, switchWallet, renameWallet, disconnect, disconnectAll]);
+  }, [wallets, address, portfolio, setPortfolio, openConnectModal, watchAddress, switchWallet, renameWallet, disconnect, disconnectAll]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

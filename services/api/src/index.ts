@@ -120,6 +120,32 @@ app.get("/prices", async (c) => {
   }
 });
 
+// Horizon-backed charts: ?asset=native|CODE:ISSUER&range=1d|7d|...&counter= (default USD).
+app.get("/prices/chart", async (c) => {
+  const { parseAsset, priceChart, isChartRange } = await import("./price-chart.js");
+  const base = parseAsset(c.req.query("asset") ?? "");
+  const range = c.req.query("range") ?? "7d";
+  const counterRaw = c.req.query("counter");
+  const counter = counterRaw ? parseAsset(counterRaw) : undefined;
+  if (!base || !isChartRange(range) || counter === null)
+    return c.json({ ok: false, error: "asset and range required" }, 400);
+  return c.json(await priceChart(base, range, counter), 200);
+});
+
+// % change over a range for many assets: ?assets=native,CODE:ISSUER,...&range=7d
+app.get("/prices/changes", async (c) => {
+  const { parseAsset, priceChanges, isChartRange } = await import("./price-chart.js");
+  const range = c.req.query("range") ?? "1d";
+  const assets = (c.req.query("assets") ?? "")
+    .split(",")
+    .map(parseAsset)
+    .filter((a): a is NonNullable<typeof a> => !!a)
+    .slice(0, 40);
+  if (!isChartRange(range) || assets.length === 0)
+    return c.json({ ok: false, error: "assets and range required" }, 400);
+  return c.json({ ok: true, range, changes: await priceChanges(assets, range) }, 200);
+});
+
 app.get("/prices/history", async (c) => {
   const code = c.req.query("code") ?? "";
   const points = Number(c.req.query("points") ?? 48);
@@ -187,10 +213,12 @@ app.get("/positions", async (c) => {
   if (protocol && !POOL_PROTOCOLS.has(protocol))
     return c.json({ ok: false, error: "unknown protocol" }, 400);
   try {
-    const data = await getPositions(
-      address,
-      (protocol || undefined) as "blend" | "xoxno" | undefined,
-    );
+    const scan = await boundedScan(`lend:${address}:${protocol}`, async () => ({
+      status: 200,
+      body: await getPositions(address, (protocol || undefined) as "blend" | "xoxno" | undefined),
+    }));
+    if ((scan.body as { warming?: boolean }).warming) return c.json(scan.body as object);
+    const data = scan.body;
     // Piggyback equity snapshot: fire-and-forget, never delays the response.
     if (data && typeof data === "object" && "ok" in data && data.ok) {
       const d = data as { totalSupplied?: unknown; totalBorrowed?: unknown };
@@ -260,9 +288,26 @@ app.get("/vaults/detail", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+/* Position scans can take minutes on a cold cache (every pool/vault is read on chain). Answer
+   within a deadline with an empty "warming" result instead of holding the browser connection;
+   the scan keeps running, so its caches are warm for the next poll. One scan per address. */
+const scans = new Map<string, Promise<{ status: number; body: unknown }>>();
+async function boundedScan(key: string, run: () => Promise<{ status: number; body: unknown }>, ms = 25_000) {
+  let job = scans.get(key);
+  if (!job) {
+    job = run().finally(() => setTimeout(() => scans.delete(key), 60_000));
+    scans.set(key, job);
+  }
+  const late = Symbol("late");
+  const r = await Promise.race([job, new Promise<typeof late>((res) => setTimeout(() => res(late), ms))]);
+  if (r === late) return { status: 200, body: { ok: true, positions: [], warming: true, notes: ["Still scanning: try again shortly."] } };
+  return r;
+}
+
 app.get("/vaults/positions", async (c) => {
-  const r = await getVaultPositions(c.req.query("address") ?? "");
-  return c.json(r.body, r.status as 200);
+  const address = c.req.query("address") ?? "";
+  const r = await boundedScan(`vaults:${address}`, () => getVaultPositions(address));
+  return c.json(r.body as object, r.status as 200);
 });
 
 app.post("/vaults/build", async (c) => {
@@ -366,6 +411,13 @@ app.post("/lending/migrate/blend-xoxno", async (c) => {
 });
 
 // Account history with one lending protocol (decoded Horizon operations).
+// Everything an account did, classified: ?address=G...&kind=all|swaps|transfers|positions&cursor=
+app.get("/activity", async (c) => {
+  const { getActivity } = await import("./activity.js");
+  const r = await getActivity(c.req.query("address") ?? "", c.req.query("kind") ?? "all", c.req.query("cursor") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
 app.get("/history", async (c) => {
   const r = await getHistory(
     c.req.query("address") ?? "",
@@ -386,8 +438,9 @@ app.get("/lend/markets", async (c) => {
 // Every LP position an address holds (Soroswap / Aqua / Phoenix).
 app.get("/dex/positions", async (c) => {
   const { getLpPositions } = await import("./lp-positions.js");
-  const r = await getLpPositions(c.req.query("address") ?? "");
-  return c.json(r.body, r.status as 200);
+  const address = c.req.query("address") ?? "";
+  const r = await boundedScan(`lp:${address}`, () => getLpPositions(address));
+  return c.json(r.body as object, r.status as 200);
 });
 app.get("/dex/position", async (c) => {
   const r = await lpPosition({ protocol: c.req.query("protocol"), pool: c.req.query("pool"), address: c.req.query("address") });
@@ -451,6 +504,18 @@ app.get("/lending/xoxno/markets", async (c) => {
 app.post("/feedback", async (c) => {
   const r = await submitFeedback(await c.req.json().catch(() => ({})));
   return c.json(r.body, r.status as 200);
+});
+
+// Classic asset logo: ?asset=CODE:ISSUER -> 302 to the image, 404 when none is published.
+app.get("/token/logo", async (c) => {
+  const [code, issuer] = (c.req.query("asset") ?? "").split(":");
+  if (!/^[A-Za-z0-9]{1,12}$/.test(code ?? "") || !/^G[A-Z2-7]{55}$/.test(issuer ?? ""))
+    return c.json({ ok: false, error: "asset required" }, 400);
+  const { tokenLogo } = await import("./token-logo.js");
+  const url = await tokenLogo(code, issuer);
+  if (!url) return c.json({ ok: false, error: "no-logo" }, 404);
+  c.header("Cache-Control", "public, max-age=86400");
+  return c.redirect(url, 302);
 });
 
 app.get("/icon", async (c) => {

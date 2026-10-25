@@ -13,22 +13,32 @@ import { HanaModule } from "@creit.tech/stellar-wallets-kit/modules/hana";
 
 export type KitWalletId = "freighter" | "albedo" | "xbull" | "lobstr" | "rabet" | "hana";
 
-export type WalletMeta = { id: KitWalletId; name: string; logo: string };
+/** "watch" = read-only test wallet: real mainnet data, no signing (dev builds or NEXT_PUBLIC_ENABLE_WATCH=1). */
+export type WalletKind = KitWalletId | "watch";
+
+/** bg: the circle behind the logo (brand colour); bleed: the logo is a full square that fills it. */
+export type WalletMeta = { id: WalletKind; name: string; logo: string; bg: string; bleed?: boolean };
+
+export const WATCH_ENABLED = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_WATCH === "1";
+
+export const WATCH_META: WalletMeta = { id: "watch", name: "Watch-only", logo: "/assets/defaultWallet.svg", bg: "#2A2A2A" };
+
+export const isStellarAddress = (a: string) => /^G[A-Z2-7]{55}$/.test(a);
 
 export const WALLETS: WalletMeta[] = [
-  { id: "freighter", name: "Freighter", logo: "/assets/wallets/freighter-logo.svg" },
-  { id: "albedo", name: "Albedo", logo: "/assets/wallets/albedo-logo.png" },
-  { id: "xbull", name: "xBull", logo: "/assets/wallets/xbull-logo.png" },
-  { id: "lobstr", name: "LOBSTR", logo: "/assets/wallets/lobstr-logo.png" },
-  { id: "rabet", name: "Rabet", logo: "/assets/wallets/rabet-logo.png" },
-  { id: "hana", name: "Hana", logo: "/assets/wallets/hana-logo.png" },
+  { id: "freighter", name: "Freighter", logo: "/assets/wallets/freighter-logo.svg", bg: "#5E44E2" },
+  { id: "albedo", name: "Albedo", logo: "/assets/wallets/albedo-logo.png", bg: "#FFFFFF" },
+  { id: "xbull", name: "xBull", logo: "/assets/wallets/xbull-logo.png", bg: "#202020", bleed: true },
+  { id: "lobstr", name: "LOBSTR", logo: "/assets/wallets/lobstr-logo.png", bg: "#51A4BE", bleed: true },
+  { id: "rabet", name: "Rabet", logo: "/assets/wallets/rabet-logo.png", bg: "#1B1B2F" },
+  { id: "hana", name: "Hana", logo: "/assets/wallets/hana-logo.png", bg: "#16073A", bleed: true },
 ];
 
 export const STELLAR_LOGO = "/assets/wallets/xlm-logo.png";
 export const MAINNET_PASSPHRASE = Networks.PUBLIC;
 
-export const walletMeta = (id: KitWalletId | null | undefined): WalletMeta | undefined =>
-  WALLETS.find((w) => w.id === id);
+export const walletMeta = (id: WalletKind | null | undefined): WalletMeta | undefined =>
+  id === "watch" ? WATCH_META : WALLETS.find((w) => w.id === id);
 
 let ready = false;
 function kit() {
@@ -62,7 +72,7 @@ export async function kitOpenAuthModal(): Promise<{ address: string; walletId: K
     try {
       const pid = String((k.selectedModule as { productId?: unknown } | null)?.productId ?? "").toLowerCase();
       const hit = WALLETS.find((w) => w.id === pid);
-      if (hit) walletId = hit.id;
+      if (hit) walletId = hit.id as KitWalletId;
     } catch {}
     return { address, walletId };
   } catch {
@@ -82,8 +92,16 @@ export async function kitGetAddress(id: KitWalletId): Promise<string | null> {
   }
 }
 
+/** Thrown when a watch-only wallet is asked to sign; carries the built XDR for inspection. */
+export class WatchOnlyError extends Error {
+  constructor(public xdr: string) {
+    super("Watch-only wallet: the transaction was built but cannot be signed.");
+  }
+}
+
 /** Sign a transaction envelope on mainnet, resolving to the signed XDR. */
-export async function kitSignTransaction(id: KitWalletId, xdr: string, address?: string): Promise<string> {
+export async function kitSignTransaction(id: WalletKind, xdr: string, address?: string): Promise<string> {
+  if (id === "watch") throw new WatchOnlyError(xdr);
   const k = kit();
   k.setWallet(id);
   const r = (await k.signTransaction(xdr, { networkPassphrase: Networks.PUBLIC, address })) as unknown;

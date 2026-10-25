@@ -11,15 +11,33 @@ export function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   return fetchRetry(url, init, 3);
 }
 
-/** GET + JSON, resolving to null on any failure so callers can render an empty state. */
-export async function apiJson<T>(input: string, init?: RequestInit): Promise<T | null> {
+/**
+ * GET + JSON, resolving to null on any failure so callers can render an empty state. Aborts after
+ * `timeoutMs`: a stuck request must not hold one of the browser's few connections to the API.
+ */
+export async function apiJson<T>(input: string, init?: RequestInit, timeoutMs = 45_000): Promise<T | null> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await apiFetch(input, { cache: "no-store", ...init });
+    const r = await apiFetch(input, { cache: "no-store", signal: ctl.signal, ...init });
     if (!r.ok) return null;
     return (await r.json()) as T;
   } catch {
     return null;
+  } finally {
+    clearTimeout(t);
   }
+}
+
+/** Like apiJson, but re-polls while the API answers `{ warming: true }` (a scan still running). */
+export async function apiJsonWarm<T>(input: string, tries = 12, waitMs = 6_000): Promise<T | null> {
+  let r: T | null = null;
+  for (let i = 0; i < tries; i++) {
+    r = await apiJson<T>(input);
+    if (!(r as { warming?: boolean } | null)?.warming) return r;
+    await new Promise((res) => setTimeout(res, waitMs));
+  }
+  return r;
 }
 
 // Reads retry a dropped connection (API restart, flaky network); HTTP errors are returned as is.

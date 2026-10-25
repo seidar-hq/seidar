@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Box from "@mui/material/Box";
+import InputBase from "@mui/material/InputBase";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
@@ -10,6 +12,7 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import LinkOffRoundedIcon from "@mui/icons-material/LinkOffRounded";
 import GlassDialog from "@/components/common/GlassDialog";
 import { formatUsd, shortAddress } from "@/lib/format";
+import { WATCH_ENABLED, isStellarAddress } from "@/lib/wallets";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 import { StellarLogo, WalletAvatar } from "./WalletParts";
@@ -38,7 +41,8 @@ const NetworkChip = styled(Box)(({ theme }) => ({
 
 /** Every linked wallet: switch the active one, disconnect one or all, or add another. */
 export default function WalletsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { wallets, address, switchWallet, disconnect, disconnectAll, openConnectModal } = useWallet();
+  const { wallets, address, switchWallet, disconnect, disconnectAll, openConnectModal, watchAddress } = useWallet();
+  const [watchInput, setWatchInput] = useState("");
   const { byAddress } = useBalances(open ? wallets.map((w) => w.address) : []);
 
   return (
@@ -127,6 +131,34 @@ export default function WalletsModal({ open, onClose }: { open: boolean; onClose
             </Row>
           );
         })}
+        {WATCH_ENABLED && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              p: "0.5rem 0.5rem 0.5rem 0.875rem",
+              borderRadius: "0.75rem",
+              border: (t) => `0.0625rem dashed ${t.palette.border.main700}`,
+            }}
+          >
+            <InputBase
+              value={watchInput}
+              onChange={(e) => setWatchInput(e.target.value.trim())}
+              placeholder="Watch a mainnet address (G…) for testing"
+              sx={{ flex: 1, fontSize: "0.8125rem", color: "common.black" }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              color="cancel"
+              disabled={!isStellarAddress(watchInput)}
+              onClick={() => watchAddress(watchInput) && setWatchInput("")}
+            >
+              Watch
+            </Button>
+          </Box>
+        )}
         {wallets.length === 0 && (
           <Typography variant="body3" sx={{ textAlign: "center", py: "1rem" }}>
             No wallets linked yet.

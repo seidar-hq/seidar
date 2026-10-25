@@ -115,25 +115,25 @@ const GROUPS: { group?: string; options: Option[] }[] = [
   {
     group: "Earn",
     options: [
-      { value: "staking", label: "Staking" },
-      { value: "lend", label: "Lend" },
-      { value: "borrow", label: "Borrow" },
+      { value: "lend", label: "Lend & Borrow" },
       { value: "liquidity", label: "Liquidity" },
+      { value: "vaults", label: "Vaults" },
     ],
   },
   {
     group: "Trade",
     options: [
       { value: "swap", label: "Swap" },
-      { value: "derivatives", label: "Derivatives" },
+      { value: "perps", label: "Perps" },
     ],
   },
-  { group: "Cross Chain", options: [{ value: "bridge", label: "Bridge" }] },
+  { group: "Bridge", options: [{ value: "bridge", label: "Bridge" }] },
   {
     group: "Others",
     options: [
       { value: "send", label: "Send" },
       { value: "receive", label: "Receive" },
+      { value: "other", label: "Other" },
     ],
   },
 ];

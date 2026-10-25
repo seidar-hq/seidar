@@ -47,6 +47,38 @@ let redis: {
 } | null = null;
 let redisTried = false;
 
+/* Dev persistence: with CACHE_FILE set and no Redis, the memory cache is saved to that file
+   (debounced) and reloaded on start, so a restarting dev server keeps its warm cache. */
+const env = (k: string): string =>
+  ((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[k] ?? "").trim();
+type Fs = { readFileSync(p: string, enc: string): string; writeFileSync(p: string, d: string): void };
+const loadFs = () => (Function("m", "return import(m)") as (m: string) => Promise<Fs>)("node:fs");
+let fileLoaded: Promise<void> | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function fileLoad(): Promise<void> {
+  const file = env("CACHE_FILE");
+  if (!file) return Promise.resolve();
+  fileLoaded ??= loadFs()
+    .then((fs) => {
+      const data = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, Entry>;
+      for (const [k, e] of Object.entries(data)) if (!mem.has(k)) mem.set(k, e);
+    })
+    .catch(() => {});
+  return fileLoaded;
+}
+
+function fileSave(): void {
+  const file = env("CACHE_FILE");
+  if (!file || saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void loadFs()
+      .then((fs) => fs.writeFileSync(file, JSON.stringify(Object.fromEntries(mem))))
+      .catch(() => {});
+  }, 2000);
+}
+
 async function getRedis() {
   if (redisTried) return redis;
   redisTried = true;
@@ -94,6 +126,7 @@ export function setKeyScope(fn: () => string): void {
 }
 
 export async function cacheGet<T>(rawKey: string): Promise<T | null> {
+  await fileLoad();
   const key = scope() + rawKey;
   const r = await getRedis().catch(() => null);
   if (r) {
@@ -114,6 +147,7 @@ export async function cacheGet<T>(rawKey: string): Promise<T | null> {
 export async function cacheGetEntry<T>(
   rawKey: string,
 ): Promise<{ at: number; value: T } | null> {
+  await fileLoad();
   const key = scope() + rawKey;
   const r = await getRedis().catch(() => null);
   if (r) {
@@ -140,6 +174,7 @@ export async function cacheSet(
   const key = scope() + rawKey;
   const payload = JSON.stringify({ at: Date.now(), value });
   mem.set(key, { at: Date.now(), value });
+  fileSave();
   const r = await getRedis().catch(() => null);
   if (r) {
     try {
