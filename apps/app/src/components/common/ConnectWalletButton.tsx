@@ -4,12 +4,11 @@ import Button from "@mui/material/Button";
 import { useWallet } from "@/wallet/WalletContext";
 
 export default function ConnectWalletButton() {
-  const { address, isConnected, openConnectModal } = useWallet();
-  const short = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+  const { openConnectModal } = useWallet();
 
   return (
     <Button
-      onClick={openConnectModal}
+      onClick={() => void openConnectModal()}
       variant="solid"
       fullWidth
       sx={{
@@ -22,7 +21,7 @@ export default function ConnectWalletButton() {
         height: "3rem",
       }}
     >
-      {isConnected ? short : "Connect Wallet"}
+      Connect Wallet
     </Button>
   );
 }

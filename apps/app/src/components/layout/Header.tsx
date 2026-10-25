@@ -25,7 +25,7 @@ import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
-import ConnectWalletButton from "@/components/common/ConnectWalletButton";
+import HeaderWallet from "@/components/wallet/HeaderWallet";
 import { DerivativesDropdownIcon, LayoutIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
 import { DOCS_URL, X_URL } from "@/lib/links";
 import { useThemeMode } from "@/theme/ThemeModeContext";
@@ -468,7 +468,7 @@ export default function Header() {
           >
             <LayoutIcon size="1.25rem" />
           </CircleIconButton>
-          <ConnectWalletButton />
+          <HeaderWallet />
         </RightCluster>
 
         <Menu
