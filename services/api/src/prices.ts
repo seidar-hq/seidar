@@ -8,7 +8,7 @@
 //   Forex (base USD): CBKGPWGKSKZF52CFHMTRR23TBWTPMRDIYZ4O2P5VS65BMHYH4DXMCJZC
 // Testnet mirrors live in contracts/configs/networks.json (reflector_testnet).
 
-import { cacheGet, cacheSet, KEYS, TTL_MS } from "@seidar/cache";
+import { cacheGet, cacheGetEntry, cacheSet, KEYS, TTL_MS } from "@seidar/cache";
 import { sorobanView as sharedView } from "./rpc.js";
 
 
@@ -349,8 +349,13 @@ export interface PriceResult {
 }
 
 /** Full cascade per code: pinned → Reflector → SDEX(AQUA) → Coinbase → CG. */
+/** Spot prices stay servable this long; past their TTL they refresh in the background. */
+const SPOT_RETAIN_MS = 6 * 3600_000;
+const refreshing = new Set<string>();
+
 export async function livePrices(
   codes: string[],
+  opts: { refresh?: boolean } = {},
 ): Promise<PriceResult> {
   const uniq = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))].slice(0, 40);
   const prices: Record<string, number | null> = {};
@@ -367,14 +372,23 @@ export async function livePrices(
   }
   const need = uniq.filter((c) => prices[c] == null);
 
-  // 2. Shared-cache short-circuit (survives restarts via Redis).
+  // 2. Shared-cache short-circuit (survives restarts via Redis). Stale-while-revalidate:
+  //    a price past its TTL is still served, and refreshed in the background.
   const uncached: string[] = [];
+  const stale: string[] = [];
   for (const c of need) {
-    const hit = await cacheGet<number>(KEYS.priceSpot(c)).catch(() => null);
-    if (hit != null && hit > 0) {
-      prices[c] = hit;
+    const e = opts.refresh ? null : await cacheGetEntry<number>(KEYS.priceSpot(c)).catch(() => null);
+    if (e && e.value != null && e.value > 0 && Date.now() - e.at < SPOT_RETAIN_MS) {
+      prices[c] = e.value;
       sources[c] = "cache";
+      if (Date.now() - e.at > TTL_MS.pricesSpot && !refreshing.has(c)) stale.push(c);
     } else uncached.push(c);
+  }
+  if (stale.length) {
+    stale.forEach((c) => refreshing.add(c));
+    void livePrices(stale, { refresh: true })
+      .catch(() => null)
+      .finally(() => stale.forEach((c) => refreshing.delete(c)));
   }
 
   // 3. Reflector (majors). Batched, one cheap simulate per asset.
@@ -389,7 +403,7 @@ export async function livePrices(
     if (px != null && px > 0) {
       prices[c] = px;
       sources[c] = "reflector";
-      await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot).catch(() => {});
+      await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
     }
   }
 
@@ -400,7 +414,7 @@ export async function livePrices(
     if (aqua != null && aqua > 0) {
       prices["AQUA"] = aqua;
       sources["AQUA"] = "sdex-xlm";
-      await cacheSet(KEYS.priceSpot("AQUA"), aqua, TTL_MS.pricesSpot).catch(() => {});
+      await cacheSet(KEYS.priceSpot("AQUA"), aqua, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
     }
   }
 
@@ -416,7 +430,7 @@ export async function livePrices(
     if (px != null && px > 0) {
       prices[c] = px;
       sources[c] = "coinbase";
-      await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot).catch(() => {});
+      await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
     }
   }
 
@@ -434,7 +448,7 @@ export async function livePrices(
       if (px != null && px > 0) {
         prices[c] = px;
         sources[c] = "sdex-usdc";
-        await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot).catch(() => {});
+        await cacheSet(KEYS.priceSpot(c), px, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
       }
     }
   }
@@ -447,7 +461,7 @@ export async function livePrices(
       if (fb[c] > 0) {
         prices[c] = fb[c];
         sources[c] = "coingecko-fallback";
-        await cacheSet(KEYS.priceSpot(c), fb[c], TTL_MS.pricesSpot).catch(() => {});
+        await cacheSet(KEYS.priceSpot(c), fb[c], TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
       } else {
         prices[c] = null;
         sources[c] = "unavailable";

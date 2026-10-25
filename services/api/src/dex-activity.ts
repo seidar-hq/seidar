@@ -125,11 +125,31 @@ export function refreshActivity(venue: Venue) {
 
 export type PoolActivity = { trades7d: number; volume7dUsd: number | null };
 
+// Pricing the swap list is the slow part: keep the result until the next scan (or 5 min).
+const activityMemo: Partial<Record<Venue, { scanAt: number; at: number; value: Map<string, PoolActivity> }>> = {};
+const activityInflight: Partial<Record<Venue, Promise<Map<string, PoolActivity>>>> = {};
+
 /** 7-day trades + USD volume per pool (null volume = an unpriced input). */
 export async function venueActivity(venue: Venue): Promise<{ ready: boolean; byPool: Map<string, PoolActivity> }> {
+  if (!lastScan[venue]) return { ready: false, byPool: new Map() };
+  const memo = activityMemo[venue];
+  if (memo && memo.scanAt === lastScan[venue] && Date.now() - memo.at < 5 * 60_000) return { ready: true, byPool: memo.value };
+  // A stale memo still answers instantly while the new one is computed.
+  const job = (activityInflight[venue] ??= computeActivity(venue)
+    .then((value) => {
+      activityMemo[venue] = { scanAt: lastScan[venue], at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      delete activityInflight[venue];
+    }));
+  if (memo) return { ready: true, byPool: memo.value };
+  return { ready: true, byPool: await job };
+}
+
+async function computeActivity(venue: Venue): Promise<Map<string, PoolActivity>> {
   const list = swaps[venue];
   const byPool = new Map<string, PoolActivity>();
-  if (!lastScan[venue]) return { ready: false, byPool };
   const { prices } = await pricesByContract([...new Set(list.map((s) => s.token))]).catch(() => ({ prices: {} as Record<string, number | null> }));
   const { tokenMetas } = await import("./token-meta.js");
   const metas = await tokenMetas([...new Set(list.map((s) => s.token))]);
@@ -141,5 +161,5 @@ export async function venueActivity(venue: Venue): Promise<{ ready: boolean; byP
     if (a.volume7dUsd != null) a.volume7dUsd = px != null && px > 0 ? a.volume7dUsd + (Number(s.amount) / 10 ** dec) * px : null;
     byPool.set(s.pool, a);
   }
-  return { ready: true, byPool };
+  return byPool;
 }

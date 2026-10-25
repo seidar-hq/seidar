@@ -1,412 +1,162 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import ButtonBase from "@mui/material/ButtonBase";
-import InputBase from "@mui/material/InputBase";
-import Slider from "@mui/material/Slider";
 import Typography from "@mui/material/Typography";
-import { styled } from "@mui/material/styles";
 import DataTable, { type Column } from "@/components/common/DataTable";
-import GlassDialog, { MODAL } from "@/components/common/GlassDialog";
-import Tabs from "@/components/common/Tabs";
-import TokenLogo from "@/components/common/TokenLogo";
-import { SearchIcon } from "@/components/icons/HeaderIcons";
-import TxDialog from "@/components/tx/TxDialog";
-import { apiJson } from "@/lib/api";
+import { PairLogos } from "@/components/common/TokenLogo";
 import { formatAmount, formatUsd } from "@/lib/format";
-import { runBuilt, toBase, type TxStep } from "@/lib/tx";
-import { useSharedMany } from "@/lib/useShared";
-import { usePortfolio, useTokenCatalogue, type SupplyRow } from "@/portfolio/usePortfolio";
-import { useBalances } from "@/wallet/useBalances";
-import { useWallet } from "@/wallet/WalletContext";
-import { EarnGrid, SideCard } from "./EarnParts";
+import { usePortfolio, type SupplyRow } from "@/portfolio/usePortfolio";
+import { useWallet, walletLabel } from "@/wallet/WalletContext";
+import { EarnGrid } from "./EarnParts";
+import { LabeledSwitch, ProtocolChips, ProtocolSection, RowAction, SearchBox, TopList } from "./EarnUI";
+import { compactUsd, pct } from "./lendData";
+import { POOL_VENUES, feeText, isConcentrated, poolHref, poolTypeLabel, usePools, venueMeta, type Pool } from "./poolData";
 
-const VENUES = [
-  { id: "soroswap", name: "Soroswap" },
-  { id: "aqua", name: "Aquarius" },
-  { id: "phoenix", name: "Phoenix" },
-] as const;
-const venueName = (id: string) => VENUES.find((v) => v.id === id)?.name ?? id;
+const Num = ({ children, color = "black.main100" }: { children: React.ReactNode; color?: string }) => (
+  <Typography variant="body1" sx={{ color, fontSize: "1rem" }}>
+    {children}
+  </Typography>
+);
 
-type PoolRow = {
-  protocol: string;
-  address: string;
-  pair: string;
-  assets: { contract: string; code: string }[];
-  poolType: string;
-  feeBps: number | null;
-  tvlUsd: number | null;
-  reserves?: { code: string; amount: number; decimals: number }[];
-};
-
-const Chip = styled(ButtonBase, { shouldForwardProp: (p) => p !== "active" })<{ active?: boolean }>(({ theme, active }) => ({
-  padding: "0.375rem 0.875rem",
-  borderRadius: "999rem",
-  fontSize: "0.8125rem",
-  color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText,
-  backgroundColor: active ? theme.palette.sidebar.primary : theme.palette.overlay.white05,
-}));
-
-const Search = styled(Box)(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  height: "2.5rem",
-  padding: "0 0.875rem",
-  borderRadius: "999rem",
-  backgroundColor: theme.palette.surfaceBg.softInset,
-  minWidth: "14rem",
-}));
-
-const Inset = styled(Box)({ display: "flex", flexDirection: "column", gap: "0.5rem", padding: "1rem", borderRadius: "1rem", backgroundColor: MODAL.inset });
-
-function PairLogos({ legs, size = "1.75rem" }: { legs: { code: string; issuer: string | null }[]; size?: string }) {
+function PairCell({ legs, title, sub }: { legs: { code: string; issuer?: string | null; contract?: string | null }[]; title: string; sub: string }) {
   return (
-    <Box sx={{ display: "flex" }}>
-      {legs.slice(0, 2).map((l, i) => (
-        <Box key={`${l.code}${i}`} sx={{ ml: i ? "-0.5rem" : 0 }}>
-          <TokenLogo code={l.code} issuer={l.issuer} size={size} />
-        </Box>
-      ))}
+    <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <PairLogos legs={legs} size="2.5rem" />
+      <Box>
+        <Typography sx={{ fontSize: "1rem", color: "common.black" }}>{title}</Typography>
+        <Typography sx={{ fontSize: "0.75rem", color: "grey.200", textTransform: "uppercase" }}>{sub}</Typography>
+      </Box>
     </Box>
   );
 }
 
-function LiquidityDialog({
-  pool,
-  position,
-  initial,
-  onClose,
-}: {
-  pool: PoolRow;
-  position: SupplyRow | undefined;
-  initial: "deposit" | "withdraw";
-  onClose: () => void;
-}) {
-  const { activeWallet } = useWallet();
-  const { byContract } = useTokenCatalogue();
-  const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
-  const [tab, setTab] = useState<string>(initial);
-  const [amounts, setAmounts] = useState(["", ""]);
-  const [pct, setPct] = useState(100);
-  const [steps, setSteps] = useState<TxStep[]>([]);
-  const [txOpen, setTxOpen] = useState(false);
-  const [txError, setTxError] = useState<string | null>(null);
-  const legs = pool.assets.map((a) => {
-    const meta = byContract.get(a.contract);
-    const bal = activeWallet ? byAddress[activeWallet.address]?.tokens.find((t) => t.code === (meta?.code ?? a.code) && (t.issuer ?? null) === (meta?.issuer ?? null)) : undefined;
-    return { ...a, issuer: meta?.issuer ?? null, decimals: meta?.decimals ?? 7, balance: bal?.amount ?? 0 };
-  });
-  const res = pool.reserves ?? [];
-  // Mirror the pool's reserve ratio as the user types (two-token pools).
-  const ratio = res.length === 2 && res[0].amount > 0 ? res[1].amount / 10 ** res[1].decimals / (res[0].amount / 10 ** res[0].decimals) : null;
-  const setLeg = (i: number, v: string) => {
-    if (!/^\d*\.?\d*$/.test(v)) return;
-    const next = [...amounts];
-    next[i] = v;
-    if (ratio && v && Number(v) > 0) next[1 - i] = String(Number((i === 0 ? Number(v) * ratio : Number(v) / ratio).toFixed(7)));
-    setAmounts(next);
-  };
-  const tooMuch = legs.some((l, i) => Number(amounts[i] || 0) > l.balance + 1e-9);
-  const concentrated = pool.poolType === "concentrated";
-
-  const run = async () => {
-    if (!activeWallet) return;
-    const body =
-      tab === "deposit"
-        ? { protocol: pool.protocol, pool: pool.address, from: activeWallet.address, action: "deposit", amounts: legs.map((l, i) => toBase(amounts[i] || "0", l.decimals) ?? "0"), slippageBps: 100 }
-        : {
-            protocol: pool.protocol,
-            pool: pool.address,
-            from: activeWallet.address,
-            action: "withdraw",
-            shares: position?.shares ? ((BigInt(position.shares) * BigInt(pct)) / BigInt(100)).toString() : "0",
-            slippageBps: 100,
-          };
-    setSteps([{ key: "s0", label: `${tab === "deposit" ? "Add" : "Remove"} liquidity · ${pool.pair}`, status: "building" }]);
-    setTxError(null);
-    setTxOpen(true);
-    try {
-      const r = await runBuilt("/api/dex/liquidity/build", body, activeWallet, setSteps);
-      if (!r.unsigned) onClose();
-    } catch (e) {
-      setTxError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const blocker = concentrated
-    ? "CONCENTRATED POOL: USE AQUARIUS"
-    : tab === "deposit" && !amounts.some((a) => Number(a) > 0)
-      ? "ENTER AMOUNTS"
-      : tab === "deposit" && tooMuch
-        ? "INSUFFICIENT BALANCE"
-        : tab === "withdraw" && !position?.shares
-          ? "NO LIQUIDITY IN THIS POOL"
-          : null;
-  const ok = !blocker;
-  const cta = blocker ?? (tab === "deposit" ? "ADD LIQUIDITY" : "REMOVE LIQUIDITY");
-
-  return (
-    <>
-      <GlassDialog
-        open={!txOpen}
-        onClose={onClose}
-        title={`${pool.pair} · ${venueName(pool.protocol)}`}
-        titleIcon={<PairLogos legs={legs} />}
-        actions={
-          <Button variant="solid" color="primary" fullWidth disabled={!ok} onClick={() => void run()} sx={{ height: "3rem", borderRadius: "999rem" }}>
-            {cta}
-          </Button>
-        }
-      >
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <Tabs
-            tabs={[
-              { id: "deposit", label: "Add" },
-              { id: "withdraw", label: "Remove" },
-            ]}
-            activeTab={tab}
-            setActiveTab={setTab}
-            isPathProvided={false}
-            fullWidth
-          />
-          {tab === "deposit" ? (
-            legs.map((l, i) => (
-              <Inset key={l.contract}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <InputBase
-                    placeholder="0"
-                    value={amounts[i]}
-                    onChange={(e) => setLeg(i, e.target.value)}
-                    inputProps={{ inputMode: "decimal" }}
-                    sx={{ flex: 1, fontSize: "1.5rem", fontWeight: 500, color: "#E3E3E3" }}
-                  />
-                  <TokenLogo code={l.code} issuer={l.issuer} size="1.5rem" />
-                  <Typography variant="subtitle1" color="common.black">
-                    {l.code}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="subtitle3" color={Number(amounts[i] || 0) > l.balance ? "error.main" : MODAL.muted}>
-                    Balance: {formatAmount(l.balance, 6)}
-                  </Typography>
-                  {l.balance > 0 && (
-                    <ButtonBase onClick={() => setLeg(i, String(Number(l.balance.toFixed(7))))} sx={{ fontSize: "0.75rem", color: "primary.main" }}>
-                      MAX
-                    </ButtonBase>
-                  )}
-                </Box>
-              </Inset>
-            ))
-          ) : (
-            <Inset>
-              <Typography variant="subtitle3" color={MODAL.muted}>
-                Your liquidity: {position ? `${(position.legs ?? []).map((l) => `${formatAmount(l.amount, 4)} ${l.code}`).join(" + ")} · ${formatUsd(position.usd)}` : "none"}
-              </Typography>
-              <Typography variant="h5" color="common.black">
-                {pct}%
-              </Typography>
-              <Slider value={pct} min={1} max={100} onChange={(_, v) => setPct(v as number)} disabled={!position?.shares} />
-              <Box sx={{ display: "flex", gap: "0.5rem" }}>
-                {[25, 50, 75, 100].map((v) => (
-                  <ButtonBase key={v} onClick={() => setPct(v)} sx={{ px: "0.75rem", py: "0.25rem", borderRadius: "999rem", backgroundColor: MODAL.border, fontSize: "0.75rem", color: "#E3E3E3" }}>
-                    {v}%
-                  </ButtonBase>
-                ))}
-              </Box>
-            </Inset>
-          )}
-          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-            <Typography variant="subtitle3" color={MODAL.muted}>
-              Pool fee · TVL
-            </Typography>
-            <Typography variant="subtitle3" color="common.black">
-              {pool.feeBps != null ? `${(pool.feeBps / 100).toFixed(2)}%` : "—"} · {pool.tvlUsd != null ? formatUsd(pool.tvlUsd) : "—"}
-            </Typography>
-          </Box>
-          <Typography variant="caption" color={MODAL.muted}>
-            Deposits follow the pool&apos;s current price ratio; up to 1% slippage protection.
-          </Typography>
-        </Box>
-      </GlassDialog>
-      <TxDialog open={txOpen} title={`Liquidity · ${pool.pair}`} steps={steps} error={txError} onClose={() => (setTxOpen(false), onClose())} />
-    </>
-  );
-}
+const MIN_TVL = 1_000;
 
 export default function Pools({ tabs }: { tabs: React.ReactNode }) {
-  const { activeWallet } = useWallet();
+  const router = useRouter();
+  const { portfolioWallets, portfolioAddresses } = useWallet();
   const portfolio = usePortfolio();
-  const { byContract } = useTokenCatalogue();
-  const { values, loading } = useSharedMany<{ rows?: PoolRow[] } | null>(
-    VENUES.map((v) => `dexpools:${v.id}`),
-    (k) => () => apiJson(`/api/dex/pools?protocol=${k.split(":")[1]}`, undefined, 240_000),
-    300_000,
-  );
-  const [venue, setVenue] = useState<"all" | (typeof VENUES)[number]["id"]>("all");
+  const { pools, pending } = usePools();
+  const [venue, setVenue] = useState<string>("all");
   const [q, setQ] = useState("");
-  const [shown, setShown] = useState(20);
-  const [dialog, setDialog] = useState<{ pool: PoolRow; initial: "deposit" | "withdraw" } | null>(null);
+  const [hideSmall, setHideSmall] = useState(true);
 
-  const all = useMemo(() => VENUES.flatMap((v) => values[`dexpools:${v.id}`]?.rows ?? []), [values]);
-  const rows = useMemo(
-    () =>
-      all
-        .filter((p) => (venue === "all" || p.protocol === venue) && (p.tvlUsd ?? 0) >= 100 && (!q || p.pair.toLowerCase().includes(q.toLowerCase())))
-        .sort((a, b) => (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0)),
-    [all, venue, q],
-  );
-  const legsOf = (p: PoolRow) => p.assets.map((a) => ({ code: byContract.get(a.contract)?.code ?? a.code, issuer: byContract.get(a.contract)?.issuer ?? null }));
-  const myLp = portfolio.supplied.filter((s) => s.kind === "lp" && s.wallet === activeWallet?.address);
+  const query = q.trim().toLowerCase();
+  const multi = portfolioWallets.length > 1 && portfolioAddresses.length > 1;
+  const lp = portfolio.supplied.filter((r) => r.kind === "lp");
+  const poolOf = (r: SupplyRow) => pools.find((p) => p.protocol === r.protocol && p.address === r.pool);
+  const open = (p: Pick<Pool, "protocol" | "address">, tab = "supply") => router.push(poolHref(p, tab));
 
-  const columns: Column<PoolRow>[] = [
-    {
-      id: "pair",
-      header: "Pool",
-      cell: (p) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-          <PairLogos legs={legsOf(p)} />
-          <Box>
-            <Typography variant="body3" color="common.black" sx={{ display: "block" }}>
-              {p.pair}
-            </Typography>
-            <Typography variant="caption" color="grey.200" sx={{ display: "block" }}>
-              {venueName(p.protocol)} · {p.poolType}
-            </Typography>
-          </Box>
-        </Box>
-      ),
-    },
-    { id: "fee", header: "Fee", cell: (p) => <Typography variant="body1" color="black.main100">{p.feeBps != null ? `${(p.feeBps / 100).toFixed(2)}%` : "—"}</Typography> },
-    { id: "tvl", header: "TVL", cell: (p) => <Typography variant="body1" color="common.black">{p.tvlUsd != null ? formatUsd(p.tvlUsd) : "—"}</Typography> },
-    {
-      id: "mine",
-      header: "Your liquidity",
-      cell: (p) => {
-        const m = myLp.find((s) => s.pool === p.address);
-        return <Typography variant="body1" color={m ? "green.main" : "grey.200"}>{m ? formatUsd(m.usd) : "—"}</Typography>;
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: (p) => (
-        <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="solid" color="primary" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ pool: p, initial: "deposit" })}>
-            Add
-          </Button>
-          <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} disabled={!myLp.some((s) => s.pool === p.address)} onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
-            Remove
-          </Button>
-        </Box>
-      ),
-    },
+  const columns: Column<Pool>[] = [
+    { id: "pool", header: "Asset/ Pool", cell: (p) => <PairCell legs={p.legs} title={p.pair} sub={poolTypeLabel(p.poolType)} />, sortValue: (p) => p.pair },
+    { id: "tvl", header: "TVL/ Supply", cell: (p) => <Num>{compactUsd(p.tvlUsd)}</Num>, sortValue: (p) => p.tvlUsd ?? -1 },
+    { id: "apy", header: "APY", cell: (p) => <Num color="green.main">{pct(p.apyPct)}</Num>, sortValue: (p) => p.apyPct ?? -1 },
+    { id: "fee", header: "Fee Tier", cell: (p) => <Num>{feeText(p.feeBps)}</Num>, sortValue: (p) => p.feeBps ?? -1 },
+    { id: "protocol", header: "Protocol", cell: (p) => <Num>{venueMeta(p.protocol).name}{isConcentrated(p) ? " CL" : ""}</Num> },
+    { id: "action", header: "Action", align: "center", cell: (p) => <RowAction label="Supply" onClick={() => open(p)} /> },
   ];
+
+  const posColumns: Column<SupplyRow>[] = [
+    {
+      id: "pool",
+      header: "Pool",
+      cell: (r) => <PairCell legs={(r.legs ?? []).map((l) => ({ code: l.code, issuer: l.issuer }))} title={r.code} sub={`${poolOf(r) ? poolTypeLabel(poolOf(r)!.poolType) : r.label}${multi ? ` · ${walletLabel(portfolioWallets.find((w) => w.address === r.wallet)!)}` : ""}`} />,
+    },
+    {
+      id: "amounts",
+      header: "Your Liquidity",
+      cell: (r) => (
+        <Box>
+          {(r.legs ?? []).map((l) => (
+            <Typography key={l.code} sx={{ fontSize: "0.875rem", color: "common.black" }}>
+              {formatAmount(l.amount, 4)} {l.code}
+            </Typography>
+          ))}
+        </Box>
+      ),
+    },
+    { id: "value", header: "Value", cell: (r) => <Num color="common.black">{formatUsd(r.usd)}</Num>, sortValue: (r) => r.usd },
+    { id: "apy", header: "APY", cell: (r) => <Num color="green.main">{pct(poolOf(r)?.apyPct)}</Num> },
+    { id: "action", header: "Action", align: "center", cell: (r) => <RowAction label="Manage" onClick={() => open({ protocol: r.protocol as Pool["protocol"], address: r.pool }, "withdraw")} /> },
+  ];
+
+  const section = (v: (typeof POOL_VENUES)[number]) => {
+    const rows = pools.filter(
+      (p) =>
+        p.protocol === v.id &&
+        (!query || p.pair.toLowerCase().includes(query) || p.legs.some((l) => l.code.toLowerCase().includes(query))) &&
+        (!hideSmall || (p.tvlUsd ?? 0) >= MIN_TVL),
+    );
+    const mine = lp.filter((r) => r.protocol === v.id && (!query || r.code.toLowerCase().includes(query)));
+    return (
+      <ProtocolSection key={v.id} name={v.name} logo={v.logo}>
+        {mine.length > 0 && (
+          <DataTable
+            variant="inset"
+            title="Your Positions"
+            columns={posColumns}
+            rows={mine}
+            getRowId={(r) => `${r.wallet}:${r.pool}`}
+            onRowClick={(r) => open({ protocol: r.protocol as Pool["protocol"], address: r.pool }, "withdraw")}
+            defaultSort={{ id: "value", dir: "desc" }}
+          />
+        )}
+        <DataTable
+          variant="inset"
+          title="Assets To Supply"
+          toolbar={<LabeledSwitch label="Hide small pools" tip={`Hide pools with under ${compactUsd(MIN_TVL)} TVL or no price`} checked={hideSmall} onChange={setHideSmall} />}
+          columns={columns}
+          rows={rows}
+          isLoading={pending.has(v.id)}
+          emptyDataText={hideSmall ? "No pools above the size filter. Turn off Hide small pools." : "No pools match your search"}
+          emptyMinHeight="12rem"
+          getRowId={(p) => p.key}
+          onRowClick={(p) => open(p)}
+          pageSize={10}
+          defaultSort={{ id: "tvl", dir: "desc" }}
+        />
+      </ProtocolSection>
+    );
+  };
+
+  const top = useMemo(
+    () =>
+      pools
+        .filter((p) => (p.tvlUsd ?? 0) >= 25_000 && p.apyPct != null)
+        .sort((a, b) => (b.apyPct ?? 0) - (a.apyPct ?? 0))
+        .slice(0, 8),
+    [pools],
+  );
 
   const main = (
     <>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", mb: "1rem" }}>
-        <Box sx={{ display: "flex", gap: "0.5rem" }}>
-          <Chip active={venue === "all"} onClick={() => setVenue("all")}>
-            All pools
-          </Chip>
-          {VENUES.map((v) => (
-            <Chip key={v.id} active={venue === v.id} onClick={() => setVenue(v.id)}>
-              {v.name}
-            </Chip>
-          ))}
-        </Box>
-        <Search>
-          <Box sx={{ display: "inline-flex", color: "grey.200" }}>
-            <SearchIcon size="1rem" />
-          </Box>
-          <InputBase value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search pair" sx={{ fontSize: "0.875rem", color: "common.black" }} />
-        </Search>
+      <ProtocolChips items={POOL_VENUES.map((v) => ({ id: v.id, label: v.name, logo: v.logo }))} value={venue} onChange={setVenue} />
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mt: "1.25rem", mb: "0.25rem" }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search token or pair" />
       </Box>
-      <DataTable columns={columns} rows={rows.slice(0, shown)} isLoading={loading && rows.length === 0} emptyDataText="No pools found" getRowId={(p) => `${p.protocol}:${p.address}`} />
-      {rows.length > shown && (
-        <Button variant="outlined" color="cancel" size="small" onClick={() => setShown((n) => n + 20)} sx={{ alignSelf: "center", mt: "1rem" }}>
-          Show more ({rows.length - shown})
-        </Button>
-      )}
+      {POOL_VENUES.filter((v) => venue === "all" || venue === v.id).map(section)}
     </>
   );
 
   const side = (
-    <>
-      <SideCard title="Your liquidity" icon="/assets/topPools.svg">
-        {portfolio.lpLoading ? (
-          <Typography variant="subtitle3" color="grey.200">
-            Scanning pools for your positions…
-          </Typography>
-        ) : myLp.length === 0 ? (
-          <Typography variant="subtitle3" color="grey.200">
-            No pool positions yet.
-          </Typography>
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {myLp.map((s) => {
-              const p = all.find((x) => x.address === s.pool);
-              return (
-                <Box key={s.pool} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <PairLogos legs={s.legs ?? []} size="1.5rem" />
-                    <Box>
-                      <Typography variant="subtitle1" color="common.black">
-                        {s.code}
-                      </Typography>
-                      <Typography variant="caption" color="grey.200">
-                        {s.label} · {formatUsd(s.usd)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  {p && (
-                    <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
-                      Manage
-                    </Button>
-                  )}
-                </Box>
-              );
-            })}
-          </Box>
-        )}
-      </SideCard>
-      <SideCard title="Largest pools" icon="/assets/newPools.svg">
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {[...all]
-            .sort((a, b) => (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0))
-            .slice(0, 6)
-            .map((p) => (
-              <ButtonBase key={`${p.protocol}${p.address}`} onClick={() => setDialog({ pool: p, initial: "deposit" })} sx={{ justifyContent: "space-between", width: "100%" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <PairLogos legs={legsOf(p)} size="1.5rem" />
-                  <Typography variant="subtitle1" color="common.black">
-                    {p.pair}
-                  </Typography>
-                </Box>
-                <Typography variant="subtitle3" color="grey.200">
-                  {venueName(p.protocol)} · {p.tvlUsd != null ? formatUsd(p.tvlUsd) : "—"}
-                </Typography>
-              </ButtonBase>
-            ))}
-        </Box>
-      </SideCard>
-    </>
+    <TopList
+      title="Top Pools"
+      nameLabel="Pools"
+      valueLabel="APY"
+      emptyText="Loading pools…"
+      items={top.map((p) => ({
+        key: p.key,
+        icon: <PairLogos legs={p.legs} size="2.5rem" />,
+        title: p.pair,
+        subtitle: feeText(p.feeBps),
+        badge: { name: venueMeta(p.protocol).name, logo: venueMeta(p.protocol).logo },
+        value: pct(p.apyPct),
+        onClick: () => open(p),
+      }))}
+    />
   );
 
-  return (
-    <>
-      <EarnGrid tabs={tabs} main={main} side={side} />
-      {dialog && (
-        <LiquidityDialog
-          pool={dialog.pool}
-          position={myLp.find((s) => s.pool === dialog.pool.address)}
-          initial={dialog.initial}
-          onClose={() => setDialog(null)}
-        />
-      )}
-    </>
-  );
+  return <EarnGrid tabs={tabs} main={main} side={side} />;
 }

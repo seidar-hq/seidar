@@ -312,9 +312,9 @@ export function ContractRow({ icon, label, address }: { icon?: React.ReactNode; 
   const href = `https://stellar.expert/explorer/public/${isContract ? "contract" : "account"}/${address}`;
   return (
     <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: "4rem", flexShrink: 0 }}>
         {icon}
-        <Typography sx={{ fontSize: "0.875rem", color: "common.black" }} noWrap>
+        <Typography sx={{ fontSize: "0.875rem", color: "common.black", whiteSpace: "nowrap" }}>
           {label}
         </Typography>
       </Box>
@@ -356,7 +356,7 @@ export function TopList({ title, items, emptyText, valueLabel, nameLabel }: { ti
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", mb: "0.5rem" }}>
         <Box component="img" src="/assets/topPools.svg" alt="" sx={{ width: "1.75rem", height: "1.75rem" }} />
-        <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: "common.black" }}>{title}</Typography>
+        <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: "common.black", whiteSpace: "nowrap" }}>{title}</Typography>
       </Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", px: "1.25rem" }}>
         <Typography sx={{ fontSize: "1rem", fontWeight: 500, color: "common.black" }}>{nameLabel}</Typography>
