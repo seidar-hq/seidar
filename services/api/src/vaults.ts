@@ -422,6 +422,15 @@ export async function getVaultPositions(address: string) {
     notes.push("upshift balances unreachable");
   }
 
+  try {
+    const { sentoraPositions } = await import("./sentora.js");
+    const { livePrices } = await import("./prices.js");
+    const { prices } = await livePrices(["XLM", "USDC", "PYUSD"]);
+    positions.push(...(await sentoraPositions(address, prices)));
+  } catch {
+    notes.push("sentora balances unreachable");
+  }
+
   return { status: 200, body: { ok: true, positions, notes } };
 }
 
@@ -518,6 +527,13 @@ export async function buildVaultTx(body: {
     const caller = String(body?.caller ?? "");
     const signer = body?.signer ? String(body.signer) : undefined;
     const smart = isContract(caller);
+    if (protocol === "sentora") {
+      if (!isWallet(caller)) return { status: 200, body: { ok: false, error: "caller must be a G wallet" } };
+      const { buildSentora } = await import("./sentora.js");
+      const amounts = Array.isArray(body?.amounts) ? (body.amounts as unknown[]) : [];
+      const amount = action === "withdraw" && String(body?.shares ?? "") === "max" ? "max" : String(amounts[0] ?? body?.shares ?? "");
+      return { status: 200, body: await buildSentora({ vault, action, caller, amount }) };
+    }
     if (
       (protocol !== "defindex" && protocol !== "upshift" && protocol !== "untangled") ||
       !isContract(vault) ||

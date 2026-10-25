@@ -1,5 +1,11 @@
-import Wallets from "@/components/wallets/Wallets";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+// Wallet management lives in Settings → Wallet.
 export default function Page() {
-  return <Wallets />;
+  const router = useRouter();
+  useEffect(() => router.replace("/settings"), [router]);
+  return null;
 }

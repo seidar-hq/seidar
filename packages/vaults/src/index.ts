@@ -2,7 +2,7 @@
 // share-price history, filtering/sorting/pagination, alert diffing.
 // Pure (no IO): the app fetches, the keeper evaluates, both reuse this.
 
-export type VaultProtocol = "defindex" | "upshift" | "untangled";
+export type VaultProtocol = "defindex" | "upshift" | "untangled" | "sentora";
 
 export interface VaultFunds {
   asset: string;

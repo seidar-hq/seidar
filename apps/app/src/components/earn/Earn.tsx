@@ -8,6 +8,9 @@ import { styled, useTheme } from "@mui/material/styles";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import { ConnectPill } from "@/components/trade/TradeLocked";
 import { useWallet } from "@/wallet/WalletContext";
+import LendBorrow from "./LendBorrow";
+import Pools from "./Pools";
+import Vaults from "./Vaults";
 
 type EarnTab = "lending&borrow" | "pools" | "vaults";
 
@@ -212,6 +215,18 @@ export default function Earn() {
   }, [pathname]);
 
   const current = (TABS.some((t) => t.id === tab) ? tab : "lending&borrow") as EarnTab;
+  const { isConnected } = useWallet();
+
+  if (isConnected) {
+    const tabs = <Tabs tabs={TABS} activeTab={current} setActiveTab={setTab} />;
+    return (
+      <Box sx={{ minHeight: "100vh" }}>
+        {current === "lending&borrow" && <LendBorrow tabs={tabs} />}
+        {current === "pools" && <Pools tabs={tabs} />}
+        {current === "vaults" && <Vaults tabs={tabs} />}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ backgroundColor: "transparent", minHeight: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>

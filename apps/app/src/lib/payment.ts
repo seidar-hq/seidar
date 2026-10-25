@@ -55,3 +55,28 @@ export function cleanAmount(v: string): string | null {
   const out = `${w || "0"}${f ? `.${f.slice(0, 7)}` : ""}`;
   return Number(out) > 0 ? out : null;
 }
+
+/** Whether `address` can hold `code:issuer` (XLM always can). Null when Horizon can't be reached. */
+export async function hasTrustline(address: string, code: string, issuer: string | null): Promise<boolean | null> {
+  if (!issuer) return true;
+  try {
+    const acct = await loadAccount(address);
+    if (!acct) return false;
+    return !!acct.balances?.some((b) => b.asset_code === code && b.asset_issuer === issuer);
+  } catch {
+    return null;
+  }
+}
+
+/** change_trust transaction adding `code:issuer` to the account. */
+export async function buildTrustline(address: string, code: string, issuer: string): Promise<string> {
+  const sdk = await import("@stellar/stellar-sdk");
+  const server = new sdk.Horizon.Server(HORIZON);
+  const source = await server.loadAccount(address);
+  const fee = await server.fetchBaseFee().catch(() => 100);
+  return new sdk.TransactionBuilder(source, { fee: String(Math.max(fee, 100)), networkPassphrase: sdk.Networks.PUBLIC })
+    .addOperation(sdk.Operation.changeTrust({ asset: new sdk.Asset(code, issuer) }))
+    .setTimeout(180)
+    .build()
+    .toXDR();
+}

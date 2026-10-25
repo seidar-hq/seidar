@@ -133,7 +133,7 @@ async function snapshotRows(rows: VaultRow[]): Promise<void> {
 
 let lastSnapshotAt = 0;
 
-export type VaultProtocolFilter = "defindex" | "upshift" | "untangled";
+export type VaultProtocolFilter = "defindex" | "upshift" | "untangled" | "sentora";
 
 async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string, string>; updatedAt: number }> {
   const rows: VaultRow[] = [];
@@ -206,6 +206,16 @@ async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string
   }
 
   sources.untangled = "pending-registry (address unpublished)";
+
+  // Sentora incentivized deposit vaults (principal on chain, curator-quoted APY).
+  try {
+    const { sentoraRows } = await import("./sentora.js");
+    const { prices } = await livePrices(["XLM", "USDC", "PYUSD"]);
+    rows.push(...((await sentoraRows(prices)) as VaultRow[]));
+    sources.sentora = "live";
+  } catch {
+    sources.sentora = "error";
+  }
 
   if (Date.now() - lastSnapshotAt > 3600_000 && rows.length > 0) {
     lastSnapshotAt = Date.now();

@@ -24,8 +24,9 @@ export type SupplyRow = {
   usd: number;
   apy: number | null;
   wallet: string;
-  /** LP only: both legs of the pool. */
+  /** LP only: both legs of the pool, and the LP share balance (base units). */
   legs?: { code: string; issuer: string | null; amount: number }[];
+  shares?: string;
 };
 
 export type BorrowRow = {
@@ -42,6 +43,8 @@ export type VaultRow = {
   protocol: string;
   vault: string;
   name: string;
+  /** Share balance (base units); principal for Sentora. */
+  shares: string;
   usd: number;
   underlying: { code: string; issuer: string | null; amount: number }[];
   wallet: string;
@@ -73,6 +76,7 @@ type VaultResp = {
     protocol: string;
     vault: string;
     name: string;
+    shares?: string;
     valueUsd: number | null;
     underlying: { asset?: string; code: string; amount: string }[];
   }[];
@@ -86,6 +90,7 @@ type LpResp = {
     pair: string;
     valueUsd: number | null;
     underlying: { contract: string; code: string; amount: number }[];
+    shares?: string;
     rewards?: { code: string; amount: number; usd: number | null } | null;
   }[];
 };
@@ -192,6 +197,7 @@ export function usePortfolio() {
           apy: null,
           wallet,
           legs: legs.map(({ code, issuer, amount }) => ({ code, issuer, amount })),
+          shares: p.shares,
         });
       }
       for (const v of vaults.values[`vaults:${wallet}`]?.positions ?? []) {
@@ -199,6 +205,7 @@ export function usePortfolio() {
           protocol: v.protocol,
           vault: v.vault,
           name: v.name,
+          shares: v.shares ?? "0",
           usd: v.valueUsd ?? 0,
           underlying: v.underlying.map((u) => {
             const t = resolve(u.asset, u.code);

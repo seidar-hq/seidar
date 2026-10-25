@@ -155,7 +155,7 @@ app.get("/prices/history", async (c) => {
 });
 
 const POOL_PROTOCOLS = new Set(["blend", "xoxno"]);
-const VAULT_PROTOCOLS = new Set(["defindex", "upshift", "untangled"]);
+const VAULT_PROTOCOLS = new Set(["defindex", "upshift", "untangled", "sentora"]);
 const DEX_PROTOCOLS = new Set(["aqua", "phoenix", "soroswap", "sushi"]);
 
 // Native pools catalogue (Blend SDK + XOXNO REST).
@@ -278,7 +278,7 @@ app.get("/vaults", async (c) => {
     return c.json({ ok: false, error: "unknown protocol" }, 400);
   const data = await getVaults(
     fresh,
-    (protocol || undefined) as "defindex" | "upshift" | "untangled" | undefined,
+    (protocol || undefined) as "defindex" | "upshift" | "untangled" | "sentora" | undefined,
   );
   return c.json({ ok: true, ...data });
 });
@@ -411,6 +411,24 @@ app.post("/lending/migrate/blend-xoxno", async (c) => {
 });
 
 // Account history with one lending protocol (decoded Horizon operations).
+// Bridge into Stellar (Allbridge Core over NEAR Intents).
+app.get("/bridge/routes", async (c) => {
+  const { bridgeRoutes } = await import("./bridge.js");
+  return c.json(await bridgeRoutes().catch((e) => ({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 160) })));
+});
+app.post("/bridge/quote", async (c) => {
+  const { bridgeQuote } = await import("./bridge.js");
+  return c.json(await bridgeQuote(await c.req.json().catch(() => ({}))));
+});
+app.post("/bridge/deposit", async (c) => {
+  const { bridgeDeposit } = await import("./bridge.js");
+  return c.json(await bridgeDeposit(await c.req.json().catch(() => ({}))));
+});
+app.post("/bridge/submit", async (c) => {
+  const { bridgeSubmit } = await import("./bridge.js");
+  return c.json(await bridgeSubmit(await c.req.json().catch(() => ({}))).catch(() => ({ ok: true })));
+});
+
 // Everything an account did, classified: ?address=G...&kind=all|swaps|transfers|positions&cursor=
 app.get("/activity", async (c) => {
   const { getActivity } = await import("./activity.js");
