@@ -26,6 +26,8 @@ import { useShared } from "@/lib/useShared";
 import { STELLAR_LOGO } from "@/lib/wallets";
 import { useThemeMode } from "@/theme/ThemeModeContext";
 import { useWallet } from "@/wallet/WalletContext";
+import GlassDialog, { MODAL } from "@/components/common/GlassDialog";
+import BridgeTokenDialog, { TokenChip } from "./BridgeTokenDialog";
 import { bridgeInputs, bridgeLayout, bridgeText, bridgeTooltip } from "./bridgeStyles";
 
 export type SourceToken = { symbol: string; name: string; decimals: number; tokenAddress: string; isNative: boolean; usdPrice: number | null };
@@ -136,22 +138,6 @@ function StellarTarget() {
   );
 }
 
-const Pill = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
-  <ButtonBase
-    onClick={onClick}
-    sx={{
-      gap: "0.375rem",
-      px: "0.625rem",
-      py: "0.375rem",
-      borderRadius: "999rem",
-      border: (t) => `0.0625rem solid ${active ? t.palette.primary.main : t.palette.border.main700}`,
-      backgroundColor: active ? "overlay.white08" : "transparent",
-    }}
-  >
-    {children}
-  </ButtonBase>
-);
-
 export default function BridgeForm({ state, setState }: { state: BridgeState; setState: (p: Partial<BridgeState>) => void }) {
   const theme = useTheme();
   const { isDarkMode } = useThemeMode();
@@ -167,6 +153,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [trust, setTrust] = useState<boolean | null>(true);
+  const [picker, setPicker] = useState<"source" | "dest" | null>(null);
   const seq = useRef(0);
   const { chain, token, dest, amount, quote, toAccount, fromAccount } = state;
 
@@ -291,7 +278,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
           You send
         </Typography>
         <Box sx={s.greyContainer}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%", mb: "0.75rem" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
             <TextField
               variant="outlined"
               placeholder="0"
@@ -301,15 +288,13 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
               value={amount}
             />
             {quoting && <CircularProgress size={18} />}
-          </Box>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", width: "100%" }}>
-            {(chain?.tokens ?? []).map((tk) => (
-              <Pill key={tk.tokenAddress} active={tk.tokenAddress === token?.tokenAddress} onClick={() => setState({ token: tk })}>
-                <Typography variant="subtitle3" color="common.black">
-                  {tk.symbol}
-                </Typography>
-              </Pill>
-            ))}
+            {chain && token ? (
+              <TokenChip symbol={token.symbol} chain={chain.chain} onClick={() => setPicker("source")} />
+            ) : (
+              <Button variant="outlined" color="cancel" onClick={() => setPicker("source")} disabled={!sources.length} sx={{ borderRadius: "999rem" }}>
+                Select token
+              </Button>
+            )}
           </Box>
           <Box sx={{ ...s.flexSpaceBetween, width: "100%", mt: "0.75rem" }}>
             <Typography variant="body2" sx={{ ...t.secondary }}>
@@ -331,16 +316,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
             <Typography variant="h5" color={quote ? "common.black" : "grey.200"}>
               {quote ? formatAmount(Number(quote.amountOut), 6) : "0"}
             </Typography>
-            <Box sx={{ display: "flex", gap: "0.5rem" }}>
-              {(["USDC", "XLM"] as const).map((d) => (
-                <Pill key={d} active={dest === d} onClick={() => setState({ dest: d })}>
-                  <TokenLogo code={d} issuer={d === "USDC" ? USDC_ISSUER : null} size="1.25rem" />
-                  <Typography variant="subtitle3" color="common.black">
-                    {d}
-                  </Typography>
-                </Pill>
-              ))}
-            </Box>
+            <TokenChip symbol={dest} chain="SRB" stellar onClick={() => setPicker("dest")} />
           </Box>
           <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", mt: "0.75rem", pt: "0.75rem", borderTop: `0.0625rem solid ${theme.palette.grey[300]}`, flexWrap: "wrap", gap: "0.5rem" }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
@@ -371,10 +347,28 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
         </Box>
       </Box>
 
-      <Box sx={{ mb: "1rem", display: "grid", gap: "1rem", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+      <Box sx={{ mb: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <Box sx={s.greyContainer}>
           <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
-            Your {chain?.name ?? "source"} address (refunds)
+            Your Stellar address (receives the {dest})
+          </Typography>
+          <TextField
+            value={toAccount}
+            onChange={(e) => setState({ toAccount: e.target.value.trim() })}
+            placeholder="G…"
+            fullWidth
+            size="small"
+            sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
+          />
+          {activeWallet && toAccount !== activeWallet.address && (
+            <ButtonBase onClick={() => setState({ toAccount: activeWallet.address })} sx={{ mt: "0.5rem", color: "primary.main", fontSize: "0.8125rem" }}>
+              Use my connected wallet
+            </ButtonBase>
+          )}
+        </Box>
+        <Box sx={s.greyContainer}>
+          <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
+            Your {chain?.name ?? "source"} address (refunds go here if the bridge can&apos;t deliver)
           </Typography>
           <TextField
             value={fromAccount}
@@ -389,19 +383,6 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
               Use browser wallet
             </ButtonBase>
           )}
-        </Box>
-        <Box sx={s.greyContainer}>
-          <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
-            Stellar destination
-          </Typography>
-          <TextField
-            value={toAccount}
-            onChange={(e) => setState({ toAccount: e.target.value.trim() })}
-            placeholder="G…"
-            fullWidth
-            size="small"
-            sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
-          />
         </Box>
       </Box>
 
@@ -432,6 +413,33 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
         Powered by Allbridge Core over NEAR Intents. No approval needed: you send the tokens to a one-time deposit address.
       </Typography>
       <TxDialog {...tx.dialog} />
+      <BridgeTokenDialog
+        open={picker === "source"}
+        onClose={() => setPicker(null)}
+        sources={sources}
+        current={{ chain: chain?.chain, token: token?.tokenAddress }}
+        onSelect={(c, tk) => setState(c.chain === chain?.chain ? { token: tk } : { chain: c, token: tk, amount: "", fromAccount: "" })}
+      />
+      <GlassDialog open={picker === "dest"} onClose={() => setPicker(null)} title="Receive on Stellar" subtitle="Pick the token that arrives in your Stellar wallet." actions={null}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          {(["USDC", "XLM"] as const).map((d) => (
+            <ButtonBase
+              key={d}
+              onClick={() => {
+                setState({ dest: d });
+                setPicker(null);
+              }}
+              sx={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: "0.75rem", p: "0.75rem", borderRadius: "0.875rem", backgroundColor: dest === d ? MODAL.insetHover : "transparent", "&:hover": { backgroundColor: MODAL.inset } }}
+            >
+              <TokenLogo code={d} issuer={d === "USDC" ? USDC_ISSUER : null} size="2.25rem" />
+              <Box sx={{ textAlign: "left" }}>
+                <Typography sx={{ fontSize: "0.9375rem", fontWeight: 600, color: "#E3E3E3" }}>{d}</Typography>
+                <Typography sx={{ fontSize: "0.75rem", color: MODAL.muted }}>{d === "USDC" ? "Circle USD Coin (needs a USDC trustline)" : "Stellar Lumens (native, no trustline)"}</Typography>
+              </Box>
+            </ButtonBase>
+          ))}
+        </Box>
+      </GlassDialog>
     </Box>
   );
 }

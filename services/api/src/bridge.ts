@@ -11,10 +11,23 @@ import type { AllbridgeCoreSdk, TokenWithChainDetails } from "@allbridge/bridge-
 
 const NEAR_INTENTS = 7; // Messenger.NEAR_INTENTS
 
+// Source-chain RPCs: the SDK needs one per EVM chain to build the one-click transfer.
+// Public endpoints by default; BRIDGE_RPC_<CHAIN> (e.g. BRIDGE_RPC_BAS) overrides any of them.
+const EVM_RPC: Record<string, string> = {
+  ETH: "https://ethereum-rpc.publicnode.com",
+  POL: "https://polygon-bor-rpc.publicnode.com",
+  ARB: "https://arbitrum-one-rpc.publicnode.com",
+  AVA: "https://avalanche-c-chain-rpc.publicnode.com",
+  OPT: "https://optimism-rpc.publicnode.com",
+  BAS: "https://base-rpc.publicnode.com",
+  BSC: "https://bsc-rpc.publicnode.com",
+};
+
 let sdkP: Promise<{ sdk: AllbridgeCoreSdk; Messenger: { NEAR_INTENTS: number } }> | null = null;
 function core() {
+  const rpcs = Object.fromEntries(Object.entries(EVM_RPC).map(([k, v]) => [k, process.env[`BRIDGE_RPC_${k}`]?.trim() || v]));
   sdkP ??= import("@allbridge/bridge-core-sdk").then((m) => ({
-    sdk: new m.AllbridgeCoreSdk(m.nodeRpcUrlsDefault),
+    sdk: new m.AllbridgeCoreSdk({ ...m.nodeRpcUrlsDefault, ...rpcs }),
     Messenger: m.Messenger as unknown as { NEAR_INTENTS: number },
   }));
   return sdkP;
@@ -101,15 +114,16 @@ export async function bridgeDeposit(b: { fromChain?: string; fromToken?: string;
     const deposit = await sdk.nearIntents.createDeposit(params);
     // EVM sources: also return the transfer transaction so a browser wallet can send it in one click.
     let evmTx: unknown = null;
+    let evmTxError: string | null = null;
     if (chain.chainType === "EVM") {
       try {
         const built = await sdk.nearIntents.buildSendTransaction({ ...params, nearIntentsDeposit: deposit });
         evmTx = built.rawTransaction;
-      } catch {
-        evmTx = null;
+      } catch (e) {
+        evmTxError = friendly(e);
       }
     }
-    return { ok: true, deposit, evmTx, chainId: chain.chainId ?? null, messenger: NEAR_INTENTS };
+    return { ok: true, deposit, evmTx, evmTxError, chainId: chain.chainId ?? null, messenger: NEAR_INTENTS };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
