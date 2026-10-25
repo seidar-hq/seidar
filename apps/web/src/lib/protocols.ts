@@ -11,4 +11,5 @@ export const STELLAR_PROTOCOLS: Protocol[] = [
   { name: "Sushi", mark: "/logos/protocols/sushi.png" },
   { name: "DeFindex", mark: "/logos/protocols/defindex.png" },
   { name: "Upshift", mark: "/logos/protocols/upshift.png", markScale: 0.9 },
+  { name: "Sentora", mark: "/logos/protocols/sentora.png" },
 ];

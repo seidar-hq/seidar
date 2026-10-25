@@ -10,16 +10,24 @@ const fadeIn = keyframes`
   to { opacity: 1; }
 `;
 
+// Full viewport height on every screen (svh so mobile browser chrome doesn't push it past the fold).
 const Section = styled(Box)(({ theme }) => ({
   position: "relative",
   width: "100%",
-  height: "594px",
+  height: "100vh",
+  minHeight: "600px",
   overflow: "hidden",
   background: "linear-gradient(159.7deg, #346CFF 40.69%, #8DE8FF 136.69%)",
-  [theme.breakpoints.down("lg")]: { height: "auto", minHeight: "480px", padding: "140px 24px 60px" },
-  [theme.breakpoints.down("md")]: {
-    height: "auto",
+  "@supports (height: 100svh)": { height: "100svh" },
+  [theme.breakpoints.down("lg")]: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
     minHeight: "560px",
+    padding: "120px 24px 60px",
+  },
+  [theme.breakpoints.down("md")]: {
+    justifyContent: "flex-start",
     padding: "130px 20px 54px",
     background: "linear-gradient(93deg, #346CFF 7.69%, #5D9BFF 56.95%, #8DE8FF 92.62%)",
   },
@@ -39,7 +47,7 @@ const MobileArtSlot = styled(Box)(({ theme }) => ({
   display: "none",
   position: "absolute",
   left: "-60px",
-  top: "300px",
+  bottom: "-120px",
   width: "520px",
   height: "476px",
   alignItems: "center",
