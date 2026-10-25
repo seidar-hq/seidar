@@ -120,7 +120,7 @@ export default function TokenSelectDialog({
               const t = tokens.find((x) => x.code === code);
               return t ? (
                 <QuickChip key={code} onClick={() => pick(t)}>
-                  <TokenLogo code={t.code} issuer={t.issuer} size="1.25rem" />
+                  <TokenLogo code={t.code} issuer={t.issuer} size="1.5rem" />
                   <Typography variant="subtitle3" color="common.black">
                     {t.code}
                   </Typography>
@@ -133,7 +133,7 @@ export default function TokenSelectDialog({
           {list.map((t) => (
             <Row key={t.contract} selected={t.contract === selected} onClick={() => pick(t)}>
               <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                <TokenLogo code={t.code} issuer={t.issuer} size="2rem" />
+                <TokenLogo code={t.code} issuer={t.issuer} size="2.5rem" />
                 <Box sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle1" color="common.black">
                     {t.code}

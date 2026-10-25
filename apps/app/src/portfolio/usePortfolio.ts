@@ -112,8 +112,10 @@ export function useTokenCatalogue() {
   }, [value]);
 }
 
-export function usePortfolio() {
-  const { portfolioAddresses } = useWallet();
+/** Assets and positions for `addresses` (default: the wallets the current portfolio view covers). */
+export function usePortfolio(addresses?: string[]) {
+  const ctx = useWallet();
+  const portfolioAddresses = addresses ?? ctx.portfolioAddresses;
   const balances = useBalances(portfolioAddresses);
   const { byContract } = useTokenCatalogue();
 

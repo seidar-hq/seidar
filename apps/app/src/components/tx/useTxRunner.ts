@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { WatchOnlyError } from "@/lib/wallets";
 import { TxError, signAndSend, type Signer, type TxStep } from "@/lib/tx";
 import { refreshBalances } from "@/wallet/useBalances";
+import { pushNote } from "@/components/layout/NotificationButton";
 
 /** State for TxDialog plus a runner for "build one XDR, then sign and send it" flows. */
 export function useTxRunner() {
@@ -36,6 +37,7 @@ export function useTxRunner() {
         step.status = "done";
         emit();
         refreshBalances([signer.address]);
+        void pushNote(signer.address, `${label} confirmed.`);
         return true;
       } catch (e) {
         if (e instanceof WatchOnlyError) {

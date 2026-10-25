@@ -10,7 +10,6 @@ import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import TokenComponent from "@/components/common/TokenComponent";
-import { tokenLogoUrl } from "@/components/common/TokenLogo";
 import { SearchIcon } from "@/components/icons/HeaderIcons";
 import { apiJson } from "@/lib/api";
 import { formatUsd } from "@/lib/format";
@@ -93,7 +92,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       header: "Vault",
       cell: (r) => (
         <ButtonBase onClick={() => open(r)} sx={{ justifyContent: "flex-start" }}>
-          <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol}${r.curator && r.curator !== VAULT_PROTOCOLS[r.protocol] ? ` · ${r.curator}` : ""}`} image={tokenLogoUrl(r.assetCode, issuer(r)) ?? undefined} isTooltip maxTextWidth="14rem" />
+          <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol}${r.curator && r.curator !== VAULT_PROTOCOLS[r.protocol] ? ` · ${r.curator}` : ""}`} token={{ code: r.assetCode, issuer: issuer(r) }} isTooltip maxTextWidth="14rem" />
         </ButtonBase>
       ),
     },
@@ -177,7 +176,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
               const r = rows.find((x) => x.address === v.vault);
               return (
                 <Box key={`${v.wallet}${v.vault}`} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <TokenComponent header={v.name} subtitle={formatUsd(v.usd)} image={tokenLogoUrl(v.underlying[0]?.code ?? "V", v.underlying[0]?.issuer ?? null) ?? undefined} width="1.75rem" height="1.75rem" />
+                  <TokenComponent header={v.name} subtitle={formatUsd(v.usd)} token={{ code: v.underlying[0]?.code ?? "V", issuer: v.underlying[0]?.issuer ?? null }} width="1.75rem" height="1.75rem" />
                   {r && (
                     <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ vault: r, initial: "withdraw" })}>
                       Withdraw
@@ -197,7 +196,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
             .slice(0, 6)
             .map((r) => (
               <ButtonBase key={r.address} onClick={() => open(r)} sx={{ justifyContent: "space-between", width: "100%" }}>
-                <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol} · ${formatUsd(r.tvlUsd)}`} image={tokenLogoUrl(r.assetCode, issuer(r)) ?? undefined} width="1.75rem" height="1.75rem" />
+                <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol} · ${formatUsd(r.tvlUsd)}`} token={{ code: r.assetCode, issuer: issuer(r) }} width="1.75rem" height="1.75rem" />
                 <Typography variant="subtitle1" color="green.main">
                   {apyText(r)}
                 </Typography>

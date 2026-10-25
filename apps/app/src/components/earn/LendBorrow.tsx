@@ -9,7 +9,6 @@ import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import TokenComponent from "@/components/common/TokenComponent";
-import { tokenLogoUrl } from "@/components/common/TokenLogo";
 import { SearchIcon } from "@/components/icons/HeaderIcons";
 import { apiJson } from "@/lib/api";
 import { formatAmount, formatUsd } from "@/lib/format";
@@ -185,7 +184,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
     {
       id: "asset",
       header: "Asset",
-      cell: (m) => <TokenComponent header={m.code} subtitle={`${m.protocol === "blend" ? "Blend" : "XOXNO"} · ${m.poolName}`} image={tokenLogoUrl(m.code, m.issuer) ?? undefined} isTooltip maxTextWidth="12rem" />,
+      cell: (m) => <TokenComponent header={m.code} subtitle={`${m.protocol === "blend" ? "Blend" : "XOXNO"} · ${m.poolName}`} token={{ code: m.code, issuer: m.issuer }} isTooltip maxTextWidth="12rem" />,
     },
     { id: "supplyApy", header: "Supply APY", cell: (m) => <Typography variant="body1" color="green.main">{pct(m.supplyApy)}</Typography> },
     { id: "borrowApy", header: "Borrow APY", cell: (m) => <Typography variant="body1" color="black.main100">{pct(m.borrowApy)}</Typography> },
@@ -266,7 +265,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
                     <TokenComponent
                       header={`${isBorrow ? "Borrowed" : "Supplied"} ${r.code}`}
                       subtitle={`${r.amount != null ? formatAmount(r.amount, 4) : ""} · ${formatUsd(r.usd)}`}
-                      image={tokenLogoUrl(r.code, r.issuer) ?? undefined}
+                      token={{ code: r.code, issuer: r.issuer }}
                       width="1.75rem"
                       height="1.75rem"
                     />
@@ -289,7 +288,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
               .slice(0, 6)
               .map((m) => (
                 <Box key={m.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <TokenComponent header={m.code} subtitle={m.poolName} image={tokenLogoUrl(m.code, m.issuer) ?? undefined} width="1.75rem" height="1.75rem" />
+                  <TokenComponent header={m.code} subtitle={m.poolName} token={{ code: m.code, issuer: m.issuer }} width="1.75rem" height="1.75rem" />
                   <ButtonBase onClick={() => setDialog({ market: m, initial: "supply" })}>
                     <Typography variant="subtitle1" color="green.main">
                       {pct(m.supplyApy)}

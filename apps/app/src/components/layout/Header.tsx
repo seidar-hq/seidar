@@ -29,6 +29,8 @@ import HeaderWallet from "@/components/wallet/HeaderWallet";
 import { DerivativesDropdownIcon, LayoutIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
 import { DOCS_URL, X_URL } from "@/lib/links";
 import { useThemeMode } from "@/theme/ThemeModeContext";
+import HeaderPortfolio from "./HeaderPortfolio";
+import NotificationButton from "./NotificationButton";
 import SearchDialog from "./SearchDialog";
 
 const Root = styled(AppBar)(({ theme }) => ({
@@ -468,6 +470,10 @@ export default function Header() {
           >
             <LayoutIcon size="1.25rem" />
           </CircleIconButton>
+          <NotificationButton />
+          <Box sx={{ display: { xs: "none", sm: "flex" } }}>
+            <HeaderPortfolio />
+          </Box>
           <HeaderWallet />
         </RightCluster>
 

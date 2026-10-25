@@ -15,10 +15,11 @@ import { useBalances } from "@/wallet/useBalances";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 import { WalletAvatar, glassMenuPaperSx } from "./WalletParts";
 
-/** Heading-sized dropdown: "All Portfolios" or one linked wallet. The dashboard follows the selection. */
+/** Heading-sized dropdown: the whole active portfolio or one of its wallets. The page follows the selection. */
 export default function PortfolioSelect() {
   const theme = useTheme();
-  const { wallets, portfolio, setPortfolio } = useWallet();
+  const { portfolioWallets: wallets, activePortfolio, portfolio, setPortfolio } = useWallet();
+  const name = activePortfolio?.name ?? "My Portfolio";
   const { byAddress, totalUsd } = useBalances(wallets.map((w) => w.address));
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const selected = wallets.find((w) => w.address === portfolio);
@@ -35,7 +36,7 @@ export default function PortfolioSelect() {
         sx={{ gap: "0.25rem", borderRadius: "0.5rem", px: "0.25rem", "&:hover": { backgroundColor: "overlay.white04" } }}
       >
         <Typography variant="h6" color="common.black">
-          {selected ? walletLabel(selected) : "All Portfolios"}
+          {selected ? walletLabel(selected) : name}
         </Typography>
         <KeyboardArrowDownRoundedIcon
           sx={{ fontSize: "1.25rem", color: "grey.200", transition: "transform 0.2s", transform: anchor ? "rotate(180deg)" : "none" }}
@@ -66,7 +67,7 @@ export default function PortfolioSelect() {
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography variant="subtitle1" color="common.black">
-              All Portfolios
+              {name}
             </Typography>
             <Typography variant="subtitle3" color="grey.200">
               {wallets.length} wallet{wallets.length === 1 ? "" : "s"} · {formatUsd(totalUsd)}

@@ -1,0 +1,27 @@
+# Seidar local stack (Postgres + Redis for the API). Start infra for local dev:
+#   docker compose up -d db redis
+# Apps fall back to localStorage (UI) and in-memory (API) when unset/unreachable.
+# Code runs via npm/yarn dev (hot-reload) — not in compose — while iterating.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: seidardev
+      POSTGRES_DB: seidar
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

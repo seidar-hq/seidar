@@ -38,6 +38,7 @@ setKeyScope(() => netKey(""));
 import { aquaPoolInfo, buildLiquidity, lpPosition } from "./dex-liquidity.js";
 import { getHistory } from "./history.js";
 import { submitFeedback } from "./feedback.js";
+import { createNote, listNotes, markNotes } from "./notifications.js";
 import { getPortfolioHistory, sampleWallet } from "./portfolio.js";
 
 const ORIGINS = (process.env.CORS_ORIGINS ?? "*")
@@ -521,6 +522,20 @@ app.get("/lending/xoxno/markets", async (c) => {
 // In-app feedback inbox (text + data-URL attachments, server-stored).
 app.post("/feedback", async (c) => {
   const r = await submitFeedback(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+// Header bell: per-wallet notifications (Postgres).
+app.get("/notifications", async (c) => {
+  const r = await listNotes(c.req.query("wallet") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.post("/notifications", async (c) => {
+  const r = await createNote(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.patch("/notifications", async (c) => {
+  const r = await markNotes(await c.req.json().catch(() => ({})));
   return c.json(r.body, r.status as 200);
 });
 

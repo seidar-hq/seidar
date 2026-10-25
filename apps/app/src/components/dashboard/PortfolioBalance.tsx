@@ -325,7 +325,7 @@ function Allocation({ portfolio, view }: { portfolio: Portfolio; view: View }) {
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
                 <Box sx={{ width: "0.5rem", height: "0.5rem", borderRadius: "50%", flexShrink: 0, backgroundColor: colors[i % colors.length] }} />
-                {s.key !== "other" && <TokenLogo code={s.code} issuer={s.issuer} size="1.75rem" />}
+                {s.key !== "other" && <TokenLogo code={s.code} issuer={s.issuer} size="2.25rem" />}
                 <Typography variant="body3" color="common.black" noWrap>
                   {s.name}
                 </Typography>
@@ -387,7 +387,7 @@ function MoverChart({ rows, good }: { rows: Mover[]; good: boolean }) {
                     <Typography variant="body3" color="common.black" noWrap>
                       {r.code}
                     </Typography>
-                    <TokenLogo code={r.code} issuer={r.issuer} size="1.5rem" />
+                    <TokenLogo code={r.code} issuer={r.issuer} size="2rem" />
                   </Box>
                 </foreignObject>
               </g>

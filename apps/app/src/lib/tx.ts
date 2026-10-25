@@ -6,6 +6,7 @@
 import { apiFetch } from "./api";
 import { WatchOnlyError, kitSignTransaction, type WalletKind } from "./wallets";
 import { refreshBalances } from "@/wallet/useBalances";
+import { pushNote } from "@/components/layout/NotificationButton";
 
 export const explorerTx = (hash: string) => `https://stellar.expert/explorer/public/tx/${hash}`;
 
@@ -135,6 +136,7 @@ export async function runBuilt(
   try {
     window.dispatchEvent(new Event("seidar:refresh"));
   } catch {}
+  void pushNote(signer.address, `${steps.map((s) => s.label).join(" · ")} confirmed.`);
   return { hashes, unsigned: false };
 }
 

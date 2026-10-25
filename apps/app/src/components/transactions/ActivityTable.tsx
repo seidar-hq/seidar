@@ -63,7 +63,7 @@ function Legs({ i }: { i: ActivityItem }) {
     <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
       {i.legs.map((l, k) => (
         <Box key={k} sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-          <TokenLogo code={l.code} issuer={l.issuer} size="1.25rem" />
+          <TokenLogo code={l.code} issuer={l.issuer} size="1.75rem" />
           <Typography variant="body3" color={l.dir === "in" ? "green.main" : "common.black"}>
             {l.dir === "in" ? "+" : "-"}
             {formatAmount(l.amount, 6)} {l.code}

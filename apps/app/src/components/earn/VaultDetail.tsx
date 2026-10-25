@@ -34,7 +34,7 @@ const ABOUT: Record<string, string> = {
   defindex:
     "DeFindex vaults pool deposits and allocate them across Stellar yield strategies (lending markets, liquidity). You hold vault shares; their value grows as the strategies earn.",
   upshift:
-    "Upshift vaults are institutionally curated: the curator allocates deposits across Stellar lending protocols (Blend, Templar and others). Withdrawals may go through a request queue.",
+    "Upshift vaults are institutionally curated: the curator allocates deposits across Stellar lending protocols such as Blend. Withdrawals may go through a request queue.",
   sentora:
     "Sentora (formerly IntoTheBlock) runs incentivized deposit vaults through Stellar DeFi Hub. Your principal stays in the vault contract and can be withdrawn at any time; the quoted APY is paid as rewards by the curator.",
 };

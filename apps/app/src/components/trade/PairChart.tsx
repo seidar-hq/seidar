@@ -66,9 +66,9 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           {base && quote && (
             <Box sx={{ display: "flex" }}>
-              <TokenLogo code={base.code} issuer={base.issuer} size="2rem" />
+              <TokenLogo code={base.code} issuer={base.issuer} size="2.5rem" />
               <Box sx={{ ml: "-0.5rem" }}>
-                <TokenLogo code={quote.code} issuer={quote.issuer} size="2rem" />
+                <TokenLogo code={quote.code} issuer={quote.issuer} size="2.5rem" />
               </Box>
             </Box>
           )}

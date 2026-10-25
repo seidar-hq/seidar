@@ -6,6 +6,7 @@ import { styled } from "@mui/material/styles";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import { SpotLocked } from "@/components/trade/TradeLocked";
 import { useWallet } from "@/wallet/WalletContext";
+import PortfolioCards from "./PortfolioCards";
 import WalletCards from "./WalletCards";
 
 const Root = styled(Box)({ display: "flex", flexDirection: "column", minHeight: "100vh", paddingTop: "0.5rem" });
@@ -24,12 +25,12 @@ const Heading = styled(Box)({ display: "flex", flexDirection: "column", gap: "0.
 
 const DashedRule = styled(Box)(({ theme }) => ({ width: "100%", borderTop: `0.0625rem dashed ${theme.palette.border.dashed}` }));
 
-const TABS: TabItem[] = [{ id: "wallet", label: "Wallet" }];
+const TABS: TabItem[] = [{ id: "portfolios", label: "Portfolios & Wallets" }];
 
 const WALLET_TEXT = "Connect a wallet to view balances, manage assets, and track activity across Stellar.";
 
 export default function Settings() {
-  const { isConnected } = useWallet();
+  const { wallets } = useWallet();
 
   return (
     <Root>
@@ -39,13 +40,17 @@ export default function Settings() {
             Settings
           </Typography>
           <Typography variant="body3">
-            Link and manage your Stellar wallets. Seidar never custodies funds or keys: every transaction is signed in
-            your own wallet.
+            Group your Stellar wallets into portfolios and choose which one is active. Seidar never custodies funds
+            or keys: every transaction is signed in your own wallet.
           </Typography>
         </Heading>
         <DashedRule />
-        <Tabs tabs={TABS} activeTab="wallet" setActiveTab={() => {}} isPathProvided={false} />
-        {isConnected ? <WalletCards /> : <SpotLocked text={WALLET_TEXT} illustration="/assets/settingsWalletLocked.svg" />}
+        <Box sx={{ alignSelf: "flex-start" }}>
+          <Tabs tabs={TABS} activeTab="portfolios" setActiveTab={() => {}} isPathProvided={false} />
+        </Box>
+        <PortfolioCards />
+        <DashedRule />
+        {wallets.length > 0 ? <WalletCards /> : <SpotLocked text={WALLET_TEXT} illustration="/assets/settingsWalletLocked.svg" />}
       </Card>
     </Root>
   );

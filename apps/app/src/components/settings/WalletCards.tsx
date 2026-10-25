@@ -13,13 +13,16 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import Tabs from "@/components/common/Tabs";
 import { RemoveWalletDialog, RenameWalletDialog } from "@/components/wallet/WalletDialogs";
 import { CopyButton, WalletAvatar, glassMenuPaperSx } from "@/components/wallet/WalletParts";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { walletMeta } from "@/lib/wallets";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet, type LinkedWallet } from "@/wallet/WalletContext";
+import { MoveWalletDialog } from "./PortfolioDialogs";
 
 const Card = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{ isActive?: boolean }>(({ theme, isActive }) => {
   const inset = theme.palette.surfaceBg.softInset;
@@ -110,9 +113,8 @@ const AddCircle = styled(Box)(({ theme }) => ({
 const Grid = styled(Box)(({ theme }) => ({
   display: "grid",
   gap: "1rem",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  [theme.breakpoints.down("xl")]: { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" },
-  [theme.breakpoints.down("lg")]: { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  [theme.breakpoints.down("xl")]: { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
   [theme.breakpoints.down("md")]: { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
   [theme.breakpoints.down("sm")]: { gridTemplateColumns: "1fr" },
 }));
@@ -131,17 +133,21 @@ const CountChip = styled(Box)(({ theme }) => ({
 function WalletCard({
   wallet,
   active,
+  portfolioName,
   usd,
   loading,
   onSwitch,
+  onMove,
   onRemove,
   onRename,
 }: {
   wallet: LinkedWallet;
   active: boolean;
+  portfolioName: string;
   usd: number;
   loading: boolean;
   onSwitch: () => void;
+  onMove: () => void;
   onRemove: () => void;
   onRename: () => void;
 }) {
@@ -151,6 +157,7 @@ function WalletCard({
   const close = () => setAnchor(null);
   const actions = [
     { key: "switch", title: "Switch", subtitle: "Make this wallet active.", Icon: SwapHorizIcon, onClick: onSwitch, disabled: active },
+    { key: "move", title: "Move", subtitle: "Put it in another portfolio.", Icon: DriveFileMoveOutlinedIcon, onClick: onMove, disabled: false },
     { key: "remove", title: "Remove", subtitle: "Disconnect this wallet.", Icon: DeleteOutlineRoundedIcon, onClick: onRemove, disabled: false },
     { key: "rename", title: "Rename", subtitle: "Change the display name.", Icon: EditOutlinedIcon, onClick: onRename, disabled: false },
   ];
@@ -174,6 +181,9 @@ function WalletCard({
         </Typography>
         <Typography variant="body2" color="common.black" noWrap>
           {wallet.name || meta?.name}
+        </Typography>
+        <Typography variant="caption" color="grey.200" noWrap>
+          {portfolioName}
         </Typography>
       </Field>
       <Field>
@@ -233,34 +243,50 @@ function WalletCard({
   );
 }
 
-/** Settings → Wallet: every linked Stellar wallet as a card, plus an "Add New Wallet" card. */
+/** Settings → wallets of the active portfolio (or every linked wallet), plus an "Add New Wallet" card. */
 export default function WalletCards() {
-  const { wallets, address, switchWallet, openConnectModal } = useWallet();
-  const { byAddress } = useBalances(wallets.map((w) => w.address));
+  const { wallets, portfolioWallets, address, switchWallet, openConnectModal, portfolioOf, activePortfolio } = useWallet();
+  const [scope, setScope] = useState<string>("active");
+  const shown = scope === "active" ? portfolioWallets : wallets;
+  const { byAddress } = useBalances(shown.map((w) => w.address));
   const [removing, setRemoving] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
 
   return (
     <>
+      <Box sx={{ alignSelf: "flex-start" }}>
+        <Tabs
+          tabs={[
+            { id: "active", label: "Active portfolio" },
+            { id: "all", label: "All wallets" },
+          ]}
+          activeTab={scope}
+          setActiveTab={setScope}
+          isPathProvided={false}
+        />
+      </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <Typography variant="body4" color="common.black">
-          Connected wallets
+        <Typography variant="body4" color="common.black" sx={{ fontSize: "1.25rem" }}>
+          {scope === "active" ? "Wallets in this portfolio" : "All wallets"}
         </Typography>
         <CountChip>
           <Typography variant="caption" color="common.black">
-            {wallets.length}
+            {shown.length}
           </Typography>
         </CountChip>
       </Box>
       <Grid>
-        {wallets.map((w) => (
+        {shown.map((w) => (
           <WalletCard
             key={w.address}
             wallet={w}
             active={w.address === address}
+            portfolioName={portfolioOf(w.address)?.name ?? ""}
             usd={byAddress[w.address]?.usd ?? 0}
             loading={byAddress[w.address]?.loading ?? true}
             onSwitch={() => switchWallet(w.address)}
+            onMove={() => setMoving(w.address)}
             onRemove={() => setRemoving(w.address)}
             onRename={() => setRenaming(w.address)}
           />
@@ -269,13 +295,17 @@ export default function WalletCards() {
           <AddCircle>
             <AddIcon />
           </AddCircle>
-          <Typography variant="subtitle1" color="common.black">
+          <Typography variant="subtitle2" color="common.black" sx={{ fontSize: "1rem" }}>
             Add New Wallet
+          </Typography>
+          <Typography variant="caption" color="grey.200">
+            to {activePortfolio?.name ?? "this portfolio"}
           </Typography>
         </AddCard>
       </Grid>
       <RemoveWalletDialog address={removing} onClose={() => setRemoving(null)} />
       <RenameWalletDialog address={renaming} onClose={() => setRenaming(null)} />
+      <MoveWalletDialog address={moving} onClose={() => setMoving(null)} />
     </>
   );
 }

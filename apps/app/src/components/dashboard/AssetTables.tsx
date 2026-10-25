@@ -9,7 +9,7 @@ import DataTable, { type Column } from "@/components/common/DataTable";
 import { PlainCard } from "@/components/common/SectionCard";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import TokenComponent from "@/components/common/TokenComponent";
-import { tokenLogoUrl } from "@/components/common/TokenLogo";
+import { PairLogos } from "@/components/common/TokenLogo";
 import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
 import type { BorrowRow, Portfolio, SupplyRow, VaultRow } from "@/portfolio/usePortfolio";
 import { usePriceChanges } from "@/portfolio/useSeries";
@@ -53,7 +53,7 @@ const token = (code: string, issuer: string | null, subtitle?: string) => (
   <TokenComponent
     header={code}
     subtitle={subtitle ?? (issuer ? shortAddress(issuer) : code === "XLM" ? "Stellar Lumens" : "")}
-    image={tokenLogoUrl(code, issuer) ?? undefined}
+    token={{ code: code, issuer: issuer }}
     isTooltip
     maxTextWidth="11rem"
   />
@@ -104,17 +104,8 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       header: "Asset",
       cell: (r) =>
         r.kind === "lp" ? (
-          <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <Box sx={{ display: "flex" }}>
-              {(r.legs ?? []).slice(0, 2).map((l, i) => (
-                <Box
-                  key={l.code}
-                  component="img"
-                  src={tokenLogoUrl(l.code, l.issuer) ?? "/assets/tokenFallback.svg"}
-                  sx={{ width: "1.75rem", height: "1.75rem", borderRadius: "50%", ml: i ? "-0.5rem" : 0, backgroundColor: "grey.300" }}
-                />
-              ))}
-            </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <PairLogos legs={r.legs ?? []} />
             <Typography variant="body3" color="common.black">
               {r.code}
             </Typography>

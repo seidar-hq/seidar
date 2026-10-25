@@ -169,7 +169,7 @@ function TokenButton({ token, onClick }: { token: SwapToken | null; onClick: () 
     <TokenPill onClick={onClick}>
       {token ? (
         <>
-          <TokenLogo code={token.code} issuer={token.issuer} size="1.875rem" />
+          <TokenLogo code={token.code} issuer={token.issuer} size="2.25rem" />
           <Typography variant="subtitle1" color="common.black">
             {token.code}
           </Typography>
