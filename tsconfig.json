@@ -1,0 +1,13 @@
+{
+  // Solution file: `tsc -b` builds the shared packages and the API in dependency order.
+  // The Next.js apps under apps/ build on their own.
+  "compilerOptions": { "composite": true, "skipLibCheck": true },
+  "references": [
+    { "path": "packages/tokens" },
+    { "path": "packages/positions-sdk" },
+    { "path": "packages/vaults" },
+    { "path": "packages/cache" },
+    { "path": "services/api" }
+  ],
+  "files": []
+}

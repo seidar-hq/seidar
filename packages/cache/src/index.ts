@@ -1,0 +1,243 @@
+// @seidar/cache — shared Redis reader with in-memory fallback + single-flight.
+//
+// Design: warmers write, routes read. When REDIS_URL is unset or `ioredis`
+// is not installed, everything degrades to process memory so local dev and
+// existing Next.js routes keep working with zero infra.
+// When Redis is reachable, cache survives restarts and is shared across
+// instances — fixing the thundering-herd on public RPC + CoinGecko.
+//
+// Key layout (see KEYS below):
+//   prices:spot:{CODE}      60s   Reflector/SDEX/Coinbase spot
+//   prices:change:{CODE}    10min Coinbase candles 24h change
+//   pools:{blend|xoxno}  5-10min per-protocol rows
+//   pools:registry          1h    ticker registry
+//   vaults:rows             10min aggregated vault rows
+//   tokens:registry         1h
+//   icon:{cid}              24h
+
+export const TTL_MS = {
+  pricesSpot: 60_000,
+  pricesChange: 10 * 60_000,
+  poolsProtocol: 10 * 60_000,
+  poolsRegistry: 60 * 60_000,
+  vaultsRows: 10 * 60_000,
+  tokensRegistry: 60 * 60_000,
+  icon: 24 * 60 * 60_000,
+} as const;
+
+export const KEYS = {
+  priceSpot: (code: string) => `prices:spot:${code.toUpperCase()}`,
+  priceChange: (code: string) => `prices:change:${code.toUpperCase()}`,
+  pool: (protocol: string) => `pools:${protocol.toLowerCase()}`,
+  poolsRegistry: "pools:registry",
+  vaultsRows: "vaults:rows",
+  tokensRegistry: "tokens:registry",
+  icon: (cid: string) => `icon:${cid}`,
+} as const;
+
+type Entry = { at: number; value: unknown };
+
+const mem = new Map<string, Entry>();
+// Single-flight: concurrent misses for the same key share one loader promise.
+const inflight = new Map<string, Promise<unknown>>();
+
+let redis: {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, mode: string, ttlMs: number): Promise<unknown>;
+} | null = null;
+let redisTried = false;
+
+async function getRedis() {
+  if (redisTried) return redis;
+  redisTried = true;
+  const url = process.env.REDIS_URL?.trim();
+  if (!url) return null;
+  try {
+    // Dynamic specifier on purpose: `ioredis` is optional (services/api
+    // provides it at runtime). Keeps @seidar/cache dependency-free so
+    // existing apps build with zero installs.
+    const loader = Function("m", "return import(m)") as (
+      m: string,
+    ) => Promise<{
+      default?: new (url: string, opts?: Record<string, unknown>) => {
+        get(k: string): Promise<string | null>;
+        set(k: string, v: string, mode: string, ttl: number): Promise<unknown>;
+        on(e: string, fn: () => void): void;
+      };
+    }>;
+    const mod = await loader("ioredis");
+    const Ctor = mod.default;
+    if (!Ctor) return null;
+    const client = new Ctor(url, {
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    client.on("error", () => {});
+    redis = {
+      get: (k) => client.get(k),
+      // ioredis SET key value PX ttl
+      set: (k, v, _mode, ttlMs) => client.set(k, v, "PX", ttlMs),
+    };
+    return redis;
+  } catch {
+    return null;
+  }
+}
+
+/* Key scope: the API registers a resolver (its network context), so one
+   process can serve mainnet and testnet without their entries mixing. The
+   default scope is "" (keys unchanged). */
+let scope: () => string = () => "";
+export function setKeyScope(fn: () => string): void {
+  scope = fn;
+}
+
+export async function cacheGet<T>(rawKey: string): Promise<T | null> {
+  const key = scope() + rawKey;
+  const r = await getRedis().catch(() => null);
+  if (r) {
+    try {
+      const raw = await r.get(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { at: number; value: T };
+      return parsed.value ?? null;
+    } catch {
+      // fall through to memory
+    }
+  }
+  const hit = mem.get(key);
+  return (hit?.value as T) ?? null;
+}
+
+/** Raw entry with timestamp (for keep-last-good / stale-while-revalidate). */
+export async function cacheGetEntry<T>(
+  rawKey: string,
+): Promise<{ at: number; value: T } | null> {
+  const key = scope() + rawKey;
+  const r = await getRedis().catch(() => null);
+  if (r) {
+    try {
+      const raw = await r.get(key);
+      if (raw) return JSON.parse(raw) as { at: number; value: T };
+    } catch {
+      // fall through
+    }
+  }
+  const hit = mem.get(key);
+  return (hit as { at: number; value: T }) ?? null;
+}
+
+export async function cacheSet(
+  rawKey: string,
+  value: unknown,
+  ttlMs: number,
+  /** How long Redis keeps it (default ttlMs). Stale-while-revalidate
+   *  readers judge freshness by `at`, so they keep entries longer to
+   *  always have something to serve while refreshing. */
+  retainMs: number = ttlMs,
+): Promise<void> {
+  const key = scope() + rawKey;
+  const payload = JSON.stringify({ at: Date.now(), value });
+  mem.set(key, { at: Date.now(), value });
+  const r = await getRedis().catch(() => null);
+  if (r) {
+    try {
+      await r.set(key, payload, "PX", Math.max(ttlMs, retainMs));
+    } catch {
+      // memory already written; redis failure must never sink a route
+    }
+  }
+}
+
+/**
+ * Read-through helper: serve cache when fresh, else single-flight the loader,
+ * keep last-good on loader failure, optionally serve stale immediately while
+ * revalidating in background.
+ */
+/** SWR entries stay in Redis a day past freshness: a cold restart or an
+ *  idle spell serves the last read instantly while it refreshes. */
+const SWR_RETAIN_MS = 24 * 3600_000;
+
+export async function withCache<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  opts: { swr?: boolean } = {},
+): Promise<{ value: T | null; cached: boolean; stale: boolean }> {
+  const entry = await cacheGetEntry<T>(key);
+  // Single-flight per scoped key (cacheGet/Set scope `key` themselves).
+  const flight = scope() + key;
+  const fresh =
+    entry && Date.now() - entry.at < ttlMs ? (entry as { value: T }) : null;
+  if (fresh) return { value: fresh.value, cached: true, stale: false };
+
+  if (opts.swr && entry) {
+    // Serve stale now, refresh in background (single-flight).
+    if (!inflight.has(flight)) {
+      const p = loader()
+        .then((v) => cacheSet(key, v, ttlMs, SWR_RETAIN_MS).then(() => v))
+        .catch(() => null)
+        .finally(() => {
+          inflight.delete(flight);
+        });
+      inflight.set(flight, p);
+    }
+    return {
+      value: (entry as { value: T }).value,
+      cached: true,
+      stale: true,
+    };
+  }
+
+  const ongoing = inflight.get(flight) as Promise<T> | undefined;
+  if (ongoing) {
+    try {
+      const v = await ongoing;
+      return { value: v, cached: true, stale: false };
+    } catch {
+      return {
+        value: (entry as { value: T } | null)?.value ?? null,
+        cached: !!entry,
+        stale: true,
+      };
+    }
+  }
+
+  const p = (async () => {
+    const v = await loader();
+    await cacheSet(key, v, ttlMs, opts.swr ? SWR_RETAIN_MS : ttlMs);
+    return v;
+  })();
+  inflight.set(flight, p);
+  try {
+    const v = await p;
+    return { value: v, cached: !!entry, stale: false };
+  } catch {
+    return {
+      value: (entry as { value: T } | null)?.value ?? null,
+      cached: !!entry,
+      stale: true,
+    };
+  } finally {
+    inflight.delete(flight);
+  }
+}
+
+/** In-process rate limiter (per-instance; use Redis for shared limits later). */
+const hits = new Map<string, number[]>();
+export function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): { ok: boolean; remaining: number } {
+  const now = Date.now();
+  const arr = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (arr.length >= limit) {
+    hits.set(key, arr);
+    return { ok: false, remaining: 0 };
+  }
+  arr.push(now);
+  hits.set(key, arr);
+  return { ok: true, remaining: limit - arr.length };
+}

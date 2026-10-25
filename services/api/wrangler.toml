@@ -1,0 +1,27 @@
+# Seidar API on Cloudflare
+#
+# Recommended now: UI on Cloudflare Pages, API on Cloudflare Containers
+# (or any VPS/VM). Containers run this exact Node build (`npm start`) with
+# TCP access, so `ioredis` (REDIS_URL), `pg` pools (DATABASE_URL), 120s
+# Soroban fan-outs and `setInterval` warmers all work unchanged.
+#
+# A pure-Workers deployment needs two small follow-ups (not done yet):
+#  1. Cache driver: `ioredis` needs TCP. Swap @seidar/cache's driver for
+#     Upstash Redis REST (one function, same KEYS/TTLs/single-flight).
+#  2. Warmers: Workers have no always-on `setInterval`. Move `startWarmers()`
+#     into a `scheduled()` handler and add below:
+#       [triggers]
+#       crons = ["*/1 * * * *"]
+# Until then, Workers serve correctly but every isolate cold-starts its own
+# memory cache (same thundering-herd the warmers exist to prevent).
+
+name = "seidar-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-08"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+API_UPSTREAM = "http://localhost:3001"
+CORS_ORIGINS = "*"
+API_RL_LIMIT = "120"
+API_RL_WINDOW_MS = "60000"

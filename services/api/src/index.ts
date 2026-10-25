@@ -1,0 +1,518 @@
+// @seidar/api — standalone backend (Hono). Local dev: `npm run dev`
+// (tsx --watch, port 3002, no compose restart). Infra only (db+redis) runs
+// in compose (`docker compose up -d db redis`); API never runs in compose.
+// Cloudflare serves this app via services/api/wrangler.toml (Containers).
+//
+// All routes are NATIVE (no Next.js hop): /prices, /pools?protocol=,
+// /positions, /balances, /balance, /vaults*, /swap/*, /tx/send,
+// /blend/build, /lending/*, /dex/*, /portfolio/history, /history, /icon,
+// /feedback, /balances/stream. The app reads through src/lib/api.ts.
+
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { cacheGet, rateLimit } from "@seidar/cache";
+import { livePrices } from "./prices.js";
+import { getPoolData, getPoolsAll } from "./pools.js";
+import { getDexPools, type DexProtocol } from "./dex.js";
+import { getPositions } from "./positions.js";
+import { getBalance, getBalances } from "./balances.js";
+import { getVaults } from "./vaults-list.js";
+import {
+  buildVaultTx,
+  deleteWatch,
+  getSnapshots,
+  getVaultDetail,
+  getVaultPositions,
+  listWatches,
+  touchWatch,
+  upsertWatch,
+} from "./vaults.js";
+import { buildSwap, getIcon, getSwapTokens, quoteSwap, sendSwap, sendTx } from "./swap.js";
+import { buildBlendTx } from "./blend.js";
+import { buildBlendToXoxno, buildLending, xoxnoAccounts, xoxnoMarkets } from "./lending.js";
+import { feeInfo } from "./fees.js";
+import { horizonUrl, isTestnet, netKey, parseNet, withNetwork } from "./net.js";
+import { setKeyScope } from "@seidar/cache";
+// Testnet cache entries live under "testnet:" (mainnet keys unchanged).
+setKeyScope(() => netKey(""));
+import { aquaPoolInfo, buildLiquidity, lpPosition } from "./dex-liquidity.js";
+import { getHistory } from "./history.js";
+import { submitFeedback } from "./feedback.js";
+import { getPortfolioHistory, sampleWallet } from "./portfolio.js";
+
+const ORIGINS = (process.env.CORS_ORIGINS ?? "*")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const app = new Hono();
+
+// CORS: open for local dev (*); lock to Pages domains in prod via CORS_ORIGINS.
+app.use(
+  "*",
+  cors({
+    origin: ORIGINS.includes("*") ? "*" : ORIGINS,
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-API-Key"],
+  }),
+);
+
+// Per-client rate limiting: 120 req/min/IP/route default (tune via env).
+// Shared-Redis limits land later; per-instance gate already stops stampedes.
+const RL_LIMIT = Number(process.env.API_RL_LIMIT) || 120;
+const RL_WINDOW = Number(process.env.API_RL_WINDOW_MS) || 60_000;
+app.use("*", async (c, next) => {
+  const ip =
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("cf-connecting-ip") ||
+    "local";
+  const key = `${ip}:${c.req.path}`;
+  const r = rateLimit(key, RL_LIMIT, RL_WINDOW);
+  if (!r.ok)
+    return c.json({ ok: false, error: "rate-limited, retry shortly" }, 429);
+  await next();
+});
+
+// Network per request: the app's Testnet mode adds ?network=testnet to every
+// call; everything below runs inside that network's context (net.ts).
+app.use("*", (c, next) => withNetwork(parseNet(c.req.query("network")), () => next()));
+
+// Testnet mode covers Blend, Soroswap swaps, smart accounts and automation.
+// Mainnet-only features answer plainly instead of failing somewhere deeper.
+const MAINNET_ONLY = new RegExp("^/(vaults|dex|lending/xoxno|lending/migrate|portfolio/history)(/|$)");
+app.use("*", async (c, next) => {
+  if (!isTestnet() || !MAINNET_ONLY.test(c.req.path)) return next();
+  const note = "Mainnet only — turn Testnet mode off to use vaults, DEX pools and XOXNO.";
+  if (c.req.method === "GET")
+    return c.json({ ok: true, mainnetOnly: true, note, rows: [], vaults: [], pools: [], positions: [], points: [] });
+  return c.json({ ok: false, error: note });
+});
+
+app.get("/health", async (c) => {
+  const redis = await cacheGet<string>("__ping").then(
+    () => true,
+    () => false,
+  );
+  return c.json({
+    ok: true,
+    uptime: process.uptime(),
+    redis,
+    now: Date.now(),
+  });
+});
+
+
+
+// Native price stack — no upstream needed.
+app.get("/prices", async (c) => {
+  const raw = c.req.query("codes") ?? "";
+  const codes = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (codes.length === 0)
+    return c.json({ ok: false, error: "codes required" }, 400);
+  try {
+    const out = await livePrices(codes);
+    return c.json({ ok: true, ...out });
+  } catch (e) {
+    return c.json(
+      { ok: false, error: String((e as Error)?.message ?? e).slice(0, 160) },
+      200,
+    );
+  }
+});
+
+app.get("/prices/history", async (c) => {
+  const code = c.req.query("code") ?? "";
+  const points = Number(c.req.query("points") ?? 48);
+  if (!code.trim()) return c.json({ ok: false, error: "code required" }, 400);
+  const { priceHistory } = await import("./prices.js");
+  return c.json(await priceHistory(code, points), 200);
+});
+
+const POOL_PROTOCOLS = new Set(["blend", "xoxno"]);
+const VAULT_PROTOCOLS = new Set(["defindex", "upshift", "untangled"]);
+const DEX_PROTOCOLS = new Set(["aqua", "phoenix", "soroswap", "sushi"]);
+
+// Native pools catalogue (Blend SDK + XOXNO REST).
+// ?protocol=blend|xoxno loads ONLY that leg — a Blend-only view
+// never waits on (or pays for) XOXNO. No ?protocol= merges the
+// per-protocol shared-cache entries for Discover/canvas.
+app.get("/pools", async (c) => {
+  const protocol = (c.req.query("protocol") ?? "").toLowerCase();
+  const debug = c.req.query("debug") === "excluded";
+  if (protocol && !POOL_PROTOCOLS.has(protocol))
+    return c.json({ ok: false, error: "unknown protocol" }, 400);
+  try {
+    if (protocol) {
+      const data = await getPoolData(protocol as "blend" | "xoxno");
+      return c.json({ ok: true, protocol, ...data });
+    }
+    const data = await getPoolsAll(debug);
+    return c.json({ ok: true, ...data });
+  } catch (e) {
+    return c.json(
+      { ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) },
+      200,
+    );
+  }
+});
+
+// DEX pool boards (Soroban AMMs). ?protocol= loads ONLY that leg — an
+// Aqua-only view never waits on (or pays for) Phoenix factory RPC.
+// Soroswap/Sushi have no pool catalogue source: they answer ok:true with
+// zero rows and a sources reason (never mocked rows).
+app.get("/dex/pools", async (c) => {
+  const protocol = (c.req.query("protocol") ?? "").toLowerCase();
+  if (!protocol || !DEX_PROTOCOLS.has(protocol))
+    return c.json({ ok: false, error: "unknown protocol" }, 400);
+  try {
+    const data = await getDexPools(protocol as DexProtocol);
+    return c.json({ ok: true, protocol, ...data });
+  } catch (e) {
+    return c.json(
+      { ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) },
+      200,
+    );
+  }
+});
+
+// Native positions (address-scoped, never cached per-user). ?protocol=
+// skips the other legs' fetchers entirely — an XOXNO-only view does zero
+// Blend PoolV2.load calls.
+app.get("/positions", async (c) => {
+  const address = c.req.query("address") ?? "";
+  const protocol = (c.req.query("protocol") ?? "").toLowerCase();
+  // C... = a Seidar smart account (positions are read the same way).
+  if (!/^[GC][A-Z2-7]{55}$/.test(address))
+    return c.json({ ok: false, error: "invalid address" }, 400);
+  if (protocol && !POOL_PROTOCOLS.has(protocol))
+    return c.json({ ok: false, error: "unknown protocol" }, 400);
+  try {
+    const data = await getPositions(
+      address,
+      (protocol || undefined) as "blend" | "xoxno" | undefined,
+    );
+    // Piggyback equity snapshot: fire-and-forget, never delays the response.
+    if (data && typeof data === "object" && "ok" in data && data.ok) {
+      const d = data as { totalSupplied?: unknown; totalBorrowed?: unknown };
+      void sampleWallet(address, Number(d.totalSupplied ?? 0), Number(d.totalBorrowed ?? 0)).catch(
+        () => {},
+      );
+    }
+    return c.json(data);
+  } catch (e) {
+    return c.json(
+      { ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) },
+      200,
+    );
+  }
+});
+
+app.get("/portfolio/history", async (c) => {
+  const wallet = c.req.query("wallet") ?? "";
+  const points = Number(c.req.query("points") ?? 120);
+  if (!/^G[A-Z2-7]{55}$/.test(wallet))
+    return c.json({ ok: false, error: "invalid wallet" }, 400);
+  const r = await getPortfolioHistory(wallet, points);
+  return c.json(r, 200);
+});
+
+// Native balances (Horizon; USD via Reflector cascade, never CoinGecko).
+app.get("/balances", async (c) => {
+  const address = c.req.query("address") ?? "";
+  if (!/^[GC][A-Z2-7]{55}$/.test(address))
+    return c.json({ ok: false, error: "invalid address" }, 400);
+  try {
+    if (address.startsWith("C")) {
+      const { getContractBalances } = await import("./balances.js");
+      const extra = (c.req.query("tokens") ?? "").split(",").filter((t) => /^C[A-Z2-7]{55}$/.test(t));
+      return c.json(await getContractBalances(address, extra));
+    }
+    return c.json(await getBalances(address));
+  } catch (e) {
+    return c.json(
+      { ok: false, error: String((e as Error)?.message ?? e).slice(0, 160) },
+      200,
+    );
+  }
+});
+
+app.get("/balance", async (c) => {
+  const address = c.req.query("address") ?? "";
+  if (!/^G[A-Z2-7]{55}$/.test(address))
+    return c.json({ error: "invalid address" }, 400);
+  return c.json(await getBalance(address));
+});
+
+app.get("/vaults", async (c) => {
+  const protocol = (c.req.query("protocol") ?? "").toLowerCase();
+  const fresh = c.req.query("refresh") === "1";
+  if (protocol && !VAULT_PROTOCOLS.has(protocol))
+    return c.json({ ok: false, error: "unknown protocol" }, 400);
+  const data = await getVaults(
+    fresh,
+    (protocol || undefined) as "defindex" | "upshift" | "untangled" | undefined,
+  );
+  return c.json({ ok: true, ...data });
+});
+
+app.get("/vaults/detail", async (c) => {
+  const r = await getVaultDetail(c.req.query("protocol") ?? "", c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/vaults/positions", async (c) => {
+  const r = await getVaultPositions(c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
+app.post("/vaults/build", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Parameters<typeof buildVaultTx>[0];
+  const r = await buildVaultTx(body);
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/vaults/snapshots", async (c) => {
+  const r = await getSnapshots(
+    c.req.query("protocol") ?? "",
+    c.req.query("address") ?? "",
+    c.req.query("days"),
+  );
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/vaults/watches", async (c) => {
+  const r = await listWatches(c.req.query("wallet") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.post("/vaults/watches", async (c) => {
+  const r = await upsertWatch(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.patch("/vaults/watches", async (c) => {
+  const r = await touchWatch(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.delete("/vaults/watches", async (c) => {
+  const r = await deleteWatch(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+// ---------- swap / submit / icons / chain ----------
+
+/** Seidar service fee rates actually charged on this network (fees.ts). */
+app.get("/fees", async (c) => {
+  const r = await feeInfo();
+  return c.json(r.body, r.status as 200);
+});
+app.post("/swap/quote", async (c) => {
+  const r = await quoteSwap(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.post("/swap/build", async (c) => {
+  const r = await buildSwap(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.post("/swap/send", async (c) => {
+  const r = await sendSwap(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+app.get("/swap/tokens", async (c) => {
+  const r = await getSwapTokens();
+  return c.json(r.body, r.status as 200);
+});
+
+app.post("/tx/send", async (c) => {
+  const r = await sendTx(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+app.post("/blend/build", async (c) => {
+  const r = await buildBlendTx(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+// Unified lending actions (Blend / XOXNO) -> unsigned XDR.
+app.post("/lending/build", async (c) => {
+  const r = await buildLending(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
+
+// Leverage loops: how much can be borrowed in the next Blend submit while
+// health stays >= minHealth (oracle prices, reserve factors).
+app.get("/lending/borrow-capacity", async (c) => {
+  const pool = c.req.query("pool") ?? "";
+  const account = c.req.query("account") ?? "";
+  const asset = c.req.query("asset") ?? "";
+  const addAsset = c.req.query("addAsset") ?? "";
+  const addAmount = c.req.query("addAmount") ?? "0";
+  const minHealth = Number(c.req.query("minHealth") ?? 1.1);
+  const C = /^C[A-Z2-7]{55}$/;
+  if (!C.test(pool) || !/^[GC][A-Z2-7]{55}$/.test(account) || !C.test(asset))
+    return c.json({ ok: false, error: "pool, account and asset required" }, 400);
+  if (!(minHealth >= 1.01 && minHealth <= 5) || !/^\d+$/.test(addAmount) || (addAmount !== "0" && !C.test(addAsset)))
+    return c.json({ ok: false, error: "bad minHealth / addAsset / addAmount" }, 400);
+  try {
+    const { borrowCapacity } = await import("./blend-position.js");
+    const cap = await borrowCapacity(pool, account, asset, minHealth, addAmount !== "0" ? { asset: addAsset, amount: BigInt(addAmount) } : undefined);
+    return c.json({ ok: true, amount: cap.toString() });
+  } catch (e) {
+    return c.json({ ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }, 200);
+  }
+});
+
+app.post("/lending/migrate/blend-xoxno", async (c) => {
+  const r = await buildBlendToXoxno(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
+
+// Account history with one lending protocol (decoded Horizon operations).
+app.get("/history", async (c) => {
+  const r = await getHistory(
+    c.req.query("address") ?? "",
+    (c.req.query("protocol") ?? "").toLowerCase(),
+    c.req.query("owner") ?? "",
+    c.req.query("contract") ?? "",
+  );
+  return c.json(r.body, r.status as 200);
+});
+
+// DEX liquidity (Soroswap / Aqua / Phoenix): LP position + deposit/withdraw.
+// Lendable assets (plain supply, never collateral): Blend pools, XOXNO hubs.
+app.get("/lend/markets", async (c) => {
+  const { getLendMarkets } = await import("./lend-markets.js");
+  const r = await getLendMarkets();
+  return c.json(r.body, r.status as 200);
+});
+// Every LP position an address holds (Soroswap / Aqua / Phoenix).
+app.get("/dex/positions", async (c) => {
+  const { getLpPositions } = await import("./lp-positions.js");
+  const r = await getLpPositions(c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.get("/dex/position", async (c) => {
+  const r = await lpPosition({ protocol: c.req.query("protocol"), pool: c.req.query("pool"), address: c.req.query("address") });
+  return c.json(r.body, r.status as 200);
+});
+// Pool page: daily TVL / volume history and the latest trades.
+app.get("/dex/pool/history", async (c) => {
+  const { poolHistory } = await import("./pool-activity.js");
+  const r = await poolHistory(c.req.query("protocol") ?? "", c.req.query("pool") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.get("/dex/pool/trades", async (c) => {
+  const { poolTrades } = await import("./pool-activity.js");
+  const tokens = (c.req.query("tokens") ?? "").split(",").filter(Boolean);
+  const r = await poolTrades(c.req.query("protocol") ?? "", c.req.query("pool") ?? "", tokens, Number(c.req.query("limit") ?? 30));
+  return c.json(r.body, r.status as 200);
+});
+// Aqua concentrated pools: range positions.
+app.get("/dex/cl/pool", async (c) => {
+  const { clPool } = await import("./aqua-cl.js");
+  const r = await clPool(c.req.query("pool") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.get("/dex/cl/positions", async (c) => {
+  const { clPositions } = await import("./aqua-cl.js");
+  const r = await clPositions(c.req.query("pool") ?? "", c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.post("/dex/cl/build", async (c) => {
+  const { buildCl } = await import("./aqua-cl.js");
+  const r = await buildCl((await c.req.json().catch(() => null)) ?? {});
+  return c.json(r.body, r.status as 200);
+});
+app.get("/dex/aqua/pool", async (c) => {
+  const r = await aquaPoolInfo(c.req.query("pool") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.post("/dex/liquidity/build", async (c) => {
+  const r = await buildLiquidity(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
+
+// Token icons for every DEX token (per contract; per code where unambiguous).
+app.get("/tokens/icons", async (c) => {
+  const { dexTokenIcons } = await import("./token-icons.js");
+  const r = await dexTokenIcons();
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/lending/xoxno/accounts", async (c) => {
+  const r = await xoxnoAccounts(c.req.query("owner") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/lending/xoxno/markets", async (c) => {
+  const r = await xoxnoMarkets();
+  return c.json(r.body, r.status as 200);
+});
+
+// In-app feedback inbox (text + data-URL attachments, server-stored).
+app.post("/feedback", async (c) => {
+  const r = await submitFeedback(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+app.get("/icon", async (c) => {
+  const r = await getIcon(c.req.query("cid") ?? "");
+  if ("bytes" in r) {
+    return new Response(r.bytes, {
+      headers: { "Content-Type": r.type, "Cache-Control": "public, max-age=86400" },
+    });
+  }
+  return c.json(r.body, r.status as 200);
+});
+
+// (Removed: /activity + /automation read the retired testnet guardian;
+// automation state now lives under /automation/*.)
+
+// Price warmer: 30s refresh of majors so all clients share 2 req/min upstream
+// instead of N × polling. Pool/vault warmers move natively in the next step.
+// Started explicitly by the Node entrypoint (server.ts) or a platform Cron
+// trigger — importing this module (tests, Workers) has zero side effects.
+const WARM_CODES = ["XLM", "USDC", "EURC", "BTC", "ETH", "AQUA"];
+let lastSnapshotAt = 0;
+async function warmPrices() {
+  try {
+    const out = await livePrices(WARM_CODES);
+    // Own history: snapshot spot every 15 min (30-day retention, served
+    // hourly for charts; 24h change reads off the same table).
+    if (Date.now() - lastSnapshotAt > 15 * 60_000) {
+      lastSnapshotAt = Date.now();
+      const { snapshotPrices } = await import("./prices.js");
+      await snapshotPrices(out.prices);
+    }
+  } catch {
+    // warmer failures must never crash the process
+  }
+}
+
+/** Start background refresh loops (Node/Containers only, not Workers). */
+export function startWarmers(): void {
+  setInterval(warmPrices, 30_000);
+  warmPrices();
+  // Swap activity (7-day volume, trades, fee APY) for Soroswap / Phoenix /
+  // Sushi: scan at boot and keep warm, so pool pages never wait on it.
+  const warmActivity = () =>
+    withNetwork("mainnet", async () => {
+      for (const v of ["soroswap", "phoenix", "sushi"] as const) await getDexPools(v).catch(() => null);
+    });
+  setInterval(warmActivity, 5 * 60_000);
+  setTimeout(warmActivity, 5_000);
+}
+
+// Balances stream helper route: clients prefer Horizon SSE
+// (EventSource horizon.../accounts/{addr}/effects?cursor=now); this documents it.
+app.get("/balances/stream", (c) => {
+  const address = c.req.query("address") ?? "";
+  if (!/^G[A-Z2-7]{55}$/.test(address))
+    return c.json({ ok: false, error: "invalid address" }, 400);
+  return c.json({
+    ok: true,
+    sse: `${horizonUrl()}/accounts/${address}/effects?cursor=now`,
+    fallback: `/api/balances?address=${address}`,
+    note: "SSE pushes XLM+trustline changes; pool/vault legs stay warmer-fed.",
+  });
+});
+
+export default app;
