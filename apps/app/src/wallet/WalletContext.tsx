@@ -247,24 +247,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const openConnectModal = useCallback(async () => {
     const r = await kitOpenAuthModal();
     if (!r) return;
-    const exists = wallets.some((w) => w.address === r.address);
-    const next = exists
-      ? wallets.map((w) => (w.address === r.address ? { ...w, walletId: r.walletId } : w))
-      : [...wallets, { address: r.address, walletId: r.walletId, name: "" }];
-    commit({ wallets: next, portfolios: intoActive(r.address), address: r.address });
-    successAlert({ message: exists ? "Wallet switched" : "Wallet connected" });
-  }, [wallets, commit, intoActive, successAlert]);
+    const home = portfolios.find((p) => p.wallets.includes(r.address));
+    if (home) {
+      // Already linked: re-activate it where it lives (never move it between portfolios).
+      commit({ wallets: wallets.map((w) => (w.address === r.address ? { ...w, walletId: r.walletId } : w)), activeId: home.id, address: r.address });
+      return successAlert({ message: home.id === activeId ? "Wallet switched" : `Switched to ${home.name}` });
+    }
+    commit({ wallets: [...wallets, { address: r.address, walletId: r.walletId, name: "" }], portfolios: intoActive(r.address), address: r.address });
+    successAlert({ message: "Wallet connected" });
+  }, [wallets, portfolios, activeId, commit, intoActive, successAlert]);
 
   const watchAddress = useCallback(
     (target: string, name = "Test wallet") => {
       if (!WATCH_ENABLED || !isStellarAddress(target)) return false;
-      const next = wallets.some((w) => w.address === target)
-        ? wallets
-        : [...wallets, { address: target, walletId: "watch" as const, name }];
-      commit({ wallets: next, portfolios: intoActive(target), address: target });
+      const home = portfolios.find((p) => p.wallets.includes(target));
+      if (home) commit({ activeId: home.id, address: target });
+      else commit({ wallets: [...wallets, { address: target, walletId: "watch" as const, name }], portfolios: intoActive(target), address: target });
       return true;
     },
-    [wallets, commit, intoActive],
+    [wallets, portfolios, commit, intoActive],
   );
 
   // Test hooks: /dashboard?watch=G... or window.seidar.watch("G...") in the console.
