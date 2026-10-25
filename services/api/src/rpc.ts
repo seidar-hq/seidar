@@ -170,6 +170,8 @@ export async function buildInvoke(opts: {
   from: string;
   op: unknown;
   timeoutSec?: number;
+  /** "record_allow_nonroot" when the user's auth sits below another contract (router batches). */
+  authMode?: "record" | "record_allow_nonroot";
 }): Promise<{ xdr: string; retval: unknown; minResourceFee: string | null }> {
   const sdk = await import("@stellar/stellar-sdk");
   return withRpc(async (server) => {
@@ -181,7 +183,7 @@ export async function buildInvoke(opts: {
       .addOperation(op as never)
       .setTimeout(opts.timeoutSec ?? 300)
       .build();
-    const sim = await server.simulateTransaction(tx);
+    const sim = opts.authMode ? await server.simulateTransaction(tx, undefined, opts.authMode) : await server.simulateTransaction(tx);
     if ("error" in sim && (sim as { error?: string }).error) {
       throw new Error(humanizeSimError(String((sim as { error?: string }).error)));
     }

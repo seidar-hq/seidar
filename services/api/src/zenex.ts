@@ -135,6 +135,23 @@ export async function zenexMarket(id?: string) {
     const t = tickers.find((x) => x.marketId === m.id);
     const dec = m.collateralDecimals;
     const c = state.config;
+    // 24h stats: hourly candles for high / low / change, indexed trades for volume.
+    const now = Math.floor(Date.now() / 1000);
+    const [candleResp, tradesResp] = await Promise.all([
+      zenexCandles({ symbol: m.chartSymbol, resolution: "60", from: String(now - 86400), to: String(now) }),
+      withCache(`zenex:vol24:${m.id}`, 60_000, () => getJson<{ data: { items: { notionalAtomic: string; occurredAt: string }[] } }>(`/v1/markets/${m.id}/trades?limit=100`)).then((r) => r.value),
+    ]);
+    const candles = (candleResp.body as { candles?: { o: number; h: number; l: number; c: number }[] }).candles ?? [];
+    const dayAgo = Date.now() - 86400_000;
+    const volume24h = (tradesResp?.data.items ?? []).filter((x) => Date.parse(x.occurredAt) >= dayAgo).reduce((sum, x) => sum + toNum(big(x.notionalAtomic), dec), 0);
+    const open24 = candles[0]?.o ?? null;
+    const last = t ? px(big(t.price)) : (candles[candles.length - 1]?.c ?? null);
+    const stats24h = {
+      high: candles.length ? Math.max(...candles.map((k) => k.h)) : null,
+      low: candles.length ? Math.min(...candles.map((k) => k.l)) : null,
+      changePct: open24 && last ? ((last - open24) / open24) * 100 : null,
+      volume: volume24h,
+    };
     return {
       status: 200,
       body: {
@@ -151,6 +168,7 @@ export async function zenexMarket(id?: string) {
           statusLabel: MARKET_STATUS[state.status] ?? "Unknown",
         },
         price: t ? { mid: px(big(t.price)), bid: px(big(t.bid)), ask: px(big(t.ask)), at: t.observationsTimestamp, bidAtomic: t.bid, askAtomic: t.ask } : null,
+        stats24h,
         openInterest: {
           long: toNum(state.data.notional.long, dec),
           short: toNum(state.data.notional.short, dec),
@@ -171,6 +189,12 @@ export async function zenexMarket(id?: string) {
           feeDominant: Number(c.fee_dom ?? 0n) / 1e18,
           feeNonDominant: Number(c.fee_non_dom ?? 0n) / 1e18,
           liqFee: Number(c.liq_fee ?? 0n) / 1e18,
+          // Impact fee = notional^2 / impactScalar (USDC units), capped at 10% of the notional.
+          impactScalar: toNum(c.impact_scalar ?? 0n, dec),
+          maxImpactRate: 0.1,
+          // Size each side can still add before the open-interest cap.
+          capacityLong: Math.max(0, toNum((c.max_open_interest ?? 0n) - state.data.notional.long, dec)),
+          capacityShort: Math.max(0, toNum((c.max_open_interest ?? 0n) - state.data.notional.short, dec)),
         },
       },
     };
@@ -441,6 +465,11 @@ export type ZenexBuildBody = {
   slippageBps?: number;
   orderId?: number;
   amount?: string;
+  /** Limit / stop / TP / SL lifetime in seconds (default 7 days). */
+  expirySec?: number;
+  /** Optional take-profit / stop-loss triggers placed with an open, in the same transaction. */
+  tp?: string | number;
+  sl?: string | number;
 };
 
 /**
@@ -478,24 +507,56 @@ export async function zenexBuild(b: ZenexBuildBody | null) {
       c.call("create_order", user, sdk.xdr.ScVal.scvBool(isLong), u32(kind), i128(notional), i128(margin), i128(trigger), i128(priceBound), u32(latest + ttlLedgers));
 
     const MARKET_TTL = 120; // ~10 min for keepers to fill
-    const RESTING_TTL = 120_960; // ~7 days for limit / TP / SL
+    // Resting orders (limit / stop / TP / SL): the chosen lifetime, 5s ledgers, at most ~31 days.
+    const RESTING_TTL = Math.min(535_680, Math.max(60, Math.round((Number(b?.expirySec) || 7 * 86400) / 5)));
     let op: unknown;
     let label = "";
+    let authMode: "record_allow_nonroot" | undefined;
     switch (action) {
       case "open-market":
-      case "open-limit": {
+      case "open-limit":
+      case "open-stop": {
         const margin = parseAtomic(b?.margin, dec);
         const notional = parseAtomic(b?.notional, dec);
         if (!margin || !notional) return { status: 200, body: { ok: false, error: "Enter margin and size." } };
+        const side = isLong ? "long" : "short";
+        let main: ReturnType<typeof create>;
         if (action === "open-market") {
-          op = create(ORDER_KIND.MarketIncrease, notional, margin, 0n, await bound(isLong), MARKET_TTL);
-          label = `Open ${isLong ? "long" : "short"} ${b?.notional} USDC`;
+          main = create(ORDER_KIND.MarketIncrease, notional, margin, 0n, await bound(isLong), MARKET_TTL);
+          label = `Open ${side} ${b?.notional} USDC`;
         } else {
           const trigger = parsePrice(b?.triggerPrice);
-          if (!trigger) return { status: 200, body: { ok: false, error: "Enter a limit price." } };
-          op = create(ORDER_KIND.LimitIncrease, notional, margin, trigger, 0n, RESTING_TTL);
-          label = `Limit ${isLong ? "long" : "short"} ${b?.notional} USDC @ ${b?.triggerPrice}`;
+          if (!trigger) return { status: 200, body: { ok: false, error: `Enter a ${action === "open-limit" ? "limit" : "stop"} price.` } };
+          main = create(action === "open-limit" ? ORDER_KIND.LimitIncrease : ORDER_KIND.StopIncrease, notional, margin, trigger, 0n, RESTING_TTL);
+          label = `${action === "open-limit" ? "Limit" : "Stop"} ${side} ${b?.notional} USDC @ ${b?.triggerPrice}`;
         }
+        // TP / SL ride in the same transaction through the router (strict batch: all or nothing).
+        const tp = b?.tp != null && b.tp !== "" ? parsePrice(b.tp) : null;
+        const sl = b?.sl != null && b.sl !== "" ? parsePrice(b.sl) : null;
+        if ((b?.tp && !tp) || (b?.sl && !sl)) return { status: 200, body: { ok: false, error: "Check the take-profit / stop-loss prices." } };
+        if (!tp && !sl) {
+          op = main;
+          break;
+        }
+        const cfg = await zenexConfig();
+        const callOf = (kind: number, notional: bigint, margin: bigint, trigger: bigint, priceBound: bigint, ttl: number) =>
+          sdk.xdr.ScVal.scvMap(
+            [
+              ["args", sdk.xdr.ScVal.scvVec([user, sdk.xdr.ScVal.scvBool(isLong), u32(kind), i128(notional), i128(margin), i128(trigger), i128(priceBound), u32(latest + ttl)])],
+              ["contract", sdk.Address.fromString(m.trading).toScVal()],
+              ["func", sdk.xdr.ScVal.scvSymbol("create_order")],
+            ].map(([k, v]) => new sdk.xdr.ScMapEntry({ key: sdk.xdr.ScVal.scvSymbol(k as string), val: v as InstanceType<typeof sdk.xdr.ScVal> })),
+          );
+        const mainArgs: [number, bigint, bigint, bigint, bigint, number] =
+          action === "open-market"
+            ? [ORDER_KIND.MarketIncrease, notional, margin, 0n, await bound(isLong), MARKET_TTL]
+            : [action === "open-limit" ? ORDER_KIND.LimitIncrease : ORDER_KIND.StopIncrease, notional, margin, parsePrice(b?.triggerPrice)!, 0n, RESTING_TTL];
+        const calls = [callOf(...mainArgs)];
+        if (tp) calls.push(callOf(ORDER_KIND.LimitDecrease, FULL_CLOSE, 0n, tp, 0n, RESTING_TTL));
+        if (sl) calls.push(callOf(ORDER_KIND.StopDecrease, FULL_CLOSE, 0n, sl, 0n, RESTING_TTL));
+        op = new sdk.Contract(cfg.contracts.router).call("multicall", sdk.xdr.ScVal.scvVec(calls));
+        authMode = "record_allow_nonroot";
+        label += `${tp ? ` · TP ${b?.tp}` : ""}${sl ? ` · SL ${b?.sl}` : ""}`;
         break;
       }
       case "close":
@@ -552,7 +613,7 @@ export async function zenexBuild(b: ZenexBuildBody | null) {
       default:
         return { status: 200, body: { ok: false, error: "Unknown action." } };
     }
-    const { xdr } = await buildInvoke({ from, op });
+    const { xdr } = await buildInvoke({ from, op, authMode });
     return { status: 200, body: { ok: true, xdr, label } };
   } catch (e) {
     return { status: 200, body: { ok: false, error: friendly(e) } };

@@ -22,7 +22,12 @@ export type PerpsMarket = {
     feeDominant: number;
     feeNonDominant: number;
     liqFee: number;
+    impactScalar: number;
+    maxImpactRate: number;
+    capacityLong: number;
+    capacityShort: number;
   };
+  stats24h?: { high: number | null; low: number | null; changePct: number | null; volume: number };
 };
 
 export type PerpsPosition = {
@@ -114,3 +119,10 @@ export function useCandles(symbol: string | null, resolution: (typeof RESOLUTION
 export const hourlyPct = (perSec: string | undefined) => (perSec ? (Number(perSec) / 1e18) * 3600 * 100 : null);
 
 export const fmtPx = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5));
+
+export type PerpsTrade = { id: string; side: string; kind: string; price: number; notional: number; at: string; tx: string };
+
+export function usePerpsTrades() {
+  const { value } = useShared<{ ok?: boolean; trades?: PerpsTrade[] } | null>("zenex:trades", () => apiJson("/api/zenex/trades?limit=40"), 30_000);
+  return value?.trades ?? [];
+}
