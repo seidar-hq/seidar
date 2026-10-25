@@ -30,7 +30,8 @@ export async function buildPayment(p: {
   const dest = await loadAccount(p.to);
   if (!dest && !native) throw new Error("The recipient account does not exist yet. Only XLM can be sent to a new account.");
   if (!dest && Number(p.amount) < 1) throw new Error("A new account needs at least 1 XLM to be created.");
-  if (dest && !native && !dest.balances?.some((b) => b.asset_code === p.code && b.asset_issuer === p.issuer))
+  // The issuer itself needs no trustline: paying an asset back to its issuer burns it.
+  if (dest && !native && p.to !== p.issuer && !dest.balances?.some((b) => b.asset_code === p.code && b.asset_issuer === p.issuer))
     throw new Error(`The recipient has no trustline for ${p.code}, so they cannot receive it yet.`);
 
   const server = new sdk.Horizon.Server(HORIZON);

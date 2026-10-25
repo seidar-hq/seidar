@@ -314,6 +314,21 @@ export async function getPositions(address: string, only?: PositionProtocol) {
         }
         return human * px;
       };
+      // Tokens the shared metadata can't name (e.g. SolvBTC): take XOXNO's own symbol, so a
+      // position is never hidden for want of a ticker.
+      const unnamed = contracts.filter((a) => !codeByAsset.has(a));
+      if (unnamed.length) {
+        try {
+          const { xoxnoMarkets } = await import("./lending.js");
+          const mk = (await xoxnoMarkets()).body as { assets?: { sac: string; symbol: string }[] };
+          for (const a of unnamed) {
+            const hit = mk.assets?.find((m) => m.sac === a);
+            codeByAsset.set(a, hit?.symbol ?? `${a.slice(0, 4)}…`);
+          }
+        } catch {
+          for (const a of unnamed) codeByAsset.set(a, `${a.slice(0, 4)}…`);
+        }
+      }
       for (const [asset, code] of codeByAsset) {
         const cf = cfByAsset.get(asset) ?? 0;
         const th = liqByAsset.get(asset) ?? 0;

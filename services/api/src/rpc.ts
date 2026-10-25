@@ -63,7 +63,9 @@ function release(): void {
 
 export function retryable(e: unknown): boolean {
   const msg = String(e instanceof Error ? e.message : e);
-  return /429|rate|timeout|timed out|abort|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed|50[234]|socket/i.test(
+  // "Account not found" too: a lagging endpoint can miss an account the others see (a truly
+  // unfunded account fails on every endpoint and the caller still gets the same error).
+  return /429|rate|timeout|timed out|abort|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed|50[234]|socket|Account not found/i.test(
     msg,
   );
 }
@@ -97,7 +99,8 @@ export async function withRpc<T>(fn: (server: Server, url: string) => Promise<T>
       } catch (e) {
         lastErr = e;
         if (!retryable(e)) throw e;
-        benchedUntil.set(url, Date.now() + 60_000);
+        // A missing account says nothing about the endpoint's health: try the next one, don't bench.
+        if (!/Account not found/i.test(String(e instanceof Error ? e.message : e))) benchedUntil.set(url, Date.now() + 60_000);
         await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
       }
     }

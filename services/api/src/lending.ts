@@ -87,9 +87,33 @@ const BLEND_ERRORS: Record<string, string> = {
   "1224": "Collateral is below the pool's minimum for borrowing.",
 };
 
+/** XOXNO controller codes users can hit (rs-lending-xlm catalog, as shipped in @xoxno/sdk-js). */
+const XOXNO_ERRORS: Record<string, string> = {
+  "100": "Not enough collateral: this would leave your XOXNO account under-collateralised. Repay some debt or withdraw less.",
+  "102": "This would push your health factor too low. Lower the amount.",
+  "104": "This spoke doesn't accept the asset as collateral.",
+  "107": "This asset can't be borrowed on your spoke.",
+  "109": "Your XOXNO account has reached its position limit.",
+  "112": "Not enough liquidity in the market for this amount right now.",
+  "120": "You have no debt in this asset on XOXNO.",
+  "121": "You have nothing supplied in this asset on XOXNO.",
+  "122": "Repay your debt before closing this position.",
+  "126": "With debt open, your collateral would fall below XOXNO's minimum. Keep more collateral.",
+  "127": "The market's utilization limit would be exceeded. Try a smaller amount.",
+  "205": "XOXNO's price sources disagree right now, so the action is paused. Try again shortly.",
+  "206": "XOXNO's price feed is stale right now. Try again shortly.",
+  "301": "This spoke is deprecated.",
+  "307": "This asset isn't listed on your spoke.",
+  "311": "The spoke's supply cap is full.",
+  "312": "The spoke's borrow cap is full.",
+  "315": "This asset is paused on XOXNO.",
+  "316": "This asset is frozen on XOXNO.",
+};
+
 function friendly(protocol: string, msg: string): string {
   const code = msg.match(/error #(\d+)/)?.[1];
   if (protocol === "blend" && code && BLEND_ERRORS[code]) return BLEND_ERRORS[code];
+  if (protocol === "xoxno" && code && XOXNO_ERRORS[code]) return XOXNO_ERRORS[code];
   return msg;
 }
 
