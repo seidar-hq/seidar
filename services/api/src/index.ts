@@ -535,6 +535,33 @@ app.post("/feedback", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+// Zenex perps: market, candles, trades, account state, and order / vault builders.
+app.get("/zenex/market", async (c) => {
+  const { zenexMarket } = await import("./zenex.js");
+  const r = await zenexMarket(c.req.query("market"));
+  return c.json(r.body, r.status as 200);
+});
+app.get("/zenex/candles", async (c) => {
+  const { zenexCandles } = await import("./zenex.js");
+  const r = await zenexCandles({ symbol: c.req.query("symbol"), resolution: c.req.query("resolution"), from: c.req.query("from"), to: c.req.query("to") });
+  return c.json(r.body, r.status as 200);
+});
+app.get("/zenex/trades", async (c) => {
+  const { zenexTrades } = await import("./zenex.js");
+  const r = await zenexTrades(c.req.query("market"), Number(c.req.query("limit") ?? 30));
+  return c.json(r.body, r.status as 200);
+});
+app.get("/zenex/account", async (c) => {
+  const { zenexAccount } = await import("./zenex.js");
+  const r = await zenexAccount(c.req.query("address") ?? "", c.req.query("market"));
+  return c.json(r.body, r.status as 200);
+});
+app.post("/zenex/build", async (c) => {
+  const { zenexBuild } = await import("./zenex.js");
+  const r = await zenexBuild(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
+
 // Header bell: per-wallet notifications (Postgres).
 app.get("/notifications", async (c) => {
   const r = await listNotes(c.req.query("wallet") ?? "");

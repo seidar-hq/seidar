@@ -98,7 +98,7 @@ export function DetailRows({ rows }: { rows: DetailRow[] }) {
       {rows.map((r) => (
         <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
           <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>{r.label}</Typography>
-          <Typography sx={{ fontSize: "0.8125rem", color: r.color ?? "common.black", textAlign: "right" }}>{r.value}</Typography>
+          <Typography sx={{ fontSize: "0.8125rem", color: r.color ?? "common.black", textAlign: "right", whiteSpace: "nowrap" }}>{r.value}</Typography>
         </Box>
       ))}
     </Box>
