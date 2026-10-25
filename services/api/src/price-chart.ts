@@ -125,13 +125,44 @@ async function pair(base: AssetRef, counter: AssetRef, range: ChartRange): Promi
   return fill(direct, range);
 }
 
+// Charts people actually look at are kept warm: every request is remembered for a day and the
+// warmer refreshes it before it expires, so only a chart's very first view ever waits on Horizon.
+const recent = new Map<string, { base: AssetRef; counter: AssetRef; range: ChartRange; at: number }>();
+
+/** Refresh remembered charts (and a few common ones) that are close to expiring. */
+export async function warmCharts(): Promise<void> {
+  const now = Date.now();
+  const common: AssetRef[] = [
+    XLM,
+    { code: "AQUA", issuer: "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA" },
+    { code: "BLND", issuer: "GDJEHTBE6ZHUXSWFI642DCGLUOECLHPF3KSXHPXTSTJ7E3JF6MQ5EZYY" },
+    { code: "EURC", issuer: "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2" },
+  ];
+  for (const a of common)
+    for (const r of ["1d", "7d", "30d", "90d", "1y"] as ChartRange[]) {
+      const k = `${a.code}:${a.issuer ?? "native"}:USDC:${USDC.issuer}:${r}`;
+      if (!recent.has(k)) recent.set(k, { base: a, counter: USDC, range: r, at: now });
+    }
+  for (const [k, v] of recent) {
+    if (now - v.at > 24 * 3600_000) {
+      recent.delete(k);
+      continue;
+    }
+    // priceChart is stale-while-revalidate: calling it past the TTL refreshes in the background.
+    await priceChart(v.base, v.range, v.counter, false).catch(() => null);
+  }
+}
+
 /** Chart of `base` priced in `counter` (default USD via Circle USDC). Cached per range. */
 export async function priceChart(
   base: AssetRef,
   range: ChartRange,
   counter: AssetRef = USDC,
+  remember = true,
 ): Promise<{ ok: true; points: ChartPoint[]; change: number | null } | { ok: false; error: string }> {
-  const key = `chart2:${base.code}:${base.issuer ?? "native"}:${counter.code}:${counter.issuer ?? "native"}:${range}`;
+  const id = `${base.code}:${base.issuer ?? "native"}:${counter.code}:${counter.issuer ?? "native"}:${range}`;
+  const key = `chart2:${id}`;
+  if (remember) recent.set(id, { base, counter, range, at: Date.now() });
   // Empty results throw so a transient Horizon failure is never cached as "no trades".
   const { value } = await withCache(
     key,

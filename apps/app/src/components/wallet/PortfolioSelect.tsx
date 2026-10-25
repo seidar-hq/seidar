@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import Menu from "@mui/material/Menu";
@@ -9,23 +10,20 @@ import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
-import { formatUsd, shortAddress } from "@/lib/format";
-import { useBalances } from "@/wallet/useBalances";
-import { useWallet, walletLabel } from "@/wallet/WalletContext";
-import { WalletAvatar, glassMenuPaperSx } from "./WalletParts";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import { useWallet } from "@/wallet/WalletContext";
+import { glassMenuPaperSx } from "./WalletParts";
 
-/** Heading-sized dropdown: the whole active portfolio or one of its wallets. The page follows the selection. */
+/** Heading-sized dropdown naming the active portfolio; switches between portfolios (never wallets). */
 export default function PortfolioSelect() {
   const theme = useTheme();
-  const { portfolioWallets: wallets, activePortfolio, portfolio, setPortfolio } = useWallet();
-  const name = activePortfolio?.name ?? "My Portfolio";
-  const { byAddress, totalUsd } = useBalances(wallets.map((w) => w.address));
+  const router = useRouter();
+  const { portfolios, activePortfolio, setActivePortfolio, setPortfolio } = useWallet();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const selected = wallets.find((w) => w.address === portfolio);
 
-  const choose = (p: string) => {
-    setPortfolio(p);
+  const choose = (id: string) => {
+    setActivePortfolio(id);
+    setPortfolio("all");
     setAnchor(null);
   };
 
@@ -36,7 +34,7 @@ export default function PortfolioSelect() {
         sx={{ gap: "0.25rem", borderRadius: "0.5rem", px: "0.25rem", "&:hover": { backgroundColor: "overlay.white04" } }}
       >
         <Typography variant="h6" color="common.black">
-          {selected ? walletLabel(selected) : name}
+          {activePortfolio?.name ?? "My Portfolio"}
         </Typography>
         <KeyboardArrowDownRoundedIcon
           sx={{ fontSize: "1.25rem", color: "grey.200", transition: "transform 0.2s", transform: anchor ? "rotate(180deg)" : "none" }}
@@ -47,48 +45,46 @@ export default function PortfolioSelect() {
         open={!!anchor}
         onClose={() => setAnchor(null)}
         slotProps={{
-          paper: { elevation: 0, sx: glassMenuPaperSx(theme, "18rem") },
+          paper: { elevation: 0, sx: glassMenuPaperSx(theme, "16rem") },
           list: { sx: { padding: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" } },
         }}
       >
-        <MenuItem onClick={() => choose("all")} sx={{ gap: "0.75rem", borderRadius: "0.5rem", py: "0.625rem" }}>
-          <Box
-            sx={{
-              width: "2rem",
-              height: "2rem",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "overlay.white08",
-            }}
-          >
-            <LayersOutlinedIcon sx={{ fontSize: "1.125rem", color: "common.black" }} />
+        {portfolios.map((p) => {
+          const selected = p.id === activePortfolio?.id;
+          return (
+            <MenuItem
+              key={p.id}
+              onClick={() => choose(p.id)}
+              sx={{ justifyContent: "space-between", gap: "0.75rem", borderRadius: "0.75rem", height: "3.25rem", backgroundColor: selected ? "overlay.white08" : undefined }}
+            >
+              <Typography variant="subtitle1" color="common.black" noWrap sx={{ fontSize: "1rem" }}>
+                {p.name}
+              </Typography>
+              {selected ? (
+                <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", backgroundColor: "sidebar.purple100", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <CheckRoundedIcon sx={{ fontSize: "0.875rem", color: "common.white" }} />
+                </Box>
+              ) : (
+                <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", backgroundColor: "overlay.white20", flexShrink: 0 }} />
+              )}
+            </MenuItem>
+          );
+        })}
+        <Box sx={{ borderTop: `0.0625rem solid ${theme.palette.overlay.white08}`, my: "0.25rem" }} />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            router.push("/settings");
+          }}
+          sx={{ gap: "0.75rem", borderRadius: "0.75rem", height: "3.25rem" }}
+        >
+          <Box sx={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", backgroundColor: "overlay.white08", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <SettingsOutlinedIcon sx={{ fontSize: "1.125rem", color: "sidebar.heading" }} />
           </Box>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" color="common.black">
-              {name}
-            </Typography>
-            <Typography variant="subtitle3" color="grey.200">
-              {wallets.length} wallet{wallets.length === 1 ? "" : "s"} · {formatUsd(totalUsd)}
-            </Typography>
-          </Box>
-          {portfolio === "all" && <CheckRoundedIcon sx={{ fontSize: "1.125rem", color: "primary.main" }} />}
+          <Typography variant="subtitle1" color="sidebar.heading" sx={{ fontSize: "1rem" }}>
+            Manage Portfolios
+          </Typography>
         </MenuItem>
-        {wallets.map((w) => (
-          <MenuItem key={w.address} onClick={() => choose(w.address)} sx={{ gap: "0.75rem", borderRadius: "0.5rem", py: "0.625rem" }}>
-            <WalletAvatar walletId={w.walletId} size="2rem" />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="subtitle1" color="common.black" noWrap>
-                {walletLabel(w)}
-              </Typography>
-              <Typography variant="subtitle3" color="grey.200">
-                {shortAddress(w.address)} · {formatUsd(byAddress[w.address]?.usd)}
-              </Typography>
-            </Box>
-            {portfolio === w.address && <CheckRoundedIcon sx={{ fontSize: "1.125rem", color: "primary.main" }} />}
-          </MenuItem>
-        ))}
       </Menu>
     </>
   );

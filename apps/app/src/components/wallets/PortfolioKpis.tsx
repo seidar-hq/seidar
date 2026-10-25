@@ -80,6 +80,7 @@ export default function PortfolioKpis() {
       heading: "Performance %",
       infoTooltip: "How the value of everything you hold moved in the last 24 hours.",
       value: changesLoading && !base ? sk : pct(perf),
+      chip: changesLoading && !base ? undefined : { label: pct(perf), positive: perf >= 0 },
       subtext: "Change 24h",
       subValue: changesLoading && !base ? skSmall : signedUsd(delta),
       subTone: delta > 0 ? "positive" : delta < 0 ? "negative" : undefined,

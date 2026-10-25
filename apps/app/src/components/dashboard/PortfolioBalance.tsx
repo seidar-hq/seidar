@@ -18,6 +18,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  CartesianGrid,
   Cell,
   LabelList,
   Pie,
@@ -74,114 +75,163 @@ const Empty = ({ text, minHeight = "19.75rem" }: { text: string; minHeight?: str
   </Box>
 );
 
-const timeLabel = (t: number, range: Range) => {
-  const d = new Date(t);
-  return range === "1h" || range === "1d"
-    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+const compactUsd = (v: number) => {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
+  if (a >= 1) return `$${v.toFixed(a >= 100 ? 0 : 2)}`;
+  return `$${v.toPrecision(2)}`;
 };
 
-function ValueTooltip({ active, payload, range, label }: { active?: boolean; payload?: { value: number; payload: { time: number } }[]; range: Range; label: string }) {
+/** Axis label: clock time inside a day, day + month (+ year past a month). */
+const axisLabel = (t: number, range: Range) => {
+  const d = new Date(t);
+  if (range === "1h" || range === "1d") return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (range === "90d" || range === "1y") return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+};
+
+/** Up to `max` evenly spread ticks, one per distinct label (so a day never repeats on the axis). */
+const axisTicks = (times: number[], range: Range, max = 8) => {
+  const firsts: number[] = [];
+  let last = "";
+  for (const t of times) {
+    const l = axisLabel(t, range);
+    if (l !== last) firsts.push(t);
+    last = l;
+  }
+  if (firsts.length <= max) return firsts;
+  const step = (firsts.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => firsts[Math.round(i * step)]);
+};
+
+type TipRow = { dataKey?: string | number; value?: number; color?: string; payload?: { time: number; total: number } };
+
+function TimelineTooltip({ active, payload }: { active?: boolean; payload?: TipRow[] }) {
   const theme = useTheme();
   if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  if (!p) return null;
+  const rows = payload.filter((r) => r.dataKey === "assets" || r.dataKey === "positions");
   return (
     <Box
       sx={{
-        p: "0.5rem 0.75rem",
-        borderRadius: "0.5rem",
-        backgroundColor: theme.palette.surfaceBg.main,
+        minWidth: "14rem",
+        p: "0.875rem 1rem",
+        borderRadius: "0.75rem",
+        backgroundColor: "#1A1A1A",
         border: `0.0625rem solid ${theme.palette.overlay.white08}`,
+        boxShadow: `0 0.5rem 1.5rem ${theme.palette.shadow.heavy}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
       }}
     >
-      <Typography variant="caption" color="grey.200">
-        {timeLabel(payload[0].payload.time, range)} · {label}
+      <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>
+        {new Date(p.time).toLocaleString([], { dateStyle: "long", timeStyle: "short" })}
       </Typography>
-      <Typography variant="subtitle1" color="common.black">
-        {formatUsd(payload[0].value)}
-      </Typography>
+      {rows.map((r) => (
+        <Box key={String(r.dataKey)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1.5rem" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Box sx={{ width: "0.875rem", height: "0.25rem", borderRadius: "999rem", backgroundColor: r.color }} />
+            <Typography sx={{ fontSize: "0.875rem", color: "common.black" }}>{r.dataKey === "assets" ? "Assets" : "Positions"}</Typography>
+          </Box>
+          <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "common.black" }}>{formatUsd(r.value ?? 0)}</Typography>
+        </Box>
+      ))}
+      {rows.length > 1 && (
+        <>
+          <Box sx={{ borderTop: `0.0625rem solid ${theme.palette.overlay.white08}` }} />
+          <Box sx={{ display: "flex", justifyContent: "space-between", gap: "1.5rem" }}>
+            <Typography sx={{ fontSize: "0.875rem", color: "common.black" }}>Total Portfolio</Typography>
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "common.black" }}>{formatUsd(p.total)}</Typography>
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
 
-function AreaSeries({
-  data,
-  dataKey,
-  color,
-  top,
-  range,
-  label,
-}: {
-  data: { time: number }[];
-  dataKey: string;
-  color: string;
-  top: string;
-  range: Range;
-  label: string;
-}) {
-  const theme = useTheme();
-  const id = `grad-${dataKey}`;
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={top} />
-            <stop offset="100%" stopColor={alpha(top, 0)} />
-          </linearGradient>
-        </defs>
-        <XAxis dataKey="time" hide />
-        <YAxis hide domain={["dataMin", "dataMax"]} />
-        <ChartTooltip
-          content={<ValueTooltip range={range} label={label} />}
-          cursor={{ stroke: theme.palette.overlay.white20 }}
-        />
-        <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} fill={`url(#${id})`} isAnimationActive={false} />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-}
+const Legend = ({ items }: { items: { label: string; color: string }[] }) => (
+  <Box sx={{ display: "flex", gap: "1.25rem", mb: "0.75rem" }}>
+    {items.map((i) => (
+      <Box key={i.label} sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <Box sx={{ width: "1rem", height: "0.3rem", borderRadius: "999rem", backgroundColor: i.color }} />
+        <Typography sx={{ fontSize: "0.9375rem", color: "common.black" }}>{i.label}</Typography>
+      </Box>
+    ))}
+  </Box>
+);
 
 function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
   const theme = useTheme();
   const [range, setRange] = useState<Range>("7d");
   const { series, loading } = usePortfolioSeries(portfolio.exposures, range);
-  const hasPositions = portfolio.exposures.some((e) => e.positions !== 0);
   const busy = portfolio.assetsLoading || (loading && series.length === 0);
-
-  const assetsLine = { color: theme.palette.sidebar.primary, top: theme.palette.graph.assetAreaTop };
-  const positionsLine = { color: theme.palette.graph.yieldLine, top: theme.palette.graph.yieldAreaTop };
+  const assetsColor = theme.palette.sidebar.primary;
+  const positionsColor = theme.palette.graph.yieldLine;
+  const show = { assets: view !== "positions", positions: view !== "assets" };
+  const legend = [
+    ...(show.assets ? [{ label: "Assets", color: assetsColor }] : []),
+    ...(show.positions ? [{ label: "Positions", color: positionsColor }] : []),
+  ];
+  const dot = (color: string) => ({ r: 9, fill: color, stroke: "#FFFFFF", strokeWidth: 3 });
 
   let body: React.ReactNode;
   if (busy) body = <Skeleton variant="rectangular" animation="wave" sx={{ height: "18rem", borderRadius: "0.5rem" }} />;
   else if (series.length === 0) body = <Empty text="No price history available for these assets yet." />;
-  else if (view === "all")
-    body = (
-      <ChartBox>
-        <Box sx={{ height: hasPositions ? "50%" : "100%" }}>
-          <AreaSeries data={series} dataKey="assets" range={range} label="Assets" {...assetsLine} />
-        </Box>
-        {hasPositions && (
-          <Box sx={{ height: "50%" }}>
-            <AreaSeries data={series} dataKey="positions" range={range} label="Positions" {...positionsLine} />
-          </Box>
-        )}
-      </ChartBox>
-    );
   else
     body = (
-      <ChartBox>
-        <AreaSeries
-          data={series}
-          dataKey={view}
-          range={range}
-          label={VIEW_LABEL[view]}
-          {...(view === "positions" ? positionsLine : assetsLine)}
-        />
+      <ChartBox sx={{ overflow: "visible" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={series} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="tl-assets" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={alpha(assetsColor, 0.35)} />
+                <stop offset="100%" stopColor={alpha(assetsColor, 0)} />
+              </linearGradient>
+              <linearGradient id="tl-positions" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={alpha(positionsColor, 0.25)} />
+                <stop offset="100%" stopColor={alpha(positionsColor, 0)} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke={theme.palette.overlay.white08} strokeDasharray="4 4" />
+            <XAxis
+              dataKey="time"
+              type="number"
+              scale="time"
+              domain={["dataMin", "dataMax"]}
+              ticks={axisTicks(series.map((p) => p.time), range)}
+              tickFormatter={(t) => axisLabel(Number(t), range)}
+              tick={{ fill: theme.palette.grey[200], fontSize: 12 }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={36}
+            />
+            <YAxis
+              tickFormatter={(v) => compactUsd(Number(v))}
+              tick={{ fill: theme.palette.grey[200], fontSize: 12 }}
+              axisLine={false}
+              tickLine={false}
+              width={62}
+              domain={[(min: number) => Math.max(0, min * 0.98), (max: number) => max * 1.02]}
+            />
+            <ChartTooltip content={<TimelineTooltip />} cursor={{ stroke: theme.palette.common.black, strokeDasharray: "4 4", strokeOpacity: 0.6 }} />
+            {show.assets && (
+              <Area type="linear" dataKey="assets" stroke={assetsColor} strokeWidth={2} fill="url(#tl-assets)" isAnimationActive={false} activeDot={dot(assetsColor)} />
+            )}
+            {show.positions && (
+              <Area type="linear" dataKey="positions" stroke={positionsColor} strokeWidth={2} fill="url(#tl-positions)" isAnimationActive={false} activeDot={dot(positionsColor)} />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
       </ChartBox>
     );
 
   return (
     <Box>
+      <Legend items={legend} />
       <Box sx={{ position: "relative" }}>
         {body}
         {loading && series.length > 0 && (

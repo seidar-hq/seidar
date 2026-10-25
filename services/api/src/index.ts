@@ -626,6 +626,10 @@ async function warmPrices() {
 export function startWarmers(): void {
   setInterval(warmPrices, 30_000);
   warmPrices();
+  // Price charts: keep every recently viewed chart (and the common ones) warm.
+  const warmChartsNow = () => import("./price-chart.js").then((m) => m.warmCharts()).catch(() => null);
+  setTimeout(warmChartsNow, 15_000);
+  setInterval(warmChartsNow, 2 * 60_000);
   // Swap activity (7-day volume, trades, fee APY) for Soroswap / Phoenix /
   // Sushi: scan at boot and keep warm, so pool pages never wait on it.
   const warmActivity = () =>

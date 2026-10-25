@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { apiJson } from "@/lib/api";
-import { useShared, useSharedMany } from "@/lib/useShared";
+import { loadShared, useShared, useSharedMany } from "@/lib/useShared";
 import type { Exposure } from "./usePortfolio";
 
 export type Range = "1h" | "1d" | "7d" | "14d" | "30d" | "90d" | "1y";
@@ -13,17 +13,29 @@ type Chart = { ok?: boolean; points?: { t: number; px: number }[]; change?: numb
 const chartable = (e: Exposure) => e.key === "native" || e.key.includes(":");
 const TTL = 300_000;
 
+const chartLoader = (k: string) => () => {
+  const [, range, ...rest] = k.split(":");
+  return apiJson<Chart>(`/api/prices/chart?asset=${encodeURIComponent(rest.join(":"))}&range=${range}`);
+};
+
+const PREFETCH: Range[] = ["1d", "7d", "30d", "90d", "1y"];
+
 /** USD price charts for every chartable exposure over `range`, keyed by exposure key. */
 export function useExposureCharts(exposures: Exposure[], range: Range) {
-  const keys = exposures.filter(chartable).map((e) => `chart:${range}:${e.key}`);
-  const { values, loading } = useSharedMany<Chart | null>(
-    keys,
-    (k) => () => {
-      const asset = k.split(":").slice(2).join(":");
-      return apiJson<Chart>(`/api/prices/chart?asset=${encodeURIComponent(asset)}&range=${range}`);
-    },
-    TTL,
-  );
+  const assets = exposures.filter(chartable).map((e) => e.key);
+  const keys = assets.map((a) => `chart:${range}:${a}`);
+  const { values, loading } = useSharedMany<Chart | null>(keys, chartLoader, TTL);
+  // Once this range is in, quietly load the other periods so switching is instant.
+  const sig = assets.join(",");
+  useEffect(() => {
+    if (loading || !assets.length) return;
+    const ric = (globalThis as { requestIdleCallback?: (f: () => void) => number }).requestIdleCallback;
+    const idle = (cb: () => void) => (ric ? ric(cb) : setTimeout(cb, 400));
+    idle(() => {
+      for (const r of PREFETCH) if (r !== range) for (const a of assets) void loadShared(`chart:${r}:${a}`, chartLoader(`chart:${r}:${a}`), TTL).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, sig, range]);
   const charts: Record<string, { t: number; px: number }[]> = {};
   for (const e of exposures) {
     const pts = values[`chart:${range}:${e.key}`]?.points;

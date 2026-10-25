@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
-import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
 import IconButton from "@mui/material/IconButton";
@@ -15,6 +14,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme } from "@mui/material/styles";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
 import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
 import QRCode from "qrcode";
@@ -36,14 +36,32 @@ import { useSwapTokens } from "./useSwapTokens";
 // ---------- DEX venues ----------
 
 export const DEXES = [
-  { id: "soroswap", name: "Soroswap" },
-  { id: "aqua", name: "Aquarius" },
-  { id: "phoenix", name: "Phoenix" },
-  { id: "sdex", name: "Stellar DEX" },
-  { id: "sushi", name: "Sushi" },
+  { id: "soroswap", name: "Soroswap", logo: "/protocols/soroswap.png" },
+  { id: "aqua", name: "Aquarius", logo: "/protocols/aqua.png" },
+  { id: "phoenix", name: "Phoenix", logo: "/protocols/phoenix.png" },
+  { id: "sdex", name: "Stellar DEX", logo: "/tokens/xlm.png" },
+  { id: "sushi", name: "Sushi", logo: "/protocols/sushi.png" },
 ] as const;
 type DexId = (typeof DEXES)[number]["id"];
 const dexName = (id: string) => DEXES.find((d) => d.id === id)?.name ?? id;
+const dexLogo = (id: string) => DEXES.find((d) => d.id === id)?.logo ?? "";
+
+/** Round logo (fills its circle). */
+const Mark = ({ src, size = "1.75rem", bg }: { src: string; size?: string; bg?: string }) => (
+  <Box sx={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0, backgroundColor: bg ?? "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <Box component="img" src={src} alt="" sx={{ width: bg ? "70%" : "100%", height: bg ? "70%" : "100%", objectFit: "cover" }} />
+  </Box>
+);
+
+/** Green round check (selected) or an empty ring, at the right end of a menu row. */
+const Check = ({ on }: { on: boolean }) =>
+  on ? (
+    <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", backgroundColor: "green.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <CheckRoundedIcon sx={{ fontSize: "0.875rem", color: "common.white" }} />
+    </Box>
+  ) : (
+    <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", border: (t) => `0.125rem solid ${t.palette.overlay.white20}`, flexShrink: 0 }} />
+  );
 
 // ---------- styles ----------
 
@@ -324,10 +342,32 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: "0.875rem", p: "1.25rem 1rem 1rem" }}>
-      <SelectRow onClick={(e) => setDexAnchor(e.currentTarget)}>
-        <Typography variant="subtitle3" color="sidebar.heading" noWrap>
-          {dexLabel}
-        </Typography>
+      <SelectRow onClick={(e) => setDexAnchor(e.currentTarget)} aria-label={dexLabel}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+          {dexes.length === 0 ? (
+            <>
+              <Mark src="/tokens/xlm.png" />
+              <Typography variant="subtitle3" color="sidebar.heading" noWrap>
+                Auto · best route across all DEXs
+              </Typography>
+            </>
+          ) : dexes.length === 1 ? (
+            <>
+              <Mark src={dexLogo(dexes[0])} />
+              <Typography variant="subtitle3" color="sidebar.heading" noWrap>
+                {dexName(dexes[0])}
+              </Typography>
+            </>
+          ) : (
+            <Box sx={{ display: "flex" }}>
+              {dexes.map((d, i) => (
+                <Box key={d} sx={{ ml: i ? "-0.5rem" : 0, borderRadius: "50%", border: (t) => `0.125rem solid ${t.palette.grey[400]}` }}>
+                  <Mark src={dexLogo(d)} />
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
         <KeyboardArrowDown sx={{ fontSize: "1.25rem", color: "grey.200" }} />
       </SelectRow>
       <Menu
@@ -335,13 +375,13 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
         open={!!dexAnchor}
         onClose={() => setDexAnchor(null)}
         slotProps={{
-          paper: { elevation: 0, sx: { ...glassMenuPaperSx(theme, "18rem"), width: dexAnchor?.clientWidth } },
+          paper: { elevation: 0, sx: { ...glassMenuPaperSx(theme, "18rem"), width: dexAnchor?.clientWidth, maxHeight: "none" } },
           list: { sx: { p: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" } },
         }}
       >
-        <MenuItem onClick={() => setDexes([])} sx={{ borderRadius: "0.5rem", gap: "0.5rem" }}>
-          <Checkbox size="small" checked={dexes.length === 0} sx={{ p: 0 }} />
-          <Box>
+        <MenuItem onClick={() => setDexes([])} sx={{ borderRadius: "0.75rem", gap: "0.75rem", py: "0.625rem" }}>
+          <Mark src="/assets/favicon.svg" size="2rem" bg="#FFFFFF" />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle1" color="common.black">
               Auto
             </Typography>
@@ -349,22 +389,37 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
               Aggregates every DEX for the best price
             </Typography>
           </Box>
+          <Check on={dexes.length === 0} />
         </MenuItem>
         {DEXES.map((d) => (
-          <MenuItem key={d.id} onClick={() => toggleDex(d.id)} sx={{ borderRadius: "0.5rem", gap: "0.5rem" }}>
-            <Checkbox size="small" checked={dexes.includes(d.id)} sx={{ p: 0 }} />
-            <Typography variant="subtitle1" color="common.black">
+          <MenuItem key={d.id} onClick={() => toggleDex(d.id)} sx={{ borderRadius: "0.75rem", gap: "0.75rem", py: "0.625rem" }}>
+            <Mark src={d.logo} size="2rem" />
+            <Typography variant="subtitle1" color="common.black" sx={{ flex: 1 }}>
               {d.name}
             </Typography>
+            <Check on={dexes.includes(d.id)} />
           </MenuItem>
         ))}
       </Menu>
 
       <Box sx={{ position: "relative", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <Panel>
-          <Typography variant="subtitle1" color="grey.200">
-            From
-          </Typography>
+          <SpaceRow>
+            <Typography variant="subtitle1" color="grey.200">
+              From
+            </Typography>
+            {from && from.balance > 0 && (
+              <SmallPill
+                onClick={() =>
+                  // Keep 2 XLM back for the reserve and fees when selling native XLM.
+                  setAmount(String(Math.max(0, Number((from.balance - (from.code === "XLM" && !from.issuer ? 2 : 0)).toFixed(7)))))
+                }
+                sx={{ color: "primary.main", fontWeight: 600 }}
+              >
+                MAX
+              </SmallPill>
+            )}
+          </SpaceRow>
           <SpaceRow>
             <AmountInput
               placeholder="0"
@@ -375,24 +430,9 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
             <TokenButton token={from} onClick={() => setPicker("from")} />
           </SpaceRow>
           <SpaceRow>
-            <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <Typography variant="subtitle3" color={insufficient ? "error.main" : "grey.200"}>
-                Balance: {from ? formatAmount(from.balance, 4) : "0"}
-              </Typography>
-              {from && from.balance > 0 && (
-                <>
-                  <SmallPill onClick={() => setAmount(String(Number((from.balance / 2).toFixed(7))))}>50%</SmallPill>
-                  <SmallPill
-                    onClick={() =>
-                      // Keep 2 XLM back for the reserve and fees when selling native XLM.
-                      setAmount(String(Math.max(0, Number((from.balance - (from.code === "XLM" && !from.issuer ? 2 : 0)).toFixed(7)))))
-                    }
-                  >
-                    MAX
-                  </SmallPill>
-                </>
-              )}
-            </Box>
+            <Typography variant="subtitle3" color={insufficient ? "error.main" : "grey.200"}>
+              Balance: {from ? formatAmount(from.balance, 4) : "0"}
+            </Typography>
             <Typography variant="subtitle3" color="grey.200">
               ≈{formatUsd(pxIn ? Number(amount || 0) * pxIn : 0)}
             </Typography>

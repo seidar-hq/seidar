@@ -16,7 +16,20 @@ const notify = () => listeners.forEach((l) => l());
 // Public lists (markets, pools, vaults, token catalogue, perps market, bridge routes) are mirrored
 // in localStorage, like real_seidar's mirrors: a revisit paints from the last copy at once and
 // refreshes behind it. Never wallet-specific data. Keys ending in ":" are prefixes.
-const PERSIST = ["pools:", "dexpools:", "xoxno:markets", "lend:markets", "vaults:list", "tokens", "zenex:market", "bridge:routes"];
+const PERSIST = [
+  "pools:",
+  "dexpools:",
+  "xoxno:markets",
+  "lend:markets",
+  "vaults:list",
+  "tokens",
+  "zenex:market",
+  "bridge:routes",
+  // Price charts and % changes (market data, not wallet data).
+  "chart:",
+  "pair:",
+  "changes:",
+];
 const LS_PREFIX = "seidar.cache.";
 const MAX_CHARS = 1_500_000;
 const persists = (k: string) => PERSIST.some((p) => (p.endsWith(":") ? k.startsWith(p) : k === p));

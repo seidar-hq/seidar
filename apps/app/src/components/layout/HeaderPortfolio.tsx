@@ -130,14 +130,9 @@ export default function HeaderPortfolio() {
                           "&:hover": { backgroundColor: "overlay.white04" },
                         }}
                       >
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="subtitle1" noWrap sx={{ color: selected ? "sidebar.white" : "sidebar.heading", fontSize: "1rem" }}>
-                            {p.name}
-                          </Typography>
-                          <Typography variant="subtitle3" sx={{ color: "grey.200" }}>
-                            {p.wallets.length} wallet{p.wallets.length === 1 ? "" : "s"}
-                          </Typography>
-                        </Box>
+                        <Typography variant="subtitle1" noWrap sx={{ color: selected ? "sidebar.white" : "sidebar.heading", fontSize: "1rem", minWidth: 0 }}>
+                          {p.name}
+                        </Typography>
                         {selected ? (
                           <CheckSelected />
                         ) : (
