@@ -110,7 +110,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
                 <Box
                   key={l.code}
                   component="img"
-                  src={tokenLogoUrl(l.code, l.issuer) ?? "/assets/tokenFallback.png"}
+                  src={tokenLogoUrl(l.code, l.issuer) ?? "/assets/tokenFallback.svg"}
                   sx={{ width: "1.75rem", height: "1.75rem", borderRadius: "50%", ml: i ? "-0.5rem" : 0, backgroundColor: "grey.300" }}
                 />
               ))}

@@ -8,7 +8,7 @@
 // stopped reading — a stale number is worse than a missing row.
 
 import { baseToTokens, type VaultRow } from "@seidar/vaults";
-import { cacheSet, withCache, KEYS } from "@seidar/cache";
+import { cacheGet, cacheSet, withCache, KEYS } from "@seidar/cache";
 import { UPSHIFT_VAULTS } from "./vaults.js";
 import { ensureSchema, getPool } from "./db.js";
 import { livePrices } from "./prices.js";
@@ -215,6 +215,15 @@ async function fetchVaults(): Promise<{ rows: VaultRow[]; sources: Record<string
     sources.sentora = "live";
   } catch {
     sources.sentora = "error";
+  }
+
+  // A source that failed this round keeps its last good rows instead of vanishing from the list.
+  const failed = (["defindex", "upshift", "sentora"] as const).filter(
+    (p) => sources[p] === "error" || !rows.some((r) => r.protocol === p),
+  );
+  if (failed.length) {
+    const prev = await cacheGet<{ rows: VaultRow[] }>(KEYS.vaultsRows).catch(() => null);
+    for (const p of failed) rows.push(...(prev?.rows ?? []).filter((r) => r.protocol === p));
   }
 
   if (Date.now() - lastSnapshotAt > 3600_000 && rows.length > 0) {

@@ -73,6 +73,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
   const { byContract } = useTokenCatalogue();
   const [proto, setProto] = useState<string>("all");
   const [q, setQ] = useState("");
+  const [shown, setShown] = useState(20);
   const [dialog, setDialog] = useState<{ vault: VaultListRow; initial: "deposit" | "withdraw" } | null>(null);
 
   const list = useMemo(
@@ -92,11 +93,10 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       header: "Vault",
       cell: (r) => (
         <ButtonBase onClick={() => open(r)} sx={{ justifyContent: "flex-start" }}>
-          <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol}${r.curator ? ` · ${r.curator}` : ""}`} image={tokenLogoUrl(r.assetCode, issuer(r)) ?? undefined} isTooltip maxTextWidth="14rem" />
+          <TokenComponent header={r.name} subtitle={`${VAULT_PROTOCOLS[r.protocol] ?? r.protocol}${r.curator && r.curator !== VAULT_PROTOCOLS[r.protocol] ? ` · ${r.curator}` : ""}`} image={tokenLogoUrl(r.assetCode, issuer(r)) ?? undefined} isTooltip maxTextWidth="14rem" />
         </ButtonBase>
       ),
     },
-    { id: "asset", header: "Asset", cell: (r) => <Typography variant="body1" color="black.main100">{r.assetCode}</Typography> },
     {
       id: "apy",
       header: "APY",
@@ -120,10 +120,10 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       header: "",
       cell: (r) => (
         <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="solid" color="primary" disabled={r.paused} onClick={() => setDialog({ vault: r, initial: "deposit" })}>
+          <Button size="small" variant="solid" color="primary" sx={{ minWidth: 0, px: "0.75rem" }} disabled={r.paused} onClick={() => setDialog({ vault: r, initial: "deposit" })}>
             Deposit
           </Button>
-          <Button size="small" variant="outlined" color="cancel" onClick={() => open(r)}>
+          <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => open(r)}>
             Details
           </Button>
         </Box>
@@ -151,7 +151,12 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
           <InputBase value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search vault or asset" sx={{ fontSize: "0.875rem", color: "common.black" }} />
         </Search>
       </Box>
-      <DataTable columns={columns} rows={list} isLoading={loading && list.length === 0} emptyDataText="No vaults found" getRowId={(r) => r.address} />
+      <DataTable columns={columns} rows={list.slice(0, shown)} isLoading={loading && list.length === 0} emptyDataText="No vaults found" getRowId={(r) => r.address} />
+      {list.length > shown && (
+        <Button variant="outlined" color="cancel" size="small" onClick={() => setShown((n) => n + 20)} sx={{ alignSelf: "center", mt: "1rem" }}>
+          Show more ({list.length - shown})
+        </Button>
+      )}
     </>
   );
 
@@ -174,7 +179,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
                 <Box key={`${v.wallet}${v.vault}`} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <TokenComponent header={v.name} subtitle={formatUsd(v.usd)} image={tokenLogoUrl(v.underlying[0]?.code ?? "V", v.underlying[0]?.issuer ?? null) ?? undefined} width="1.75rem" height="1.75rem" />
                   {r && (
-                    <Button size="small" variant="outlined" color="cancel" onClick={() => setDialog({ vault: r, initial: "withdraw" })}>
+                    <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ vault: r, initial: "withdraw" })}>
                       Withdraw
                     </Button>
                   )}

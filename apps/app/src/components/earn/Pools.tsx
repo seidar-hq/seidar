@@ -247,6 +247,7 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
   );
   const [venue, setVenue] = useState<"all" | (typeof VENUES)[number]["id"]>("all");
   const [q, setQ] = useState("");
+  const [shown, setShown] = useState(20);
   const [dialog, setDialog] = useState<{ pool: PoolRow; initial: "deposit" | "withdraw" } | null>(null);
 
   const all = useMemo(() => VENUES.flatMap((v) => values[`dexpools:${v.id}`]?.rows ?? []), [values]);
@@ -268,10 +269,10 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
           <PairLogos legs={legsOf(p)} />
           <Box>
-            <Typography variant="body3" color="common.black">
+            <Typography variant="body3" color="common.black" sx={{ display: "block" }}>
               {p.pair}
             </Typography>
-            <Typography variant="caption" color="grey.200">
+            <Typography variant="caption" color="grey.200" sx={{ display: "block" }}>
               {venueName(p.protocol)} · {p.poolType}
             </Typography>
           </Box>
@@ -293,10 +294,10 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
       header: "",
       cell: (p) => (
         <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="solid" color="primary" onClick={() => setDialog({ pool: p, initial: "deposit" })}>
+          <Button size="small" variant="solid" color="primary" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ pool: p, initial: "deposit" })}>
             Add
           </Button>
-          <Button size="small" variant="outlined" color="cancel" disabled={!myLp.some((s) => s.pool === p.address)} onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
+          <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} disabled={!myLp.some((s) => s.pool === p.address)} onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
             Remove
           </Button>
         </Box>
@@ -324,7 +325,12 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
           <InputBase value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search pair" sx={{ fontSize: "0.875rem", color: "common.black" }} />
         </Search>
       </Box>
-      <DataTable columns={columns} rows={rows.slice(0, 100)} isLoading={loading && rows.length === 0} emptyDataText="No pools found" getRowId={(p) => `${p.protocol}:${p.address}`} />
+      <DataTable columns={columns} rows={rows.slice(0, shown)} isLoading={loading && rows.length === 0} emptyDataText="No pools found" getRowId={(p) => `${p.protocol}:${p.address}`} />
+      {rows.length > shown && (
+        <Button variant="outlined" color="cancel" size="small" onClick={() => setShown((n) => n + 20)} sx={{ alignSelf: "center", mt: "1rem" }}>
+          Show more ({rows.length - shown})
+        </Button>
+      )}
     </>
   );
 
@@ -357,7 +363,7 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
                     </Box>
                   </Box>
                   {p && (
-                    <Button size="small" variant="outlined" color="cancel" onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
+                    <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ pool: p, initial: "withdraw" })}>
                       Manage
                     </Button>
                   )}

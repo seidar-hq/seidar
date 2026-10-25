@@ -273,6 +273,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
         <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: "1rem" }}>
           <Box sx={{ flex: 1 }}>
             <ChainSelect
+              key={chain?.chain ?? "none"}
               value={chain}
               onChange={(c) => setState({ chain: c, token: c?.tokens.find((x) => x.symbol === "USDC") ?? c?.tokens[0], amount: "", fromAccount: "" })}
               options={sources}

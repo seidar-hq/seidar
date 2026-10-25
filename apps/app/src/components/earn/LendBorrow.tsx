@@ -117,6 +117,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   );
   const [proto, setProto] = useState<"all" | "blend" | "xoxno">("all");
   const [q, setQ] = useState("");
+  const [shown, setShown] = useState(20);
   const [dialog, setDialog] = useState<Dialog>(null);
 
   const rows = useMemo(
@@ -190,16 +191,15 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
     { id: "borrowApy", header: "Borrow APY", cell: (m) => <Typography variant="body1" color="black.main100">{pct(m.borrowApy)}</Typography> },
     { id: "supplied", header: "Total supplied", cell: (m) => <Typography variant="body1" color="common.black">{m.suppliedUsd != null ? formatUsd(m.suppliedUsd) : "—"}</Typography> },
     { id: "borrowed", header: "Total borrowed", cell: (m) => <Typography variant="body1" color="black.main100">{m.borrowedUsd != null ? formatUsd(m.borrowedUsd) : "—"}</Typography> },
-    { id: "ltv", header: "Max LTV", cell: (m) => <Typography variant="body1" color="black.main100">{m.ltvPct != null ? `${m.ltvPct}%` : "—"}</Typography> },
     {
       id: "actions",
       header: "",
       cell: (m) => (
         <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="solid" color="primary" onClick={() => setDialog({ market: m, initial: "supply" })}>
+          <Button size="small" variant="solid" color="primary" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ market: m, initial: "supply" })}>
             Supply
           </Button>
-          <Button size="small" variant="outlined" color="cancel" disabled={m.canBorrow === false || m.borrowApy == null} onClick={() => setDialog({ market: m, initial: "borrow" })}>
+          <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} disabled={m.canBorrow === false || m.borrowApy == null} onClick={() => setDialog({ market: m, initial: "borrow" })}>
             Borrow
           </Button>
         </Box>
@@ -226,7 +226,12 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
           <InputBase value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search asset or pool" sx={{ fontSize: "0.875rem", color: "common.black" }} />
         </Search>
       </Box>
-      <DataTable columns={columns} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No lending markets found" getRowId={(m) => m.key} />
+      <DataTable columns={columns} rows={rows.slice(0, shown)} isLoading={loading && rows.length === 0} emptyDataText="No lending markets found" getRowId={(m) => m.key} />
+      {rows.length > shown && (
+        <Button variant="outlined" color="cancel" size="small" onClick={() => setShown((n) => n + 20)} sx={{ alignSelf: "center", mt: "1rem" }}>
+          Show more ({rows.length - shown})
+        </Button>
+      )}
     </>
   );
 
@@ -266,7 +271,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
                       height="1.75rem"
                     />
                     {m && (
-                      <Button size="small" variant="outlined" color="cancel" onClick={() => setDialog({ market: m, initial: isBorrow ? "repay" : "withdraw" })}>
+                      <Button size="small" variant="outlined" color="cancel" sx={{ minWidth: 0, px: "0.75rem" }} onClick={() => setDialog({ market: m, initial: isBorrow ? "repay" : "withdraw" })}>
                         {isBorrow ? "Repay" : "Withdraw"}
                       </Button>
                     )}

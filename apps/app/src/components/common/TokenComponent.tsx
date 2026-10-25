@@ -6,7 +6,7 @@ import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
 import Typography, { type TypographyProps } from "@mui/material/Typography";
 
-const FALLBACK_ICON = "/assets/tokenFallback.png";
+const FALLBACK_ICON = "/assets/tokenFallback.svg";
 
 type Props = {
   header?: string;
