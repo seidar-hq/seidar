@@ -203,6 +203,7 @@ export async function buildCl(b: {
   tickUpper?: number;
   priceLower?: number;
   priceUpper?: number;
+  full?: boolean;
   amounts?: string[];
   liquidity?: string;
   slippageBps?: number;
@@ -210,7 +211,7 @@ export async function buildCl(b: {
   const pool = String(b.pool ?? "");
   const from = String(b.from ?? "");
   const signer = b.signer ? String(b.signer) : undefined;
-  if (!isContract(pool) || !(isAccount(from) || isContract(from)))
+  if (!isContract(pool) || !(isAccount(from) || isContract(from) || b.action === "cl_quote"))
     return { status: 400, body: { ok: false, error: "pool + from required" } };
   const slip = BigInt(Math.min(500, Math.max(10, Math.round(Number(b.slippageBps ?? 100)))));
   const less = (x: bigint) => (x * (10_000n - slip)) / 10_000n;
@@ -229,7 +230,10 @@ export async function buildCl(b: {
       const base = await poolBase(pool);
       let lo = Number(b.tickLower);
       let hi = Number(b.tickUpper);
-      if (b.action === "cl_deposit" && Number(b.priceLower) > 0 && Number(b.priceUpper) > 0) {
+      if (b.full) {
+        lo = base.bounds ? base.bounds[0] : -887272;
+        hi = base.bounds ? base.bounds[1] : 887272;
+      } else if ((b.action === "cl_deposit" || b.action === "cl_quote") && Number(b.priceLower) > 0 && Number(b.priceUpper) > 0) {
         lo = priceTick(Number(b.priceLower), base.decimals[0], base.decimals[1]);
         hi = priceTick(Number(b.priceUpper), base.decimals[0], base.decimals[1]);
       }
@@ -237,6 +241,25 @@ export async function buildCl(b: {
       lo = snap(lo, base.spacing, base.bounds, false);
       hi = snap(hi, base.spacing, base.bounds, true);
       if (!(hi > lo)) return { status: 200, body: { ok: false, error: "The range's upper price must be above the lower price." } };
+      if (b.action === "cl_quote") {
+        // Paired amount for a range: a zero side means "whatever the range needs".
+        const want = (b.amounts ?? []).map((x) => (/^\d+$/.test(String(x)) ? BigInt(x) : 0n));
+        if (want.length !== 2 || want.every((x) => x <= 0n)) return { status: 200, body: { ok: false, error: "Enter an amount." } };
+        const q = want.map((x) => (x > 0n ? x : 10n ** 30n));
+        const est = (await sorobanView(pool, "estimate_deposit_position", [i32(lo), i32(hi), vec(q)])) as unknown[];
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            used: (est[0] as unknown[]).map((x) => big(x).toString()),
+            liquidity: big(est[1]).toString(),
+            tickLower: lo,
+            tickUpper: hi,
+            priceLower: tickPrice(lo, base.decimals[0], base.decimals[1]),
+            priceUpper: tickPrice(hi, base.decimals[0], base.decimals[1]),
+          },
+        };
+      }
       if (b.action === "cl_deposit") {
         const amts = (b.amounts ?? []).map((x) => (/^\d+$/.test(String(x)) ? BigInt(x) : 0n));
         if (amts.length !== 2 || amts.every((x) => x <= 0n)) return { status: 200, body: { ok: false, error: "Enter an amount to deposit." } };

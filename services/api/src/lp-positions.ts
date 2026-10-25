@@ -17,8 +17,9 @@ import { livePrices } from "./prices.js";
 import { mapLimit, sorobanView, withRpc } from "./rpc.js";
 import { tokenMetas } from "./token-meta.js";
 
-type Venue = "soroswap" | "aqua" | "phoenix";
+type Venue = "soroswap" | "aqua" | "phoenix" | "sushi";
 const VENUES: Venue[] = ["soroswap", "aqua", "phoenix"];
+// Sushi V3 positions are NFTs (no share token): read separately through sushi-cl.ts.
 const AQUA_TOKEN = "CAUIKL3IYGMERDRUN6YSCLWVAKIFG5Q4YJHUKM4S4NJZQIA3BAS6OJPK";
 const isAddr = (v: string) => /^[GC][A-Z2-7]{55}$/.test(v);
 const err = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
@@ -228,8 +229,34 @@ export async function getLpPositions(address: string) {
     } catch {
       notes.push("Aqua concentrated ranges couldn't be read right now.");
     }
+    // Sushi V3: position NFTs from the position manager, grouped per pool.
+    try {
+      const { sushiAllPositions } = await import("./sushi-cl.js");
+      const sushi = await sushiAllPositions(address);
+      const byPool = new Map<string, typeof sushi>();
+      for (const p of sushi) byPool.set(p.pool, [...(byPool.get(p.pool) ?? []), p]);
+      for (const [pool, ps] of byPool) {
+        const legs = ps[0].underlying.map((u, i) => ({ ...u, amount: ps.reduce((s, p) => s + p.underlying[i].amount, 0) }));
+        const priced = ps.every((p) => p.valueUsd != null);
+        positions.push({
+          protocol: "sushi" as Venue,
+          pool,
+          pair: ps[0].codes.join("/"),
+          poolType: "concentrated",
+          feeBps: ps[0].feeBps,
+          shareToken: pool,
+          shares: ps.reduce((s, p) => s + BigInt(p.liquidity), 0n).toString(),
+          totalShares: "0",
+          underlying: legs,
+          valueUsd: priced ? ps.reduce((s, p) => s + (p.valueUsd ?? 0), 0) : null,
+          sharePct: null,
+          ranges: ps.map((p) => ({ priceLower: p.priceLower, priceUpper: p.priceUpper, inRange: p.inRange })),
+        });
+      }
+    } catch {
+      notes.push("Sushi positions couldn't be read right now.");
+    }
     positions.sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0));
-    notes.push("Sushi V3 positions are NFTs; manage them on Sushi.");
     return { status: 200, body: { ok: true, positions, notes, aquaToken: AQUA_TOKEN } };
   } catch (e) {
     return { status: 200, body: { ok: false, error: err(e) } };

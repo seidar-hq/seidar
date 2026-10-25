@@ -483,19 +483,24 @@ app.get("/dex/pool/trades", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 // Aqua concentrated pools: range positions.
+// Concentrated liquidity (price ranges): Aqua CL pools and Sushi V3 (?protocol=sushi).
 app.get("/dex/cl/pool", async (c) => {
-  const { clPool } = await import("./aqua-cl.js");
-  const r = await clPool(c.req.query("pool") ?? "");
+  const pool = c.req.query("pool") ?? "";
+  const r = c.req.query("protocol") === "sushi" ? await (await import("./sushi-cl.js")).sushiPool(pool) : await (await import("./aqua-cl.js")).clPool(pool);
   return c.json(r.body, r.status as 200);
 });
 app.get("/dex/cl/positions", async (c) => {
-  const { clPositions } = await import("./aqua-cl.js");
-  const r = await clPositions(c.req.query("pool") ?? "", c.req.query("address") ?? "");
+  const pool = c.req.query("pool") ?? "";
+  const address = c.req.query("address") ?? "";
+  const r =
+    c.req.query("protocol") === "sushi"
+      ? await (await import("./sushi-cl.js")).sushiPositions(pool, address)
+      : await (await import("./aqua-cl.js")).clPositions(pool, address);
   return c.json(r.body, r.status as 200);
 });
 app.post("/dex/cl/build", async (c) => {
-  const { buildCl } = await import("./aqua-cl.js");
-  const r = await buildCl((await c.req.json().catch(() => null)) ?? {});
+  const body = ((await c.req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
+  const r = body.protocol === "sushi" ? await (await import("./sushi-cl.js")).buildSushi(body) : await (await import("./aqua-cl.js")).buildCl(body);
   return c.json(r.body, r.status as 200);
 });
 app.get("/dex/aqua/pool", async (c) => {

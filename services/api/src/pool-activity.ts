@@ -194,6 +194,14 @@ export async function poolTrades(protocol: string, pool: string, tokens: string[
   if (!isContract(pool)) return { status: 400, body: { ok: false, error: "pool required" } };
   const n = Math.min(100, Math.max(5, limit));
   try {
+    // Leg codes need the pool's tokens: take them from the venue board when the caller didn't.
+    if (!tokens.filter(isContract).length && protocol !== "aqua") {
+      const { getDexPools, isDexProtocol } = await import("./dex.js");
+      if (isDexProtocol(protocol)) {
+        const row = (await getDexPools(protocol).catch(() => null))?.rows.find((r) => r.address === pool);
+        tokens = row?.assets.map((a) => a.contract) ?? [];
+      }
+    }
     const out = await withCache(`dextrades:${protocol}:${pool}:${n}`, 30_000, async () => ({
       trades: protocol === "aqua" ? await aquaTrades(pool, n) : await rpcTrades(pool, tokens.filter(isContract), n),
     }));
