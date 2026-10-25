@@ -13,7 +13,7 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { WalletAvatar, glassMenuPaperSx } from "@/components/wallet/WalletParts";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, formatUsdCompact } from "@/lib/format";
 import { usePortfolio } from "@/portfolio/usePortfolio";
 import { useWallet, type LinkedWallet, type Portfolio } from "@/wallet/WalletContext";
 import { DeletePortfolioDialog, PortfolioNameDialog } from "./PortfolioDialogs";
@@ -21,9 +21,8 @@ import { DeletePortfolioDialog, PortfolioNameDialog } from "./PortfolioDialogs";
 export const CardGrid = styled(Box)(({ theme }) => ({
   display: "grid",
   gap: "1rem",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  [theme.breakpoints.down("xl")]: { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
-  [theme.breakpoints.down("md")]: { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+  // Fixed-width cards (no stretching across wide screens).
+  gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 17.5rem))",
   [theme.breakpoints.down("sm")]: { gridTemplateColumns: "1fr" },
 }));
 
@@ -154,10 +153,10 @@ function PortfolioCard({
         </Box>
         <Box sx={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
           <Typography variant="subtitle1" color="grey.200" noWrap>
-            {formatUsd(utilised)} utilised
+            {formatUsdCompact(utilised)} utilised
           </Typography>
           <Typography variant="subtitle1" color="grey.200" noWrap>
-            {pct.toFixed(0)}% of {formatUsd(gross)}
+            {pct.toFixed(0)}% of {formatUsdCompact(gross)}
           </Typography>
         </Box>
       </Box>
@@ -175,7 +174,7 @@ function PortfolioCard({
         </Box>
         <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
           <Typography variant="subtitle1" color="grey.200">
-            Active positions
+            Positions
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <Box sx={{ width: "0.4rem", height: "0.4rem", borderRadius: "50%", backgroundColor: positions ? "green.main" : "grey.200" }} />

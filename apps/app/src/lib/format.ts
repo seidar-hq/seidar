@@ -10,6 +10,13 @@ export function formatUsd(value: number | null | undefined): string {
   return `$${usdFmt.format(v)}`;
 }
 
+/** "$1.2K" / "$3.4M" for tight spaces; plain formatUsd under $1,000. */
+export function formatUsdCompact(value: number | null | undefined): string {
+  const v = Number(value) || 0;
+  if (Math.abs(v) < 1000) return formatUsd(v);
+  return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v)}`;
+}
+
 /** Token amounts: up to 6 significant decimals, grouped thousands. */
 export function formatAmount(value: number | null | undefined, maxDecimals = 6): string {
   const v = Number(value) || 0;

@@ -75,7 +75,7 @@ function ConnectedHistory({ tab, filter, showDust }: { tab: string; filter: stri
       )}
       <Box sx={{ display: "flex", justifyContent: "center", gap: "0.75rem" }}>
         {act.hasMore && (
-          <Button variant="outlined" color="cancel" size="small" disabled={act.loading} onClick={() => void act.loadMore()}>
+          <Button variant="outlined" color="cancel" size="small" disabled={act.loading} onClick={() => void act.loadMore()} sx={{ height: "2.5rem", textTransform: "none" }}>
             {act.loading ? "Loading…" : "Load older activity"}
           </Button>
         )}
@@ -85,7 +85,7 @@ function ConnectedHistory({ tab, filter, showDust }: { tab: string; filter: stri
           endIcon={<SaveAltIcon />}
           disabled={!rows.length}
           onClick={() => download(`seidar-${tab}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows))}
-          sx={{ textTransform: "none" }}
+          sx={{ height: "2.5rem", textTransform: "none" }}
         >
           Download CSV
         </Button>

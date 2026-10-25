@@ -6,7 +6,6 @@ import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
-import Link from "@mui/material/Link";
 import ListItemButton from "@mui/material/ListItemButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -15,7 +14,6 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme, type Theme } from "@mui/material/styles";
 import type { SvgIconComponent } from "@mui/icons-material";
-import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import WaterOutlinedIcon from "@mui/icons-material/WaterOutlined";
 import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
@@ -26,8 +24,8 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import HeaderWallet from "@/components/wallet/HeaderWallet";
-import { DerivativesDropdownIcon, LayoutIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
-import { DOCS_URL, X_URL } from "@/lib/links";
+import { DerivativesDropdownIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
+import { DOCS_URL } from "@/lib/links";
 import { useThemeMode } from "@/theme/ThemeModeContext";
 import HeaderPortfolio from "./HeaderPortfolio";
 import NotificationButton from "./NotificationButton";
@@ -233,7 +231,6 @@ export default function Header() {
   const { isDarkMode } = useThemeMode();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [resourcesAnchor, setResourcesAnchor] = useState<HTMLElement | null>(null);
   const [earnAnchor, setEarnAnchor] = useState<HTMLElement | null>(null);
   const [tradeAnchor, setTradeAnchor] = useState<HTMLElement | null>(null);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
@@ -242,7 +239,6 @@ export default function Header() {
   const earnTimer: HoverTimer = useRef(null);
   const tradeTimer: HoverTimer = useRef(null);
   const historyTimer: HoverTimer = useRef(null);
-  const resourcesTimer: HoverTimer = useRef(null);
 
   const scheduleClose = (timer: HoverTimer, close: () => void) => {
     if (timer.current) clearTimeout(timer.current);
@@ -348,7 +344,6 @@ export default function Header() {
     );
 
   const logoSrc = isDarkMode ? "/assets/seidarLogoDark.svg" : "/assets/seidarLogo.svg";
-  const resourceItemSx = { gap: "0.5rem", padding: 0, minHeight: 0, "&:hover": { backgroundColor: "transparent" } };
 
   return (
     <>
@@ -458,18 +453,15 @@ export default function Header() {
               <SearchIcon size="1.25rem" />
             </CircleIconButton>
           </Tooltip>
-          <CircleIconButton
-            onClick={(e) => setResourcesAnchor(e.currentTarget)}
-            onMouseEnter={(e) => {
-              cancelClose(resourcesTimer);
-              setResourcesAnchor(e.currentTarget);
-            }}
-            onMouseLeave={() => scheduleClose(resourcesTimer, () => setResourcesAnchor(null))}
-            aria-label="Resources menu"
-            sx={{ color: theme.palette.sidebar.heading }}
-          >
-            <LayoutIcon size="1.25rem" />
-          </CircleIconButton>
+          <Tooltip title="Docs" arrow placement="bottom">
+            <CircleIconButton
+              onClick={() => window.open(DOCS_URL, "_blank", "noopener,noreferrer")}
+              aria-label="Docs"
+              sx={{ color: theme.palette.sidebar.heading }}
+            >
+              <DescriptionOutlinedIcon sx={{ fontSize: "1.25rem" }} />
+            </CircleIconButton>
+          </Tooltip>
           <NotificationButton />
           <Box sx={{ display: { xs: "none", sm: "flex" } }}>
             <HeaderPortfolio />
@@ -477,50 +469,6 @@ export default function Header() {
           <HeaderWallet />
         </RightCluster>
 
-        <Menu
-          anchorEl={resourcesAnchor}
-          open={!!resourcesAnchor}
-          onClose={() => setResourcesAnchor(null)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
-          slotProps={{
-            root: { sx: { pointerEvents: "none" } },
-            paper: {
-              elevation: 0,
-              onMouseEnter: () => cancelClose(resourcesTimer),
-              onMouseLeave: () => scheduleClose(resourcesTimer, () => setResourcesAnchor(null)),
-              sx: menuPaperSx(theme, "8.5rem"),
-            },
-            list: { sx: { padding: "0.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" } },
-          }}
-        >
-          <MenuItem
-            component={Link}
-            href={DOCS_URL}
-            target="_blank"
-            underline="none"
-            onClick={() => setResourcesAnchor(null)}
-            sx={resourceItemSx}
-          >
-            <DescriptionOutlinedIcon sx={{ fontSize: "1.25rem", color: theme.palette.sidebar.subText }} />
-            <Typography variant="subtitle1" color={theme.palette.sidebar.subText}>
-              Docs
-            </Typography>
-          </MenuItem>
-          <MenuItem
-            component={Link}
-            href={X_URL}
-            target="_blank"
-            underline="none"
-            onClick={() => setResourcesAnchor(null)}
-            sx={resourceItemSx}
-          >
-            <ArticleOutlinedIcon sx={{ fontSize: "1.25rem", color: theme.palette.sidebar.subText }} />
-            <Typography variant="subtitle1" color={theme.palette.sidebar.subText}>
-              Insights
-            </Typography>
-          </MenuItem>
-        </Menu>
 
         {subMenu(earnAnchor, () => setEarnAnchor(null), earnTimer, EARN_ITEMS, (p) => pathname.startsWith(p))}
         {subMenu(historyAnchor, () => setHistoryAnchor(null), historyTimer, HISTORY_ITEMS, isHistoryItemActive)}

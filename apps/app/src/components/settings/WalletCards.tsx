@@ -113,9 +113,8 @@ const AddCircle = styled(Box)(({ theme }) => ({
 const Grid = styled(Box)(({ theme }) => ({
   display: "grid",
   gap: "1rem",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  [theme.breakpoints.down("xl")]: { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
-  [theme.breakpoints.down("md")]: { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+  // Fixed-width cards (no stretching across wide screens).
+  gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 17.5rem))",
   [theme.breakpoints.down("sm")]: { gridTemplateColumns: "1fr" },
 }));
 
