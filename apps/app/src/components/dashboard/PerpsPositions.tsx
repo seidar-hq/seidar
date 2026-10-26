@@ -4,7 +4,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import DataTable, { EmptyState, type Column } from "@/components/common/DataTable";
 import TokenLogo from "@/components/common/TokenLogo";
-import { fmtPx, usePerpsAccounts, type PerpsPosition } from "@/components/trade/perps/usePerps";
+import { fmtPx, positionExits, usePerpsAccounts, type PerpsPosition } from "@/components/trade/perps/usePerps";
 import { formatAmount, formatUsd } from "@/lib/format";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 
@@ -53,6 +53,21 @@ export default function PerpsPositions({ addresses }: { addresses: string[] }) {
     { id: "value", header: "Position value", cell: (r) => <T>{formatUsd(r.notional)}</T>, sortValue: (r) => r.notional },
     { id: "entry", header: "Entry / Liq.", cell: (r) => <T>${fmtPx(r.entryPrice)} / ${fmtPx(r.liquidationPrice)}</T> },
     { id: "margin", header: "Margin", cell: (r) => <T>{formatUsd(r.margin)} · {r.leverage.toFixed(1)}x</T> },
+    {
+      id: "tpsl",
+      header: "TP / SL",
+      cell: (r) => {
+        const { tp, sl } = positionExits(byAddress[`zenex:acct:${r.wallet}`]?.openOrders, r.side);
+        const px = (v: number[]) => (v.length ? v.map((x) => `$${fmtPx(x)}`).join(", ") : "—");
+        return (
+          <T>
+            <Box component="span" sx={{ color: tp.length ? "green.main" : "grey.200" }}>{px(tp)}</Box>
+            {" / "}
+            <Box component="span" sx={{ color: sl.length ? "error.main" : "grey.200" }}>{px(sl)}</Box>
+          </T>
+        );
+      },
+    },
     { id: "pnl", header: "Net PnL", cell: (r) => <T color={pnlColor(r.netPnl)}>{formatUsd(r.netPnl)} ({r.netPnlPct.toFixed(2)}%)</T>, sortValue: (r) => r.netPnl },
   ];
   return <DataTable from="dashboard" columns={cols} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No open perps positions" getRowId={(r) => `${r.wallet}:${r.side}`} />;

@@ -11,12 +11,9 @@ Open it from **Trade → Perps**.
 
 ## How Zenex works
 
-Zenex has **no order book**. Every trade is against the market's liquidity vault at the **oracle price**, plus fees and a price-impact charge that grows with size. Orders are created on-chain by your transaction and then **filled by Zenex keepers**, usually within seconds.
+Every trade is against the market's liquidity vault at the **oracle price**, plus fees and a price-impact charge that grows with size. Orders are created on-chain by your transaction and then **filled by Zenex keepers**, usually within seconds.
 
-That has two consequences:
-
-- A market order isn't filled inside your own transaction. It's placed, then a keeper fills it at the oracle price at that moment, within your slippage limit.
-- The **Order Book** panel next to the chart isn't other traders' orders. It's a fill schedule: the price you'd get at each size on either side, after impact.
+So a market order isn't filled inside your own transaction: it's placed, then a keeper fills it at the oracle price at that moment, within your slippage limit.
 
 ## The XLM/USD market
 
@@ -50,7 +47,12 @@ These are set by Zenex and can change; the order panel always uses the live valu
 
 The panel under the chart has five tabs: **Positions**, **Open Orders**, **Order History**, **Trades** and **Closed**.
 
-Each open position shows size, entry and liquidation price, margin, leverage and net PnL (after funding and borrowing). Its actions:
+Each open position shows size, entry, mark and liquidation price, margin, leverage, net PnL (after funding and borrowing), its **TP / SL** and its **Funding**.
+
+- **TP / SL** lists the take-profit and stop-loss triggers resting on that position. Click either one to set or change it.
+- **Funding** is what the position has accrued since it last settled. A negative amount (red) is owed and comes out of your margin when the position changes or closes; a positive amount (green) is earned and goes to your claimable credit.
+
+**Manage** opens the position's actions:
 
 | Action | What it does |
 | --- | --- |
@@ -63,7 +65,14 @@ Open limit, stop, TP and SL orders can be cancelled from **Open Orders**. Cancel
 
 ### Account summary
 
-The account card shows wallet USDC, position equity, margin in use, unrealised net PnL, open orders and **Claimable credit**: funding earned and payouts the market couldn't send directly. Click **Claim** to move it to your wallet.
+The account card shows wallet USDC, position equity, margin in use, unrealised net PnL, open orders and **Claimable credit**.
+
+Claimable credit is USDC Zenex holds for you in that market:
+
+- **Earned funding.** When a position on the receiving side of funding settles, what it earned is credited here rather than added to margin.
+- **Failed payouts.** If a close or other payout can't be transferred to your wallet (for example because the account has no USDC trustline), the trade still completes and the amount is parked here.
+
+Click **Claim** to send it to your wallet. Zenex charges no fee for claiming; you pay only the network fee.
 
 ## Ongoing costs
 
@@ -82,4 +91,4 @@ Stop-losses and take-profits are executed by keepers once the oracle price cross
 
 ## Chart
 
-The price chart is TradingView's XLM/USD chart. Zenex fills at its own oracle price, which tracks major markets closely but can differ slightly from the chart at any moment. The **Recent** tab lists the latest fills on Zenex.
+The chart plots Zenex's own XLM/USD oracle price, the same feed Zenex fills against, drawn with TradingView's charting library. Pick an interval (5m, 15m, 1H, 4H or 1D); the latest candle updates every 30 seconds.

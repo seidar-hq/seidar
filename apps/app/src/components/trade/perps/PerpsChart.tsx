@@ -1,16 +1,17 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Box from "@mui/material/Box";
-import Tooltip from "@mui/material/Tooltip";
+import ButtonBase from "@mui/material/ButtonBase";
+import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import Tabs from "@/components/common/Tabs";
+import { useTheme } from "@mui/material/styles";
 import TokenLogo from "@/components/common/TokenLogo";
+import { apiJson } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
-import { fmtPx, hourlyPct, usePerpsTrades, type PerpsMarket } from "./usePerps";
+import { fmtPx, hourlyPct, type PerpsMarket } from "./usePerps";
 
-// Perps terminal: market header, the TradingView chart, and a book-style side panel.
+// Perps terminal: market header and a TradingView Lightweight Chart of Zenex's own price feed.
 
 const Stat = ({
   label,
@@ -38,377 +39,180 @@ const Stat = ({
   </Box>
 );
 
+type Candle = { t: number; o: number; h: number; l: number; c: number };
+
+/** Interval buttons: Zenex UDF resolution and how far back to load. */
+const INTERVALS = [
+  { id: "5", label: "5m", spanSec: 2 * 86400 },
+  { id: "15", label: "15m", spanSec: 5 * 86400 },
+  { id: "60", label: "1H", spanSec: 20 * 86400 },
+  { id: "240", label: "4H", spanSec: 60 * 86400 },
+  { id: "D", label: "1D", spanSec: 365 * 86400 },
+] as const;
+type IntervalId = (typeof INTERVALS)[number]["id"];
+
+async function loadCandles(resolution: IntervalId, spanSec: number): Promise<Candle[]> {
+  const to = Math.floor(Date.now() / 1000);
+  const r = await apiJson<{ ok?: boolean; candles?: Candle[] }>(
+    `/api/zenex/candles?symbol=XLMUSD&resolution=${resolution}&from=${to - spanSec}&to=${to}`,
+  );
+  return r?.candles ?? [];
+}
+
 /**
- * TradingView's Advanced Chart widget (free embed: drawing tools, indicators, timeframes).
- * The widget charts TradingView's own XLM/USD feed; Zenex fills at the Chainlink oracle price,
- * which tracks the same market. Swapping to TradingView's licensed Charting Library would point
- * the same UI at Zenex's own UDF feed.
+ * TradingView Lightweight Charts (open source) drawing Zenex's oracle candles, the same UDF feed
+ * Zenex's own terminal charts. Refreshes every 30s so the last candle follows the market.
  */
-const TradingViewChart = memo(function TradingViewChart({
-  symbol,
-}: {
-  symbol: string;
-}) {
+function ZenexChart() {
+  const theme = useTheme();
   const host = useRef<HTMLDivElement | null>(null);
+  const [interval, setIntervalId] = useState<IntervalId>("60");
+  const [loading, setLoading] = useState(true);
+  const [empty, setEmpty] = useState(false);
+
   useEffect(() => {
     const el = host.current;
     if (!el) return;
-    el.innerHTML = "";
-    const inner = document.createElement("div");
-    inner.className = "tradingview-widget-container__widget";
-    inner.style.height = "100%";
-    inner.style.width = "100%";
-    el.appendChild(inner);
-    const script = document.createElement("script");
-    script.src =
-      "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.type = "text/javascript";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol,
-      interval: "60",
-      timezone: "Etc/UTC",
-      theme: "dark",
-      style: "1",
-      locale: "en",
-      backgroundColor: "rgba(17, 17, 17, 1)",
-      gridColor: "rgba(255, 255, 255, 0.04)",
-      hide_side_toolbar: false,
-      hide_top_toolbar: false,
-      allow_symbol_change: false,
-      save_image: true,
-      withdateranges: true,
-      details: false,
-      calendar: false,
-      support_host: "https://www.tradingview.com",
-    });
-    el.appendChild(script);
+    let dead = false;
+    let cleanup = () => {};
+    void (async () => {
+      const lc = await import("lightweight-charts");
+      if (dead) return;
+      const up = theme.palette.green.main;
+      const down = theme.palette.error.main;
+      const chart = lc.createChart(el, {
+        autoSize: true,
+        layout: {
+          background: { color: "transparent" },
+          textColor: theme.palette.grey[200],
+          fontFamily: theme.typography.fontFamily,
+          attributionLogo: true,
+        },
+        grid: { vertLines: { color: "rgba(255,255,255,0.04)" }, horzLines: { color: "rgba(255,255,255,0.04)" } },
+        rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+        timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: interval !== "D", secondsVisible: false },
+        crosshair: { mode: lc.CrosshairMode.Normal },
+      });
+      const series = chart.addSeries(lc.CandlestickSeries, {
+        upColor: up,
+        downColor: down,
+        borderUpColor: up,
+        borderDownColor: down,
+        wickUpColor: up,
+        wickDownColor: down,
+        priceFormat: { type: "price", precision: 5, minMove: 0.00001 },
+      });
+      const toBars = (cs: Candle[]) =>
+        cs.map((c) => ({
+          time: Math.floor(c.t / 1000) as import("lightweight-charts").UTCTimestamp,
+          open: c.o,
+          high: c.h,
+          low: c.l,
+          close: c.c,
+        }));
+      const span = INTERVALS.find((i) => i.id === interval)?.spanSec ?? 86400;
+      const first = await loadCandles(interval, span).catch(() => [] as Candle[]);
+      if (dead) {
+        chart.remove();
+        return;
+      }
+      series.setData(toBars(first));
+      chart.timeScale().fitContent();
+      setEmpty(first.length === 0);
+      setLoading(false);
+      // Poll a short window and merge it in (update() replaces the last bar or appends a new one).
+      const timer = window.setInterval(async () => {
+        const recent = await loadCandles(interval, interval === "D" ? 3 * 86400 : 6 * 3600).catch(() => [] as Candle[]);
+        if (dead) return;
+        for (const b of toBars(recent)) {
+          try {
+            series.update(b);
+          } catch {
+            /* older than the last bar */
+          }
+        }
+      }, 30_000);
+      cleanup = () => {
+        window.clearInterval(timer);
+        chart.remove();
+      };
+    })();
     return () => {
-      el.innerHTML = "";
+      dead = true;
+      cleanup();
     };
-  }, [symbol]);
-  return (
-    <Box
-      ref={host}
-      className="tradingview-widget-container"
-      sx={{
-        height: "100%",
-        width: "100%",
-        borderRadius: "1rem",
-        overflow: "hidden",
-      }}
-    />
-  );
-});
+  }, [interval, theme]);
 
-type Level = { price: number; size: number; total: number; depth: number };
-
-/**
- * Zenex has no order book: every fill is at the Chainlink oracle bid / ask plus the base fee and a
- * size-quadratic impact fee (notional^2 / impactScalar, capped at 10%). This ladder is that exact
- * schedule: the effective price for each cumulative size up to the position cap.
- */
-function ladder(m: PerpsMarket, isAsk: boolean): Level[] {
-  const p = m.price;
-  if (!p) return [];
-  const L = m.limits;
-  const cap = Math.min(
-    L.maxPositionNotional || 500,
-    isAsk ? L.capacityLong : L.capacityShort,
-  );
-  const longDominant = m.openInterest.long >= m.openInterest.short;
-  const fee = (isAsk ? longDominant : !longDominant)
-    ? L.feeDominant
-    : L.feeNonDominant;
-  const steps = 10;
-  const out: Level[] = [];
-  let prevTokens = 0;
-  for (let i = 1; i <= steps; i++) {
-    const notional = (cap * i) / steps;
-    const impactRate =
-      L.impactScalar > 0
-        ? Math.min(L.maxImpactRate, notional / L.impactScalar)
-        : 0;
-    const base = isAsk ? p.ask : p.bid;
-    const price = isAsk
-      ? base * (1 + fee + impactRate)
-      : base * (1 - fee - impactRate);
-    const tokens = notional / price;
-    out.push({
-      price,
-      size: tokens - prevTokens,
-      total: tokens,
-      depth: i / steps,
-    });
-    prevTokens = tokens;
-  }
-  return out;
-}
-
-const fmt7 = (v: number) => v.toFixed(v >= 1 ? 4 : 6);
-
-function BookPanel({ market }: { market: PerpsMarket | null }) {
-  const [tab, setTab] = useState("book");
-  const trades = usePerpsTrades();
-  const asks = useMemo(
-    () => (market ? ladder(market, true).reverse() : []),
-    [market],
-  );
-  const bids = useMemo(() => (market ? ladder(market, false) : []), [market]);
-  const spread = market?.price ? market.price.ask - market.price.bid : null;
-  const row = (l: Level, ask: boolean) => (
-    <Box
-      key={`${ask}${l.price}`}
-      sx={{
-        position: "relative",
-        display: "grid",
-        gridTemplateColumns: "1.1fr 1fr 1fr",
-        alignItems: "center",
-        height: "1.75rem",
-        px: "0.75rem",
-        fontSize: "0.8125rem",
-        fontVariantNumeric: "tabular-nums",
-      }}
-    >
-      <Box
-        sx={{
-          position: "absolute",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: `${Math.max(4, l.depth * 100)}%`,
-          backgroundColor: ask
-            ? "rgba(229,72,77,0.16)"
-            : "rgba(0,196,107,0.14)",
-        }}
-      />
-      <Typography
-        sx={{
-          position: "relative",
-          fontSize: "0.8125rem",
-          color: ask ? "error.main" : "green.main",
-        }}
-      >
-        {fmt7(l.price)}
-      </Typography>
-      <Typography
-        sx={{
-          position: "relative",
-          fontSize: "0.8125rem",
-          color: "common.black",
-          textAlign: "right",
-        }}
-      >
-        {formatAmount(l.size, 2)}
-      </Typography>
-      <Typography
-        sx={{
-          position: "relative",
-          fontSize: "0.8125rem",
-          color: "common.black",
-          textAlign: "right",
-        }}
-      >
-        {formatAmount(l.total, 2)}
-      </Typography>
-    </Box>
-  );
   return (
     <Box
       sx={{
         display: "flex",
         flexDirection: "column",
-        minWidth: 0,
+        height: "100%",
         borderRadius: "1rem",
-        backgroundColor: "overlay.white04",
-        border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
         overflow: "hidden",
+        backgroundColor: "rgba(17,17,17,1)",
+        border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
       }}
     >
-      <Box sx={{ p: "0.625rem" }}>
-        <Tabs
-          tabs={[
-            { id: "book", label: "Order Book", padding: "0 0.75rem" },
-            { id: "recent", label: "Recent", padding: "0 0.75rem" },
-          ]}
-          activeTab={tab}
-          setActiveTab={setTab}
-          isPathProvided={false}
-          fullWidth
-        />
-      </Box>
-      {tab === "book" ? (
-        <>
-          <Box
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.25rem",
+          p: "0.5rem 0.75rem",
+          borderBottom: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
+        }}
+      >
+        {INTERVALS.map((i) => (
+          <ButtonBase
+            key={i.id}
+            onClick={() => {
+              if (i.id === interval) return;
+              setLoading(true);
+              setIntervalId(i.id);
+            }}
             sx={{
-              display: "grid",
-              gridTemplateColumns: "1.1fr 1fr 1fr",
-              px: "0.75rem",
-              py: "0.375rem",
+              px: "0.625rem",
+              height: "1.75rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              color: interval === i.id ? "common.black" : "grey.200",
+              backgroundColor: interval === i.id ? "overlay.white08" : "transparent",
+              "&:hover": { color: "common.black" },
             }}
           >
-            <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
-              Price
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "grey.200",
-                textAlign: "right",
-              }}
-            >
-              Size (XLM)
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "grey.200",
-                textAlign: "right",
-              }}
-            >
-              Total (XLM)
-            </Typography>
+            {i.label}
+          </ButtonBase>
+        ))}
+        <Typography sx={{ ml: "auto", fontSize: "0.75rem", color: "grey.200" }} noWrap>
+          XLM/USD · Zenex
+        </Typography>
+      </Box>
+      <Box sx={{ position: "relative", flex: 1, minHeight: 0 }}>
+        <Box ref={host} sx={{ position: "absolute", inset: 0 }} />
+        {loading && (
+          <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <CircularProgress size={22} />
           </Box>
-          {asks.map((l) => row(l, true))}
-          <Box
+        )}
+        {!loading && empty && (
+          <Typography
             sx={{
+              position: "absolute",
+              inset: 0,
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
-              px: "0.75rem",
-              py: "0.5rem",
-              my: "0.25rem",
-              backgroundColor: "overlay.white08",
+              justifyContent: "center",
+              color: "grey.200",
+              fontSize: "0.875rem",
             }}
           >
-            <Typography
-              sx={{
-                fontSize: "1.0625rem",
-                fontWeight: 700,
-                color: "common.black",
-              }}
-            >
-              {fmt7(market?.price?.mid ?? 0)}
-            </Typography>
-            <Box
-              sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}
-            >
-              <Typography sx={{ fontSize: "0.8125rem", color: "common.black" }}>
-                Spread {spread != null ? fmt7(spread) : "—"}
-              </Typography>
-              <Tooltip
-                arrow
-                placement="top"
-                title="Zenex fills every order at the Chainlink oracle price, so there's no resting order book. Each row is the real price you'd pay for that cumulative size: oracle bid/ask plus the trading fee and Zenex's size-based price impact, up to the 500 USDC position cap."
-              >
-                <InfoOutlinedIcon
-                  sx={{
-                    fontSize: "0.9375rem",
-                    color: "primary.main",
-                    cursor: "help",
-                  }}
-                />
-              </Tooltip>
-            </Box>
-          </Box>
-          {bids.map((l) => row(l, false))}
-        </>
-      ) : (
-        <Box sx={{ maxHeight: "36rem", overflowY: "auto" }}>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              px: "0.75rem",
-              py: "0.375rem",
-            }}
-          >
-            <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
-              Price
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "grey.200",
-                textAlign: "right",
-              }}
-            >
-              Size (USDC)
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.75rem",
-                color: "grey.200",
-                textAlign: "right",
-              }}
-            >
-              Time
-            </Typography>
-          </Box>
-          {trades.length === 0 ? (
-            <Typography
-              sx={{
-                fontSize: "0.8125rem",
-                color: "grey.200",
-                p: "1rem",
-                textAlign: "center",
-              }}
-            >
-              No recent trades.
-            </Typography>
-          ) : (
-            trades.map((t) => {
-              const buy = (t.side === "long") === (t.kind === "increase");
-              return (
-                <Box
-                  key={t.id}
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    alignItems: "center",
-                    height: "1.75rem",
-                    px: "0.75rem",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: "0.8125rem",
-                      color: buy ? "green.main" : "error.main",
-                    }}
-                  >
-                    {fmt7(t.price)}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: "0.8125rem",
-                      color: "common.black",
-                      textAlign: "right",
-                    }}
-                  >
-                    {t.notional ? formatAmount(t.notional, 2) : "—"}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: "0.75rem",
-                      color: "grey.200",
-                      textAlign: "right",
-                    }}
-                  >
-                    {new Date(t.at).toLocaleString([], {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </Typography>
-                </Box>
-              );
-            })
-          )}
-        </Box>
-      )}
+            No price history from Zenex for this interval.
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -417,9 +221,6 @@ export default function PerpsChart({ market }: { market: PerpsMarket | null }) {
   const s = market?.stats24h;
   const fundL = hourlyPct(market?.rates?.current?.long.fundingPerSec);
   const fundS = hourlyPct(market?.rates?.current?.short.fundingPerSec);
-  const live = market?.price
-    ? Date.now() / 1000 - market.price.at < 120
-    : false;
   return (
     <Box
       sx={{
@@ -505,57 +306,9 @@ export default function PerpsChart({ market }: { market: PerpsMarket | null }) {
               : "—"
           }
         />
-        <Box
-          sx={{
-            ml: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.375rem",
-            px: "0.75rem",
-            height: "1.75rem",
-            borderRadius: "999rem",
-            backgroundColor: live ? "rgba(0,196,107,0.12)" : "overlay.white08",
-          }}
-        >
-          <Box
-            sx={{
-              width: "0.4rem",
-              height: "0.4rem",
-              borderRadius: "50%",
-              backgroundColor: live ? "green.main" : "grey.200",
-            }}
-          />
-          <Typography
-            sx={{
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              color: live ? "green.main" : "grey.200",
-            }}
-          >
-            {market && market.market.status !== 0
-              ? market.market.statusLabel
-              : live
-                ? "Live"
-                : "Delayed"}
-          </Typography>
-        </Box>
       </Box>
-      <Box sx={{ containerType: "inline-size" }}>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 20rem",
-            gap: "0.75rem",
-            "@container (max-width: 52rem)": {
-              gridTemplateColumns: "minmax(0, 1fr)",
-            },
-          }}
-        >
-          <Box sx={{ height: "40rem", minWidth: 0 }}>
-            <TradingViewChart symbol="COINBASE:XLMUSD" />
-          </Box>
-          <BookPanel market={market} />
-        </Box>
+      <Box sx={{ height: { xs: "26rem", md: "36rem" }, minWidth: 0 }}>
+        <ZenexChart />
       </Box>
     </Box>
   );

@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import InputBase from "@mui/material/InputBase";
 import Link from "@mui/material/Link";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import GlassDialog, { MODAL } from "@/components/common/GlassDialog";
@@ -15,7 +16,7 @@ import { formatAmount, formatUsd } from "@/lib/format";
 import { explorerTx } from "@/lib/tx";
 import { useWallet } from "@/wallet/WalletContext";
 import { cardSx, usePerpsTx, useUsdcBalance } from "./OrderEntry";
-import { fmtPx, type PerpsAccount, type PerpsClosed, type PerpsFill, type PerpsMarket, type PerpsOrder, type PerpsPosition } from "./usePerps";
+import { fmtPx, positionExits, type PerpsAccount, type PerpsClosed, type PerpsFill, type PerpsMarket, type PerpsOrder, type PerpsPosition } from "./usePerps";
 
 const T = ({ children, color = "common.black", size = "0.9375rem" }: { children: React.ReactNode; color?: string; size?: string }) => (
   <Typography sx={{ fontSize: size, color }}>{children}</Typography>
@@ -36,8 +37,8 @@ const TxLink = ({ tx }: { tx: string }) => (
 type Mode = "close" | "reduce" | "add" | "withdraw" | "tp" | "sl";
 
 /** Manage one position: close (full / part), margin in / out, take profit, stop loss. */
-function PositionDialog({ position, market, onClose }: { position: PerpsPosition; market: PerpsMarket | null; onClose: () => void }) {
-  const [mode, setMode] = useState<Mode>("close");
+function PositionDialog({ position, market, initialMode = "close", onClose }: { position: PerpsPosition; market: PerpsMarket | null; initialMode?: Mode; onClose: () => void }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [value, setValue] = useState("");
   const [part, setPart] = useState(100);
   const { run, dialog } = usePerpsTx();
@@ -198,7 +199,7 @@ export function AccountCard({ account, loading }: { account: PerpsAccount | null
             </Button>
           </Box>
           <Typography sx={{ fontSize: "0.75rem", color: "grey.200", lineHeight: 1.5 }}>
-            Margin is posted per position: add or withdraw it from a position&apos;s Manage menu. Credit holds earned funding and payouts the market couldn&apos;t send.
+            Margin is posted per position: add or withdraw it from a position&apos;s Manage menu. Claimable credit is USDC Zenex owes you: funding your positions earned (credited when a position settles) and any payout that couldn&apos;t reach your wallet, for example without a USDC trustline. Claim sends it to your wallet; Zenex charges no fee.
           </Typography>
         </>
       )}
@@ -211,7 +212,7 @@ export function AccountCard({ account, loading }: { account: PerpsAccount | null
 export default function PerpsTables({ account, market, loading }: { account: PerpsAccount | null; market: PerpsMarket | null; loading: boolean }) {
   const { isConnected } = useWallet();
   const [tab, setTab] = useState("positions");
-  const [managing, setManaging] = useState<PerpsPosition | null>(null);
+  const [managing, setManaging] = useState<{ position: PerpsPosition; mode: Mode } | null>(null);
   const { run, dialog } = usePerpsTx();
   const a = account;
 
@@ -223,14 +224,40 @@ export default function PerpsTables({ account, market, loading }: { account: Per
     { id: "liq", header: "Liq. price", cell: (p) => <T color="orange.main">${fmtPx(p.liquidationPrice)}</T> },
     { id: "margin", header: "Margin", cell: (p) => <Box><T>{formatUsd(p.margin)}</T><T size="0.75rem" color="grey.200">{p.leverage.toFixed(1)}x</T></Box> },
     { id: "pnl", header: "Net PnL", cell: (p) => <Box><T color={pnlColor(p.netPnl)}>{formatUsd(p.netPnl)}</T><T size="0.75rem" color={pnlColor(p.netPnl)}>{p.netPnlPct.toFixed(2)}%</T></Box>, sortValue: (p) => p.netPnl },
-    { id: "funding", header: "Funding owed", cell: (p) => <T color={p.pendingFunding > 0 ? "error.main" : "green.main"}>{formatUsd(-p.pendingFunding)}</T> },
+    {
+      id: "tpsl",
+      header: "TP / SL",
+      cell: (p) => {
+        const { tp, sl } = positionExits(a?.openOrders, p.side);
+        const exit = (label: string, prices: number[], mode: Mode, color: string) => (
+          <ButtonBase onClick={() => setManaging({ position: p, mode })} sx={{ justifyContent: "flex-start", fontSize: "0.875rem", color: prices.length ? color : "grey.200", "&:hover": { textDecoration: "underline" } }}>
+            {label} {prices.length ? prices.map((v) => `$${fmtPx(v)}`).join(", ") : "Set"}
+          </ButtonBase>
+        );
+        return (
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            {exit("TP", tp, "tp", "green.main")}
+            {exit("SL", sl, "sl", "error.main")}
+          </Box>
+        );
+      },
+    },
+    {
+      id: "funding",
+      header: (
+        <Tooltip arrow placement="top" title="Funding accrued on this position since it last settled. Negative: you pay it from margin when the position changes or closes. Positive: you earn it, and it's paid to your claimable credit.">
+          <span>Funding</span>
+        </Tooltip>
+      ),
+      cell: (p) => <T color={p.pendingFunding > 0 ? "error.main" : p.pendingFunding < 0 ? "green.main" : "common.black"}>{p.pendingFunding > 0 ? "−" : p.pendingFunding < 0 ? "+" : ""}{formatUsd(Math.abs(p.pendingFunding))}</T>,
+    },
     {
       id: "actions",
       header: "",
       align: "right",
       cell: (p) => (
         <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button size="small" variant="outlined" color="cancel" onClick={() => setManaging(p)} sx={{ borderRadius: "999rem" }}>Manage</Button>
+          <Button size="small" variant="outlined" color="cancel" onClick={() => setManaging({ position: p, mode: "close" })} sx={{ borderRadius: "999rem" }}>Manage</Button>
           <Button size="small" variant="solid" onClick={() => void run(`Close ${p.side}`, { action: "close", side: p.side })} sx={{ borderRadius: "999rem" }}>Close</Button>
         </Box>
       ),
@@ -290,7 +317,7 @@ export default function PerpsTables({ account, market, loading }: { account: Per
       {tab === "fills" && <DataTable columns={fillCols} rows={a?.fills ?? []} isLoading={busy} emptyDataText={empty ?? "No trades yet"} emptyMinHeight="12rem" getRowId={(f) => f.id} pageSize={10} />}
       {tab === "closed" && <DataTable columns={closedCols} rows={a?.closed ?? []} isLoading={busy} emptyDataText={empty ?? "No closed positions yet"} emptyMinHeight="12rem" getRowId={(c) => c.id} pageSize={10} />}
       {a && !a.indexed && <Typography sx={{ fontSize: "0.75rem", color: "orange.main" }}>Zenex&apos;s history index is unreachable right now; positions are read on-chain.</Typography>}
-      {managing && <PositionDialog position={managing} market={market} onClose={() => setManaging(null)} />}
+      {managing && <PositionDialog position={managing.position} market={market} initialMode={managing.mode} onClose={() => setManaging(null)} />}
       {dialog}
     </Box>
   );

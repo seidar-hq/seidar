@@ -66,6 +66,13 @@ export type PerpsOrder = {
   tx: string;
 };
 
+/** Resting exits on one side: take profit = limit decrease (kind 4), stop loss = stop decrease (kind 5). */
+export function positionExits(orders: PerpsOrder[] | undefined, side: string) {
+  const pick = (kind: number) =>
+    (orders ?? []).filter((o) => o.side === side && o.kind === kind && o.triggerPrice != null).map((o) => o.triggerPrice as number);
+  return { tp: pick(4), sl: pick(5) };
+}
+
 export type PerpsFill = { id: string; side: string; kind: string; orderId: number; price: number; notional: number; margin: number; pnl: number; fees: number; at: string; tx: string };
 export type PerpsClosed = { id: string; side: string; openedAt: string; closedAt: string; reason: string; entryPrice: number; exitPrice: number; size: number; leverage: number; netPnl: number; margin: number };
 
@@ -120,9 +127,4 @@ export const hourlyPct = (perSec: string | undefined) => (perSec ? (Number(perSe
 
 export const fmtPx = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5));
 
-export type PerpsTrade = { id: string; side: string; kind: string; price: number; notional: number; at: string; tx: string };
 
-export function usePerpsTrades() {
-  const { value } = useShared<{ ok?: boolean; trades?: PerpsTrade[] } | null>("zenex:trades", () => apiJson("/api/zenex/trades?limit=40"), 30_000);
-  return value?.trades ?? [];
-}

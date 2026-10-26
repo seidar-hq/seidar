@@ -58,9 +58,9 @@ Prices may come from different sources, and some protocols value positions diffe
 
 Zenex orders are filled by keepers after your transaction creates them, usually within seconds. If the price moved beyond your slippage before a keeper could fill it, the order stays open until it fills or expires; you can cancel it from **Open Orders**. See [Perps](/features/trading/perps#how-zenex-works).
 
-### Why does the perps order book look so regular?
+### What is claimable credit on Perps?
 
-Zenex has no order book: trades fill against a liquidity vault at the oracle price plus a size-based impact charge. The book panel shows that fill schedule rather than other traders' orders.
+USDC Zenex holds for you: funding your positions earned, plus any payout that couldn't reach your wallet. Claim it from the account card any time. See [Perps](/features/trading/perps#account-summary).
 
 ## Bridge
 
