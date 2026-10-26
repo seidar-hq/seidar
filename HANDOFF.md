@@ -275,7 +275,9 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
   Zenex's public API: `api.zenex.trade/v1/...` incl. `prices/udf/history` (TradingView UDF).
   Zenex's own app uses TradingView's *licensed* Charting Library; TradingView has **no** Zenex
   symbol (only an unrelated `CRYPTO:ZNXUSD`). We use the free Lightweight Charts with Zenex candles.
-  Saved Zenex docs/interfaces: scratchpad `zenex/` (docs/*.md, market.rs, router.rs, vault.rs, sdk/).
+  Reference: `docs.zenex.trade` (llms.txt), contract interfaces via
+  `stellar contract info interface --id <contract> --network mainnet`; the contract calls in
+  `services/api/src/zenex.ts` mirror zenex-sdk-js (not installed: it's a git dependency).
 - **Blend**: isolated pools (Fixed, Fixed v2.1, YieldBlox, Orbit, Etherfuse, Solv…). Seidar supplies
   as collateral (`SupplyCollateral`). Pool status → On ice / Frozen / In setup pills. BLND claims are
   per pool; **Fixed v2.1's claim fails** (its backstop `CCS4AZ…` holds 0 BLND) — not our bug.
