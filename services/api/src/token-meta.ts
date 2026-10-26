@@ -103,8 +103,8 @@ export async function tokenMeta(contract: string): Promise<TokenMeta | null> {
     try {
       await getPool().query(
         `INSERT INTO token_meta (contract, code, decimals, name) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (contract) DO UPDATE SET code = $2, decimals = $3, name = $4, updated_at = NOW()`,
-        [contract, m.code, m.decimals, m.name],
+         ON CONFLICT (contract) DO UPDATE SET code = $2, decimals = $3, name = $4, updated_at = $5`,
+        [contract, m.code, m.decimals, m.name, new Date().toISOString()],
       );
     } catch {
       /* DB optional */

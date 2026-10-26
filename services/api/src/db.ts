@@ -1,17 +1,54 @@
-// Postgres pool + schema. Ported verbatim from apps/app/src/lib/db.ts.
+// Database: Postgres (`pg`, local Node via DATABASE_URL) or Cloudflare D1 (SQLite, the Worker
+// registers its binding with useD1). Queries are written once in the subset both accept:
+// `$n` placeholders (rewritten to `?n` for D1), timestamps as ISO-8601 text computed in JS
+// (isoAgo) instead of NOW()/INTERVAL, IN lists instead of ANY(), no casts, no DISTINCT ON.
 // DATABASE_URL lives server-side only (services/api env, never the browser).
 
-import { Pool } from "pg";
+import type { Pool } from "pg";
+
+export type QueryResult<T> = { rows: T[]; rowCount: number | null };
+export type Db = { query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<QueryResult<T>> };
+
+/** The slice of the D1 binding this module uses. */
+export type D1Like = {
+  prepare(sql: string): { bind(...v: unknown[]): { all<T>(): Promise<{ results: T[]; meta: { changes?: number } }> } };
+  batch(stmts: unknown[]): Promise<unknown>;
+};
+
+let d1: D1Like | null = null;
+let d1Db: Db | null = null;
+
+/** Worker entry: route every query to this D1 database. */
+export function useD1(binding: D1Like): void {
+  d1 = binding;
+  d1Db = {
+    async query<T>(text: string, params: unknown[] = []) {
+      const sql = text.replace(/\$(\d+)/g, "?$1");
+      const vals = params.map((v) => (typeof v === "boolean" ? (v ? 1 : 0) : v instanceof Date ? v.toISOString() : v ?? null));
+      const r = await binding.prepare(sql).bind(...vals).all<T>();
+      return { rows: r.results ?? [], rowCount: r.meta?.changes ?? (r.results ?? []).length };
+    },
+  };
+}
+
+/** ISO timestamp `ms` milliseconds ago (compares correctly against both TIMESTAMPTZ and ISO text). */
+export const isoAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+/** `$start, $start+1, ...` for an IN list of n values. */
+export const inList = (n: number, start: number) => Array.from({ length: n }, (_, i) => `$${start + i}`).join(", ");
 
 let pool: Pool | null = null;
 
-export function getPool(): Pool {
+export function getPool(): Db {
+  if (d1Db) return d1Db;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL not set");
   if (!pool) {
+    // Loaded lazily so the Worker bundle never initialises `pg`.
+    const { Pool: PgPool } = pgModule();
     // Bounded waits: a dead database must fail fast into the localStorage
     // fallback, never hang API routes (and the UI) indefinitely.
-    pool = new Pool({
+    pool = new PgPool({
       connectionString: url,
       max: 5,
       connectionTimeoutMillis: 5000,
@@ -19,7 +56,14 @@ export function getPool(): Pool {
       statement_timeout: 10000,
     });
   }
-  return pool;
+  return pool as unknown as Db;
+}
+
+// `pg` is CommonJS; createRequire keeps it out of the Worker's module graph.
+function pgModule(): typeof import("pg") {
+  const req = (globalThis as { process?: { getBuiltinModule?: (m: string) => { createRequire(u: string): (m: string) => unknown } } }).process?.getBuiltinModule?.("node:module");
+  if (!req) throw new Error("pg needs Node");
+  return req.createRequire(import.meta.url)("pg") as typeof import("pg");
 }
 
 // Memoized: DDL runs once per process (re-attempted only after a failure).
@@ -36,6 +80,11 @@ export function ensureSchema(): Promise<void> {
 }
 
 async function runSchema(): Promise<void> {
+  if (d1) {
+    const stmts = SQLITE_SCHEMA.split(";").map((s) => s.trim()).filter(Boolean);
+    await d1.batch(stmts.map((s) => d1!.prepare(s).bind()));
+    return;
+  }
   const p = getPool();
   await p.query(`
     CREATE TABLE IF NOT EXISTS notifications (
@@ -203,6 +252,25 @@ async function runSchema(): Promise<void> {
     );
   `);
 }
+
+
+const TS = "TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))";
+const SQLITE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT NOT NULL, text TEXT NOT NULL, created_at ${TS}, read INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS notifications_wallet_idx ON notifications (wallet, id DESC);
+CREATE TABLE IF NOT EXISTS vault_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, protocol TEXT NOT NULL, vault_address TEXT NOT NULL, share_price REAL, tvl_usd REAL NOT NULL DEFAULT 0, apy_pct REAL, created_at ${TS});
+CREATE INDEX IF NOT EXISTS vault_snapshots_vault_idx ON vault_snapshots (protocol, vault_address, id DESC);
+CREATE TABLE IF NOT EXISTS vault_watches (id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT NOT NULL, protocol TEXT NOT NULL, vault_address TEXT NOT NULL, threshold_pp REAL NOT NULL DEFAULT 2, last_notified_at TEXT, created_at ${TS}, UNIQUE (wallet, protocol, vault_address));
+CREATE INDEX IF NOT EXISTS vault_watches_wallet_idx ON vault_watches (wallet, id DESC);
+CREATE TABLE IF NOT EXISTS price_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, asset TEXT NOT NULL, px REAL NOT NULL, at ${TS});
+CREATE INDEX IF NOT EXISTS price_snapshots_asset_idx ON price_snapshots (asset, at DESC);
+CREATE TABLE IF NOT EXISTS wallet_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT NOT NULL, net_worth REAL NOT NULL, supplied REAL NOT NULL DEFAULT 0, borrowed REAL NOT NULL DEFAULT 0, tokens_value REAL NOT NULL DEFAULT 0, network TEXT, at ${TS});
+CREATE INDEX IF NOT EXISTS wallet_snapshots_wallet_idx ON wallet_snapshots (wallet, at DESC);
+CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, files TEXT NOT NULL DEFAULT '[]', created_at ${TS});
+CREATE TABLE IF NOT EXISTS defindex_vaults (idx INTEGER PRIMARY KEY, address TEXT NOT NULL UNIQUE, name TEXT NOT NULL DEFAULT '', symbol TEXT NOT NULL DEFAULT '', assets TEXT NOT NULL DEFAULT '[]', created_at ${TS});
+CREATE TABLE IF NOT EXISTS token_meta (contract TEXT PRIMARY KEY, code TEXT NOT NULL, decimals INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', updated_at ${TS});
+CREATE TABLE IF NOT EXISTS token_icons (contract TEXT PRIMARY KEY, icon TEXT, checked_at ${TS})
+`;
 
 export type DbSessionGrant = {
   id: number;

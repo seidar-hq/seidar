@@ -622,6 +622,38 @@ async function warmPrices() {
   }
 }
 
+/** One warmer pass for a Worker cron tick (every minute); cadences follow the clock. */
+export async function runWarmersOnce(at: Date): Promise<void> {
+  const m = at.getUTCMinutes();
+  const jobs: Promise<unknown>[] = [
+    (async () => {
+      const out = await livePrices(WARM_CODES).catch(() => null);
+      if (out && m % 15 === 0) {
+        const { snapshotPrices } = await import("./prices.js");
+        await snapshotPrices(out.prices);
+      }
+    })(),
+  ];
+  if (m % 2 === 0) jobs.push(import("./price-chart.js").then((x) => x.warmCharts()));
+  if (m % 5 === 0)
+    jobs.push(
+      withNetwork("mainnet", async () => {
+        for (const v of ["soroswap", "phoenix", "sushi"] as const) await getDexPools(v).catch(() => null);
+      }),
+    );
+  // Heavy lists: a Worker request on a cold key waits for the whole build (the vault catalogue
+  // reads ~120 contracts), so the cron keeps them cached. Stale entries refresh in the background
+  // (drained by the caller); a missing one is built here instead of in a user's request.
+  if (m % 5 === 2)
+    jobs.push(
+      withNetwork("mainnet", async () => {
+        const { getLendMarkets } = await import("./lend-markets.js");
+        await Promise.allSettled([getVaults(), getPoolData("blend"), getPoolData("xoxno"), getLendMarkets()]);
+      }),
+    );
+  await Promise.allSettled(jobs);
+}
+
 /** Start background refresh loops (Node/Containers only, not Workers). */
 export function startWarmers(): void {
   setInterval(warmPrices, 30_000);

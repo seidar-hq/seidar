@@ -5,7 +5,7 @@
 // Upshift reads are on-chain. Each op returns {status, body}.
 
 import { apyFromSeries, shortVaultName, type PpsPoint } from "@seidar/vaults";
-import { ensureSchema, getPool } from "./db.js";
+import { ensureSchema, getPool, isoAgo } from "./db.js";
 import { sorobanView as sharedView } from "./rpc.js";
 import { invokeFor } from "./invoke.js";
 
@@ -247,8 +247,8 @@ export async function touchWatch(body: Record<string, unknown>) {
   try {
     await ensureSchema();
     await getPool().query(
-      "UPDATE vault_watches SET last_notified_at = NOW() WHERE wallet = $1 AND protocol = $2 AND vault_address = $3",
-      [wallet, protocol, vault],
+      "UPDATE vault_watches SET last_notified_at = $4 WHERE wallet = $1 AND protocol = $2 AND vault_address = $3",
+      [wallet, protocol, vault, new Date().toISOString()],
     );
     return { status: 200, body: { ok: true } };
   } catch {
@@ -291,13 +291,13 @@ export async function getSnapshots(protocol: string, address: string, daysRaw: u
       created_at: string;
     }>(
       `SELECT share_price, tvl_usd, apy_pct, created_at FROM vault_snapshots
-       WHERE protocol = $1 AND vault_address = $2 AND created_at > NOW() - ($3 || ' days')::INTERVAL
+       WHERE protocol = $1 AND vault_address = $2 AND created_at > $3
        ORDER BY id ASC LIMIT 2000`,
-      [protocol, address, String(days)],
+      [protocol, address, isoAgo(days * 86400_000)],
     );
     const points = rows
       .map((r) => ({
-        t: Date.parse(r.created_at),
+        t: new Date(r.created_at).getTime(),
         pps: typeof r.share_price === "number" ? r.share_price : NaN,
       }))
       .filter((p) => Number.isFinite(p.t) && p.pps > 0);
@@ -308,12 +308,12 @@ export async function getSnapshots(protocol: string, address: string, daysRaw: u
         points,
         apy: rows
           .map((r) => ({
-            t: Date.parse(r.created_at),
+            t: new Date(r.created_at).getTime(),
             v: typeof r.apy_pct === "number" ? r.apy_pct : NaN,
           }))
           .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v)),
         tvl: rows.map((r) => ({
-          t: Date.parse(r.created_at),
+          t: new Date(r.created_at).getTime(),
           v: typeof r.tvl_usd === "number" ? r.tvl_usd : 0,
         })),
         ownApy7d: apyFromSeries(points, 7),

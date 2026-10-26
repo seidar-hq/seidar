@@ -117,6 +117,27 @@ async function getRedis() {
   }
 }
 
+/** Plug in a remote store instead of Redis (the Cloudflare Worker passes its KV namespace). */
+export function setCacheDriver(
+  d: { get(key: string): Promise<string | null>; put(key: string, value: string, ttlMs: number): Promise<unknown> } | null,
+): void {
+  redisTried = true;
+  redis = d ? { get: (k) => d.get(k), set: (k, v, _mode, ttlMs) => d.put(k, v, ttlMs) } : null;
+}
+
+/* Background refreshes (stale-while-revalidate) outlive the request that started them. Node keeps
+   them running on its own; a Worker must hand them to ctx.waitUntil, so they're tracked here. */
+const pending = new Set<Promise<unknown>>();
+function track<T>(p: Promise<T>): Promise<T> {
+  pending.add(p);
+  void p.finally(() => pending.delete(p)).catch(() => {});
+  return p;
+}
+/** Settles once every background refresh started so far has finished. */
+export function drainBackground(): Promise<unknown> {
+  return Promise.allSettled([...pending]);
+}
+
 /* Key scope: the API registers a resolver (its network context), so one
    process can serve mainnet and testnet without their entries mixing. The
    default scope is "" (keys unchanged). */
@@ -216,7 +237,7 @@ export async function withCache<T>(
         .finally(() => {
           inflight.delete(flight);
         });
-      inflight.set(flight, p);
+      inflight.set(flight, track(p));
     }
     return {
       value: (entry as { value: T }).value,

@@ -22,7 +22,7 @@ export async function sampleWallet(
     const sup = Number(supplied);
     const bor = Number(borrowed);
     if (!Number.isFinite(sup) || !Number.isFinite(bor)) return;
-    const { ensureSchema, getPool } = await import("./db.js");
+    const { ensureSchema, getPool, isoAgo } = await import("./db.js");
     await ensureSchema();
     const pool = getPool();
     const last = await pool.query<{ at: unknown }>(
@@ -48,7 +48,7 @@ export async function sampleWallet(
       "INSERT INTO wallet_snapshots (wallet, net_worth, supplied, borrowed, tokens_value, network) VALUES ($1, $2, $3, $4, $5, $6)",
       [address, Math.round(net * 100) / 100, sup, bor, Math.round(tokens * 100) / 100, network()],
     );
-    await pool.query("DELETE FROM wallet_snapshots WHERE at < NOW() - INTERVAL '90 days'");
+    await pool.query("DELETE FROM wallet_snapshots WHERE at < $1", [isoAgo(90 * 86400_000)]);
   } catch {
     /* advisory only */
   }
@@ -73,24 +73,23 @@ export async function getPortfolioHistory(
   if (!isWallet(wallet)) return { ok: false, error: "invalid wallet" };
   const n = Math.max(2, Math.min(500, Math.floor(points) || 120));
   try {
-    const { ensureSchema, getPool } = await import("./db.js");
+    const { ensureSchema, getPool, isoAgo } = await import("./db.js");
     await ensureSchema();
     const { rows } = await getPool().query<{
-      t: unknown;
+      at: unknown;
       net: unknown;
       supplied: unknown;
       borrowed: unknown;
       tokens: unknown;
     }>(
-      `SELECT EXTRACT(EPOCH FROM at) * 1000 AS t, net_worth AS net,
-              supplied, borrowed, tokens_value AS tokens
-       FROM wallet_snapshots WHERE wallet = $1 AND network = $2 AND at > NOW() - INTERVAL '90 days'
+      `SELECT at, net_worth AS net, supplied, borrowed, tokens_value AS tokens
+       FROM wallet_snapshots WHERE wallet = $1 AND network = $2 AND at > $3
        ORDER BY at ASC LIMIT 2000`,
-      [wallet, network()],
+      [wallet, network(), isoAgo(90 * 86400_000)],
     );
     const all: EquityPoint[] = (rows ?? [])
       .map((r) => ({
-        t: Number(r?.t),
+        t: new Date(r?.at as string).getTime(),
         net: Number(r?.net),
         supplied: Number(r?.supplied ?? 0),
         borrowed: Number(r?.borrowed ?? 0),

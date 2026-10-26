@@ -2,12 +2,12 @@
 // Each op returns {status, body} so any HTTP runtime can serve it. DB failures stay
 // HTTP 200 db-unavailable / db-error; the UI then shows an empty list.
 
-import { dbError, dbUnavailable, ensureSchema, getPool, isDbMissing, type DbNote } from "./db.js";
+import { dbError, dbUnavailable, ensureSchema, getPool, inList, isDbMissing, type DbNote } from "./db.js";
 
 export const isWallet = (v: string) => /^G[A-Z2-7]{55}$/.test(v);
 
 function toNote(r: DbNote) {
-  return { id: r.id, text: r.text, at: r.created_at, read: r.read };
+  return { id: r.id, text: r.text, at: r.created_at, read: Boolean(r.read) };
 }
 
 export async function listNotes(wallet: string) {
@@ -64,12 +64,11 @@ export async function markNotes(body: Record<string, unknown>) {
     await ensureSchema();
     const pool = getPool();
     if (body.all) {
-      await pool.query("UPDATE notifications SET read = TRUE WHERE wallet = $1 AND read = FALSE", [wallet]);
+      await pool.query("UPDATE notifications SET read = $2 WHERE wallet = $1 AND read = $3", [wallet, true, false]);
     } else if (Array.isArray(body.ids) && body.ids.length > 0) {
-      await pool.query("UPDATE notifications SET read = TRUE WHERE wallet = $1 AND id = ANY($2)", [
-        wallet,
-        (body.ids as unknown[]).map(Number),
-      ]);
+      const ids = (body.ids as unknown[]).map(Number).filter(Number.isFinite).slice(0, 200);
+      if (ids.length)
+        await pool.query(`UPDATE notifications SET read = $2 WHERE wallet = $1 AND id IN (${inList(ids.length, 3)})`, [wallet, true, ...ids]);
     }
     return { status: 200, body: { ok: true } };
   } catch (e) {

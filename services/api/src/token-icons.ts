@@ -9,7 +9,7 @@
 // in the background, a few at a time, so a request never waits on hundreds
 // of lookups.
 
-import { ensureSchema, getPool } from "./db.js";
+import { ensureSchema, getPool, inList } from "./db.js";
 import { getDexPools, DEX_PROTOCOLS } from "./dex.js";
 
 const LIST_URL = "https://raw.githubusercontent.com/soroswap/token-list/main/tokenList.json";
@@ -49,6 +49,11 @@ let schemaReady = false;
 async function schema() {
   if (schemaReady) return;
   await ensureSchema();
+  // D1 creates token_icons with the rest of the schema; Postgres adds it here.
+  if (!process.env.DATABASE_URL) {
+    schemaReady = true;
+    return;
+  }
   await getPool().query(`
     CREATE TABLE IF NOT EXISTS token_icons (
       contract TEXT PRIMARY KEY,
@@ -78,9 +83,9 @@ async function fill(contracts: string[]) {
         }
         await getPool()
           .query(
-            `INSERT INTO token_icons (contract, icon, checked_at) VALUES ($1, $2, NOW())
-             ON CONFLICT (contract) DO UPDATE SET icon = $2, checked_at = NOW()`,
-            [c, icon],
+            `INSERT INTO token_icons (contract, icon, checked_at) VALUES ($1, $2, $3)
+             ON CONFLICT (contract) DO UPDATE SET icon = $2, checked_at = $3`,
+            [c, icon, new Date().toISOString()],
           )
           .catch(() => {});
         await new Promise((r) => setTimeout(r, 400));
@@ -105,10 +110,15 @@ export async function dexTokenIcons() {
       for (const r of d?.rows ?? []) for (const a of r.assets) if (a.contract) tokens.set(a.contract, a.code.toUpperCase());
     }
     const contracts = [...tokens.keys()];
-    const { rows } = await getPool().query<{ contract: string; icon: string | null; checked_at: Date | null }>(
-      "SELECT contract, icon, checked_at FROM token_icons WHERE contract = ANY($1)",
-      [contracts],
-    );
+    const rows: { contract: string; icon: string | null; checked_at: Date | string | null }[] = [];
+    for (let i = 0; i < contracts.length; i += 90) {
+      const part = contracts.slice(i, i + 90);
+      const r = await getPool().query<{ contract: string; icon: string | null; checked_at: Date | string | null }>(
+        `SELECT contract, icon, checked_at FROM token_icons WHERE contract IN (${inList(part.length, 1)})`,
+        part,
+      );
+      rows.push(...r.rows);
+    }
     const known = new Map(rows.map((r) => [r.contract, r]));
     const list = await soroswapIcons();
     const byContract: Record<string, string> = {};

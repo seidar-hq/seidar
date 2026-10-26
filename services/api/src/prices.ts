@@ -204,12 +204,12 @@ async function coinbaseSpot(code: string): Promise<number | null> {
 async function snapshotChange(code: string, spot: number | null): Promise<number | null> {
   if (!(spot != null && spot > 0)) return null;
   try {
-    const { ensureSchema, getPool } = await import("./db.js");
+    const { ensureSchema, getPool, isoAgo } = await import("./db.js");
     await ensureSchema();
     const { rows } = await getPool().query<{ px: unknown }>(
-      `SELECT px FROM price_snapshots WHERE asset = $1 AND at <= NOW() - INTERVAL '24 hours'
+      `SELECT px FROM price_snapshots WHERE asset = $1 AND at <= $2
        ORDER BY at DESC LIMIT 1`,
-      [code.toUpperCase()],
+      [code.toUpperCase(), isoAgo(24 * 3600_000)],
     );
     const old = Number(rows[0]?.px);
     if (!(old > 0)) return null;
@@ -226,7 +226,7 @@ export async function snapshotPrices(all: Record<string, number | null>): Promis
   );
   if (rows.length === 0) return;
   try {
-    const { ensureSchema, getPool } = await import("./db.js");
+    const { ensureSchema, getPool, isoAgo } = await import("./db.js");
     await ensureSchema();
     const pool = getPool();
     for (const [code, px] of rows) {
@@ -235,7 +235,7 @@ export async function snapshotPrices(all: Record<string, number | null>): Promis
         px,
       ]);
     }
-    await pool.query("DELETE FROM price_snapshots WHERE at < NOW() - INTERVAL '30 days'");
+    await pool.query("DELETE FROM price_snapshots WHERE at < $1", [isoAgo(30 * 86400_000)]);
   } catch {
     /* snapshots are advisory */
   }
@@ -254,20 +254,20 @@ export async function priceHistory(
   if (!/^[A-Z0-9]{1,12}$/.test(clean)) return { ok: false, error: "code required" };
   const n = Math.max(2, Math.min(800, Math.floor(points) || 48));
   try {
-    const { ensureSchema, getPool } = await import("./db.js");
+    const { ensureSchema, getPool, isoAgo } = await import("./db.js");
     await ensureSchema();
-    const { rows } = await getPool().query<{ t: unknown; px: unknown }>(
-      `SELECT DISTINCT ON (date_trunc('hour', at))
-              EXTRACT(EPOCH FROM date_trunc('hour', at)) * 1000 AS t, px
-       FROM price_snapshots
-       WHERE asset = $1 AND at > NOW() - INTERVAL '30 days'
-       ORDER BY date_trunc('hour', at), at DESC LIMIT 800`,
-      [clean],
+    const { rows } = await getPool().query<{ at: unknown; px: unknown }>(
+      `SELECT at, px FROM price_snapshots WHERE asset = $1 AND at > $2 ORDER BY at ASC LIMIT 4000`,
+      [clean, isoAgo(30 * 86400_000)],
     );
-    const all = (rows ?? [])
-      .map((r) => ({ t: Number(r?.t), px: Number(r?.px) }))
-      .filter((p) => Number.isFinite(p.t) && p.px > 0)
-      .sort((a, b) => a.t - b.t);
+    // One point per hour, the hour's last print (rows arrive oldest first).
+    const byHour = new Map<number, number>();
+    for (const r of rows ?? []) {
+      const at = new Date(r?.at as string).getTime();
+      const px = Number(r?.px);
+      if (Number.isFinite(at) && px > 0) byHour.set(Math.floor(at / 3600_000) * 3600_000, px);
+    }
+    const all = [...byHour].map(([t, px]) => ({ t, px })).sort((a, b) => a.t - b.t);
     if (all.length === 0) return { ok: false, error: "no-history" };
     if (all.length <= n) return { ok: true, code: clean, points: all };
     const stride = all.length / n;
