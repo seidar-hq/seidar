@@ -638,7 +638,7 @@ export async function runWarmersOnce(at: Date): Promise<void> {
   if (m % 5 === 0)
     jobs.push(
       withNetwork("mainnet", async () => {
-        for (const v of ["soroswap", "phoenix", "sushi"] as const) await getDexPools(v).catch(() => null);
+        for (const v of ["soroswap", "phoenix", "sushi", "aqua"] as const) await getDexPools(v).catch(() => null);
       }),
     );
   // Heavy lists: a Worker request on a cold key waits for the whole build (the vault catalogue

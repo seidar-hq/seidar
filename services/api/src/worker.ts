@@ -4,6 +4,7 @@
 //   DB     D1 database   -> db.ts (replaces Postgres)
 // A cron trigger (wrangler.toml) runs the warmers once a minute; Node's setInterval loops
 // (server.ts) never run here.
+import "./worker-compat.js";
 import { drainBackground, setCacheDriver } from "@seidar/cache";
 import app, { runWarmersOnce } from "./index.js";
 import { useD1, type D1Like } from "./db.js";
