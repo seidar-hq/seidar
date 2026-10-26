@@ -51,8 +51,72 @@ export const walletMeta = (id: WalletKind | null | undefined): WalletMeta | unde
 async function walletConnectModule() {
   if (!WC_PROJECT_ID) return [];
   try {
-    const { WalletConnectModule, WalletConnectTargetChain } = await import("@creit.tech/stellar-wallets-kit/modules/wallet-connect");
-    const wc = new WalletConnectModule({
+    const { WalletConnectModule, WalletConnectTargetChain, WalletConnectAllowedMethods: M } = await import(
+      "@creit.tech/stellar-wallets-kit/modules/wallet-connect"
+    );
+    const { wcSessionPaths } = await import("@creit.tech/stellar-wallets-kit/state");
+    type Proposal = Awaited<ReturnType<InstanceType<typeof WalletConnectModule>["signClient"]["connect"]>> & { at: number };
+    const chains = [WalletConnectTargetChain.PUBLIC];
+
+    // Creating a pairing takes several seconds of relay round trips, and the kit showed nothing while
+    // it ran (so people tapped again and again). Keep one pairing ready so a tap opens the wallet
+    // picker at once. Proposals expire after 5 minutes; an older one is replaced on use.
+    class PreparedWalletConnect extends WalletConnectModule {
+      private next: Promise<Proposal> | null = null;
+
+      private propose(): Promise<Proposal> {
+        return this.signClient
+          .connect({
+            requiredNamespaces: { stellar: { methods: [M.SIGN], chains, events: [] } },
+            optionalNamespaces: { stellar: { methods: [M.SIGN_AND_SUBMIT, M.SIGN_AUTH_ENTRY, M.SIGN_MESSAGE], chains, events: [] } },
+          })
+          .then((p) => ({ ...p, at: Date.now() }));
+      }
+
+      prepare(): void {
+        if (this.next || !this.signClient) return;
+        const p = this.propose();
+        this.next = p;
+        p.catch(() => {
+          if (this.next === p) this.next = null;
+        });
+      }
+
+      private async take(): Promise<Proposal> {
+        const p = this.next;
+        this.next = null;
+        const ready = p ? await p.catch(() => null) : null;
+        return ready && Date.now() - ready.at < 4 * 60_000 ? ready : this.propose();
+      }
+
+      override async getAddress() {
+        await this.runChecks();
+        const { uri, approval } = await this.take();
+        if (uri) this.modal.open({ uri });
+        // Closing the modal ends the attempt; otherwise the kit would wait on approval() forever.
+        let unsubscribe = () => {};
+        const closed = new Promise<never>((_, reject) => {
+          let shown = false;
+          unsubscribe = this.modal.subscribeState((st) => {
+            if (st.open) shown = true;
+            else if (shown) reject(new Error("WalletConnect was closed."));
+          });
+        });
+        closed.catch(() => {});
+        try {
+          const session = await Promise.race([approval(), closed]);
+          const accounts = session.namespaces.stellar.accounts.map((a) => a.split(":")[2]);
+          wcSessionPaths.value = [...wcSessionPaths.value, ...accounts.map((publicKey) => ({ publicKey, topic: session.topic }))];
+          return { address: accounts[0] };
+        } finally {
+          unsubscribe();
+          this.modal.close();
+          this.prepare();
+        }
+      }
+    }
+
+    const wc = new PreparedWalletConnect({
       projectId: WC_PROJECT_ID,
       metadata: {
         name: "Seidar",
@@ -60,11 +124,12 @@ async function walletConnectModule() {
         url: typeof window !== "undefined" ? window.location.origin : APP_URL,
         icons: [`${APP_URL}/assets/seidar-icon-256.png`],
       },
-      allowedChains: [WalletConnectTargetChain.PUBLIC],
+      allowedChains: chains,
     });
     // Its sign client starts asynchronously. The kit checks availability when the modal opens, so a
     // module that isn't ready yet would be listed as "Install"; wait for it (bounded) first.
     for (let i = 0; i < 40 && !(await wc.isAvailable()); i++) await new Promise((r) => setTimeout(r, 200));
+    wc.prepare();
     return [wc];
   } catch {
     return [];
