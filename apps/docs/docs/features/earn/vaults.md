@@ -2,85 +2,45 @@
 id: vaults
 title: Vaults
 sidebar_label: Vaults
-description: Deposit into automated yield strategies from DeFindex and Upshift on Stellar.
+description: "Deposit one asset into DeFindex, Upshift or Sentora vaults and let the strategy or curator earn yield on it."
 ---
 
-Vaults are automated yield strategies that manage a deposit across a set of underlying positions. Seidar integrates Stellar vault protocols so you can browse strategies, deposit, and withdraw from one place.
+<p className="lead">A vault takes one asset and does the work: it allocates deposits across strategies and compounds the yield. You deposit, and withdraw when you want out.</p>
 
-## Supported vault protocols
+Open it from **Earn → Vaults**.
 
-| Protocol | Description |
-| --- | --- |
-| **DeFindex** | Automated yield strategies on Stellar |
-| **Upshift** | Curated vault strategies on Stellar |
+## Vault providers
 
-Each vault has its own strategy, principal asset, fees, and risk profile. Read the vault details before depositing.
+| Provider | How it works | Withdrawals |
+| --- | --- | --- |
+| **DeFindex** | Strategy vaults that spread deposits across Stellar protocols such as Blend. You hold vault shares that grow in value as the strategies earn. | Instant, from the vault's idle funds and strategies |
+| **Upshift** | Institutionally curated vaults: a curator allocates deposits across Stellar lending markets. Share-based. | Can go through a queue of a few days; the vault page shows the period |
+| **Sentora** | Incentivised deposit vaults for XLM, USDC and PYUSD, where your principal stays in the contract and the curator pays the quoted APY as rewards; plus **Evergreen USDC**, a share vault whose sentUSDC shares grow in value. | Instant |
 
-## How vaults work
+The vault list shows each vault's asset, TVL, APY and provider. DeFindex lists every vault deployed through its factory that holds a meaningful amount.
 
-A vault accepts a **principal asset** and deploys it according to its strategy. The vault may:
+## Depositing
 
-- Allocate capital across multiple protocols
-- Rebalance positions as market conditions change
-- Compound yield
-- Manage the operational transactions on your behalf
+1. Open a vault and choose **Deposit**.
+2. Enter an amount of the vault's asset. The panel shows the APY and an estimate of yearly earnings.
+3. Review and sign.
 
-You receive a **vault share** position that represents your ownership of the vault's assets. The share price changes as the vault earns or loses value.
+For share vaults you receive shares priced at the vault's current share price. Your deposit's value is your shares times the share price.
 
-## Depositing into a vault
+## Withdrawing
 
-1. Go to **Earn → Vaults**.
-2. Browse available vaults and their APYs.
-3. Select a vault to view:
-   - Vault name and strategy description
-   - Principal asset
-   - Current APY
-   - TVL
-   - Vault address and network
-4. Enter the amount to deposit.
-5. Review the share price, fees, and estimated position.
-6. Sign the transaction.
+1. Choose **Withdraw** and enter an amount, or use the maximum to withdraw everything.
+2. Review and sign.
 
-If the principal asset is issued and you do not have a trustline for it, add the trustline first.
+Withdrawing everything redeems all your shares, so nothing is left behind as dust.
 
-## Vault details
+## APY
 
-Each vault displays:
-
-| Field | Description |
-| --- | --- |
-| **Vault name** | Name of the vault strategy |
-| **Principal asset** | The asset accepted for deposits |
-| **Vault address** | On-chain address of the vault contract |
-| **Network** | Stellar Mainnet or Testnet |
-| **Share asset** | The asset or contract position representing your share |
-| **APY** | Current annualised yield estimate |
-| **TVL** | Total value locked in the vault |
-
-## Withdrawing from a vault
-
-1. Open the vault you deposited into.
-2. Enter the withdrawal percentage (0–100%).
-3. Review the estimated amount and slippage.
-4. Sign the transaction.
-
-Some vaults have withdrawal limits, cooldowns, or liquidity conditions. Check the vault details before depositing.
-
-:::tip
-You can withdraw any percentage of your vault position. Use the percentage slider for convenience.
-:::
-
-## Slippage
-
-Vault withdrawals can involve swaps or liquidity changes. Seidar lets you set a slippage tolerance so the withdrawal respects your minimum acceptable amount.
+Vault APYs are variable. For DeFindex vaults it reflects what the strategies have been earning; for Upshift and Sentora it's the rate advertised by the curator or incentive programme, which can change at their discretion. Your actual return is the change in value of your position.
 
 ## Risks
 
-- **Strategy risk** — a vault's strategy can lose value.
-- **Smart contract risk** — vault and strategy contracts can contain bugs.
-- **Liquidity risk** — withdrawals can be limited by the vault's available liquidity.
-- **Yield variability** — APY is an estimate and can change or fall to zero.
-- **Protocol risk** — vaults may depend on other protocols, each with its own risks.
-- **Asset risk** — issued assets depend on their issuers.
-
-Vault shares can lose value. Never deposit more than you can afford to lose.
+- **Strategy risk**: the vault inherits the risks of every protocol it deploys into.
+- **Curator risk**: on curated vaults, a manager decides where funds go.
+- **Withdrawal delays**: queued vaults can't always return funds immediately.
+- **Paused vaults**: an admin can pause deposits. Seidar blocks deposits into a paused vault.

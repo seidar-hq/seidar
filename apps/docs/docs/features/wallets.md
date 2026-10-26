@@ -1,106 +1,53 @@
 ---
 id: wallets
-title: Wallet Management
-sidebar_label: Wallet Management
-description: Connect, link, name, and organise Stellar wallets and portfolios in Seidar.
+title: Portfolios & Wallets
+sidebar_label: Portfolios & Wallets
+description: "Connect several Stellar wallets, group them into portfolios and switch the active signer."
 ---
 
-Seidar supports multiple Stellar wallets under one account, so you can see your whole portfolio in one place and keep different activities organised.
-
-## Connecting a wallet
-
-Seidar connects to Stellar wallets through supported wallet adapters:
-
-| Wallet | Type |
-| --- | --- |
-| **Freighter** | Browser extension |
-| **xBull** | Browser extension and mobile |
-| **LOBSTR** | Mobile and web |
-| **Albedo** | Web |
-| **Rabet** | Browser extension |
-| **Hana** | Browser extension |
-
-Additional wallets may work through a supported Stellar wallet adapter.
-
-## Signing in
-
-Connecting a wallet signs you in: Seidar asks your wallet to sign a short **Stellar message**. The signature is off-chain and free. It never triggers a transaction and does not give Seidar permission to move your funds. The first sign-in from a new wallet creates your Seidar account.
-
-## Adding additional wallets
-
-You can link up to **10 wallets** to one Seidar account:
-
-1. Go to **Settings → Wallets**.
-2. Click **Add Wallet**.
-3. Connect the wallet you want to add.
-4. **Sign the link message** with that wallet — this proves you control it.
-5. Optionally give the wallet a name.
-
-Linked wallets are tracked for portfolio viewing. To execute a transaction, the wallet that holds the assets must be connected and available to sign.
-
-:::caution
-If the wallet you link already has its own Seidar account, that account and its history are merged into the account you are signed in to. This cannot be undone. The link message is worded differently from the sign-in message for this reason.
-:::
+<p className="lead">A portfolio is a named group of wallets. Seidar adds up everything in the active portfolio, and the active wallet signs your transactions.</p>
 
 ## Portfolios
 
-Portfolios let you group linked wallets — for example **Trading** and **Long term** — and view each group on its own. Manage them under **Settings → Portfolios**.
+You start with one portfolio. Create more from **Settings → Portfolios & Wallets → Add Portfolio**: for example, one for personal funds and one for a treasury.
 
-- Every account has a **default portfolio** that cannot be deleted. New wallets land in the active portfolio.
-- You can create up to **5 portfolios**. Each wallet belongs to exactly one portfolio.
-- Deleting a portfolio moves its wallets back to the default portfolio; no wallet is unlinked.
-- Each portfolio card shows the portfolio's total worth: wallet balances plus DeFi positions.
+Each portfolio card shows:
 
-The Dashboard, asset table, charts, and position lists always show the **active portfolio's** wallets only.
+- the portfolio's total value
+- how much of the gross value is currently deployed in positions
+- the number of wallets in it and the number of active positions
 
-## Portfolio controls
+From the card's **⋮** menu you can **Rename** or **Delete** a portfolio. Deleting one moves its wallets to a portfolio you choose; no wallet is ever disconnected by deleting a portfolio.
 
-Each portfolio can control which activities it is used for:
+### The active portfolio
 
-| Category | Covers |
+Only one portfolio is active at a time. The Dashboard, History and the header's portfolio pill all follow it. Switch with **Set as Active** on a card, or from the portfolio dropdown in the header or on the Dashboard.
+
+## Wallets
+
+### Connecting more wallets
+
+Click **Add New Wallet** in Settings, or **Connect Wallet** from the wallet menu, and connect another Stellar wallet. New wallets join the active portfolio.
+
+Connecting a wallet that's already linked doesn't move it: Seidar switches to the portfolio it already belongs to.
+
+### The active wallet
+
+One wallet is **active**. It's shown in the header and signs every transaction you start. Switch with **Switch** on a wallet card, or from the wallet menu in the header.
+
+### Wallet actions
+
+Each wallet card's **⋮** menu has:
+
+| Action | What it does |
 | --- | --- |
-| **Lending** | Supplying assets and withdrawing collateral |
-| **Borrowing** | Borrowing and repaying debt |
-| **Liquidity** | DEX liquidity positions |
-| **Perps** | Zenex perpetual futures positions |
+| **Switch** | Make this the active wallet |
+| **Move** | Put the wallet in a different portfolio |
+| **Rename** | Change the display name shown in Seidar |
+| **Remove** | Disconnect it from Seidar (nothing on-chain changes) |
 
-All categories are enabled by default. Swaps are never restricted by portfolio controls.
+Use the **Active portfolio / All wallets** toggle above the wallet cards to see either the current portfolio's wallets or every wallet you've linked.
 
-You can narrow a portfolio further:
+## Where this is stored
 
-- **Protocols** — switching off an individual protocol hides its positions and blocks new actions on it.
-- **Wallets** — a portfolio only includes the wallets assigned to it.
-
-An action is allowed only when its category and protocol are enabled for the portfolio that holds the wallet. Hidden protocols are excluded from every total, so the headline figures always match the positions shown underneath.
-
-## Wallet features
-
-### Breakdown per wallet
-
-Each wallet shows its own:
-
-- Asset balances
-- DeFi positions (lending, liquidity, vaults, perps)
-- Transaction history
-
-### Wallet naming
-
-Give each wallet a memorable name — for example "Main", "Trading", or "Long term" — to identify it easily.
-
-### Removing a wallet
-
-To remove a tracked wallet:
-
-1. Go to **Settings → Wallets**.
-2. Select the wallet.
-3. Choose the remove option.
-4. Confirm the removal.
-
-Removing a wallet from Seidar does not affect the wallet itself or its on-chain assets.
-
-## Stellar specifics
-
-- Stellar accounts use a public key beginning with **G**. Seidar never needs your secret key.
-- Issued assets require a **trustline** before your wallet can hold them.
-- Every account must maintain Stellar's **minimum reserve** in XLM, plus the reserve for any trustlines or other subentries.
-- Seidar supports **Mainnet** and **Testnet**; switch networks from the app's network selector.
+Portfolios, names and the list of linked wallets are saved in your browser. Clearing site data, or opening Seidar in another browser, starts with an empty list; reconnect your wallets to restore it. Nothing about your portfolios is stored on-chain.

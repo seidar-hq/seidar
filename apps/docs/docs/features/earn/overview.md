@@ -1,63 +1,32 @@
 ---
 id: overview
 title: Earn Overview
-sidebar_label: Earn Overview
-description: Explore lending, liquidity, and vault strategies across Stellar through Seidar.
+sidebar_label: Overview
+description: "The three ways to earn yield on Stellar through Seidar: lending, liquidity pools and vaults."
 ---
 
-The **Earn** section aggregates yield-generating strategies across supported Stellar protocols. Supply assets to lending markets, provide liquidity to AMM pools, or deposit into automated vaults — all from one interface.
+<p className="lead">Earn puts Stellar's yield sources side by side: lending markets, DEX liquidity pools and managed vaults.</p>
 
-## Yield strategies
-
-| Strategy | Risk level | Typical yield | Description |
+| | [Lending & Borrowing](/features/earn/lending-borrowing) | [Liquidity Pools](/features/earn/liquidity) | [Vaults](/features/earn/vaults) |
 | --- | --- | --- | --- |
-| **Lending** | Low–Medium | 2–15% | Supply assets to lending protocols and earn interest |
-| **Liquidity** | Medium–High | Variable | Provide liquidity to DEX pools and earn trading fees |
-| **Vaults** | Medium | Variable | Automated strategies that manage and compound a deposit |
+| **You earn from** | Borrowers' interest, plus BLND emissions on Blend | Trading fees, plus incentives on some pools | Whatever the vault's strategy earns |
+| **Protocols** | Blend, XOXNO | Soroswap, Aquarius, Phoenix, Sushi | DeFindex, Upshift, Sentora |
+| **You manage** | Supply, borrow, health factor | Pair, amounts, price range | Just the deposit |
+| **Main risk** | Liquidation if you borrow | Impermanent loss, out-of-range positions | Strategy and curator risk |
+| **Withdrawals** | Any time, if the market has free liquidity | Any time | Instant or queued, depending on the vault |
 
-Rates are market-driven and change over time. The figures above are indicative, not guarantees.
+## Reading APY
 
-## Navigation
+- **Supply APY** and **Borrow APY** on lending markets are the current rates. They move with utilisation.
+- **Pool APY** is estimated from recent trading fees relative to the pool's liquidity. Past volume doesn't guarantee future fees.
+- **Vault APY** is what the vault's strategies have been earning, or the rate its curator advertises.
 
-Access each strategy from the **Earn** page tabs:
+All rates are variable. None of them is guaranteed.
 
-- **Lending & Borrow** — `/earn/lending-borrowing`
-- **Liquidity** — `/earn/liquidity`
-- **Vaults** — `/earn/vaults`
+## Your positions
 
-## Position tracking
+Everything you deposit through Earn appears on the [Dashboard](/features/dashboard) under **Supplied**, **Borrowed** and **Vaults**, and each Earn page shows your own positions above its market list.
 
-Seidar tracks your DeFi positions across protocols:
-
-- **Active positions** with current value
-- **Historical performance** — yield and APR over time
-- **Yield earned** in each position
-- **Transaction history** for each position
-
-Your Dashboard's **Yields** tab brings lending, liquidity, and vault positions together.
-
-## Supported protocols
-
-### Lending & borrowing
-
-- **Blend** — Stellar-native pooled lending markets
-- **XOXNO** — Stellar-native lending markets
-
-### Liquidity
-
-- **Soroswap** — Stellar AMM and DEX aggregation
-- **Aqua** — Stellar liquidity layer
-- **Phoenix** — Stellar AMM
-- **Sushi** — AMM with a Stellar deployment
-
-### Vaults
-
-- **DeFindex** — automated yield strategies on Stellar
-- **Upshift** — curated vault strategies on Stellar
-
-## Before you deposit
-
-- Make sure your wallet holds the asset you want to deposit, plus enough XLM for fees and reserves.
-- Issued assets require a trustline before your wallet can hold them.
-- Review the protocol's risks, the current utilisation or liquidity, and how withdrawals work.
-- Positions are held by your wallet. Seidar never takes custody of your assets.
+:::caution Smart contract risk
+Each protocol is a separate set of smart contracts with its own audits, admins and failure modes. Seidar builds transactions for them but doesn't control or insure them. Spreading deposits across protocols limits the damage if one fails.
+:::

@@ -2,117 +2,66 @@
 id: lending-borrowing
 title: Lending & Borrowing
 sidebar_label: Lending & Borrowing
-description: Supply assets, borrow against collateral, and manage health factor with Blend and XOXNO on Stellar.
+description: "Supply assets to earn interest and borrow against them on Blend and XOXNO, with health factors and BLND reward claims."
 ---
 
-Seidar integrates Stellar lending protocols so you can supply assets to earn interest or borrow against your collateral from one interface.
+<p className="lead">Supply assets to earn interest, borrow against them, and watch your health factor, across every Blend pool and XOXNO hub in one table.</p>
 
-## Supported protocols
+Open it from **Earn → Lending & Borrowing**.
 
-| Protocol | Features |
+## Markets
+
+| Protocol | Markets |
 | --- | --- |
-| **Blend** | Supply, borrow, collateral management, health factor |
-| **XOXNO** | Supply, borrow, collateral management |
+| **Blend** | Isolated pools, each with its own assets and risk settings: Fixed, YieldBlox, Orbit, Etherfuse, Solv and others |
+| **XOXNO** | Hubs of markets sharing one account, including tokenised treasuries, gold and LP tokens |
 
-Both protocols are Stellar-native. Their markets, assets, collateral factors, and risk parameters are set by each protocol.
+The market table shows each asset's total supplied, supply APY, LTV (how much of its value you can borrow against), available liquidity, total borrowed, borrow APY and utilisation. Click a row to open the market page.
 
-## Supplying assets
+Some Blend pools carry a status pill:
 
-Supply your assets to earn interest:
+| Status | Meaning |
+| --- | --- |
+| **On ice** | New borrowing is paused. Supply, withdraw and repay still work. |
+| **Frozen** | No new supply or borrowing. You can still withdraw and repay. |
+| **In setup** | The pool isn't open yet. |
 
-1. Go to **Earn → Lending & Borrow**.
-2. Select a lending protocol.
-3. Browse available markets and their supply APYs.
-4. Click **Supply** on the asset you want to deposit.
-5. Enter the amount.
-6. Review and sign the transaction.
+## Actions
 
-If the asset is issued and your wallet does not yet have a trustline for it, add the trustline first. Stellar lending does not use ERC-20-style approvals.
+Each market page has four tabs:
 
-### Market information
+| Action | What it does |
+| --- | --- |
+| **Supply** | Deposit an asset. It earns supply APY and counts as collateral. |
+| **Withdraw** | Take supplied assets back, as long as your remaining collateral still covers your debt. |
+| **Borrow** | Borrow an asset against your collateral. You pay borrow APY. |
+| **Repay** | Pay back debt to lower your borrowing and raise your health factor. |
 
-For each lending market, Seidar shows:
+Before you sign, the panel shows the APYs, collateral factor, your health factor after the action, your remaining borrow capacity and your wallet balance.
 
-- **Supply APY** — the current annual rate earned by suppliers
-- **Total supply** — assets supplied to the market
-- **Utilisation** — the share of supplied assets that is borrowed
-- **Collateral factor** — the borrowing power granted per unit supplied
-- **Your balance** — your current supply position
+### XOXNO accounts
 
-## Borrowing assets
+XOXNO keeps positions in a numbered account. Your first **Supply** to a hub opens one; borrowing, withdrawing and repaying need it to exist. The market panel shows your account number.
 
-Borrow against supplied collateral:
+## Health factor
 
-1. Supply an asset and enable it as **collateral**.
-2. Open the **Borrow** view.
-3. Browse borrowable assets and their rates.
-4. Click **Borrow**.
-5. Enter the amount, up to your maximum borrowable.
-6. Review and sign the transaction.
+The health factor compares your borrowing limit with your debt:
 
-### Collateral management
+- **Above 1**: safe. Higher means more room before liquidation.
+- **At or below 1**: liquidators can repay part of your debt and take collateral at a discount.
 
-To enable or disable an asset as collateral:
-
-1. Open your supplied positions.
-2. Toggle the **collateral** switch for the asset.
-3. Confirm the transaction.
+On Blend the health factor is per pool; on XOXNO it's per account. It falls when your collateral's price drops, your debt's price rises, or interest accrues. To raise it, repay debt or supply more collateral.
 
 :::caution
-- You cannot enable collateral on an asset with a collateral factor of 0.
-- You cannot disable collateral on an asset you have borrowed against if doing so would make the position unhealthy.
+Keep a buffer. A health factor of 1.05 can drop below 1 on an ordinary price move. Many users aim for 1.5 or higher.
 :::
 
-### Maximum borrow amount
+## BLND rewards
 
-Your maximum borrowable amount depends on:
+Blend pays BLND emissions to suppliers and borrowers in many pools. Each pool where you have unclaimed BLND shows the amount with a claim button above your positions; claiming sends that pool's rewards to your wallet.
 
-- The value of your supplied collateral
-- Each asset's collateral factor
-- Your current borrow positions
-- The protocol's health factor requirement
-- Market liquidity
+A pool can only pay out what its backstop holds. If a pool's backstop is empty, its claim fails until it's refilled; other pools are unaffected.
 
-## Repaying loans
+## Withdrawals and liquidity
 
-1. Open your borrowed positions.
-2. Click **Repay**.
-3. Enter the amount, or use **25%**, **50%**, **75%**, or **Max**.
-4. Review and sign the transaction.
-
-## Withdrawing supplied assets
-
-1. Open your supplied positions.
-2. Click **Withdraw**.
-3. Enter the amount.
-4. Review and sign the transaction.
-
-You can only withdraw up to the amount that keeps your position healthy. If you have active borrows, you may need to repay some debt first.
-
-## Position tracking
-
-Seidar tracks detailed metrics for lending positions:
-
-| Metric | Description |
-| --- | --- |
-| **Total supplied** | Total amount supplied over the life of the position |
-| **Total withdrawn** | Total amount withdrawn |
-| **Net supplied** | Current active supply |
-| **Supply APY** | Current rate being earned |
-| **Value (USD)** | Current USD value of the supply |
-| **First supply date** | When the position was opened |
-
-For borrowed positions, Seidar also shows:
-
-- **Health factor** — above 1 is healthy; at or below 1 the position can be liquidated
-- **Borrow APY** — the current rate accruing on the debt
-- **Wallet balance** of the borrowed asset, so you can see how much you can repay directly
-
-## Risks
-
-- **Liquidation** — if your health factor falls to 1 or below, collateral can be liquidated.
-- **Variable rates** — supply and borrow APYs change with market utilisation.
-- **Liquidity risk** — high utilisation can limit withdrawals.
-- **Oracle risk** — collateral values depend on price feeds.
-- **Smart contract risk** — lending markets are third-party contracts and can contain bugs.
-- **Asset risk** — issued assets depend on their issuer.
+You can only withdraw or borrow what the market has free (supplied minus borrowed). When utilisation is very high, withdrawals may need to wait for borrowers to repay. High utilisation also pushes rates up, which usually brings liquidity back.

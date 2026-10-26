@@ -1,124 +1,85 @@
 ---
 id: perps
-title: Perps
+title: Perpetuals
 sidebar_label: Perps
-description: Trade perpetual futures on Stellar through Zenex, with long and short positions, leverage, and real-time market data.
+description: "Trade XLM perpetual futures with up to 20x leverage on Zenex, with market, limit and stop orders, take-profit and stop-loss."
 ---
 
-Seidar integrates **Zenex**, a fully on-chain perpetual futures exchange built on Stellar's Soroban smart contract platform. You can trade leveraged long or short positions from the same workspace you use for spot swaps and portfolio tracking.
+<p className="lead">Perps lets you go long or short XLM with leverage, settled in USDC, through Zenex: a fully on-chain perpetuals exchange on Stellar.</p>
 
-## What you can do
+Open it from **Trade → Perps**.
 
-- **View live markets** — mid prices and market parameters for listed Zenex markets
-- **Read market depth** — order book and recent trades
-- **Chart price history** — candles across multiple intervals
-- **Open positions** — go long or short with collateral and leverage
-- **Manage orders** — market, limit, and stop orders, plus take-profit and stop-loss exits
-- **Track positions** — size, collateral, leverage, entry price, unrealised PnL, and liquidation price
-- **Monitor risk** — margin usage, funding, borrowing interest, and liquidation levels
+## How Zenex works
 
-## Before you trade
+Zenex has **no order book**. Every trade is against the market's liquidity vault at the **oracle price**, plus fees and a price-impact charge that grows with size. Orders are created on-chain by your transaction and then **filled by Zenex keepers**, usually within seconds.
 
-Perpetual futures are derivatives. You need:
+That has two consequences:
 
-1. A connected Stellar wallet.
-2. The market's **settlement asset** — commonly USDC on Stellar.
-3. Enough XLM for Stellar network fees, or the fee token required by a relayed action.
-4. Enough collateral to cover the position and its fees.
+- A market order isn't filled inside your own transaction. It's placed, then a keeper fills it at the oracle price at that moment, within your slippage limit.
+- The **Order Book** panel next to the chart isn't other traders' orders. It's a fill schedule: the price you'd get at each size on either side, after impact.
 
-Each Zenex market has its own fees, leverage limit, liquidity capacity, and risk parameters.
+## The XLM/USD market
 
-## Opening a position
+| Parameter | Current value |
+| --- | --- |
+| Settlement and margin | USDC |
+| Max leverage | 20x |
+| Initial margin | 5% of position size |
+| Maintenance margin | 2% of position size |
+| Min order | $1 notional, $1 margin |
+| Max position | $500 notional |
+| Trading fee | 0.06% on the side with more open interest, 0.04% on the other |
+| Execution (keeper) fee | $0.01 per order |
+| Liquidation fee | 0.5% |
 
-1. **Choose a market and side** — select the asset, then choose **Long** or **Short**.
-2. **Enter collateral and leverage** — review the resulting size, fees, and estimated liquidation price.
-3. **Choose an order type** — market, limit, or stop. Limit and stop orders require a trigger price. Market orders use a slippage limit.
-4. **Add exits if needed** — take-profit and stop-loss orders are separate orders, each with its own execution fee.
-5. **Review and sign** — check the market, side, size, collateral, price bound, expiry, and fees before signing.
-6. **Follow the result** — a market order may fill in the same transaction; a limit or stop order may rest until its trigger is met.
+These are set by Zenex and can change; the order panel always uses the live values.
+
+## Placing an order
+
+1. Pick **Long** (profit if XLM rises) or **Short** (profit if it falls).
+2. Pick an order type:
+   - **Market**: fill now at the oracle price, within **Max slippage**.
+   - **Limit**: fill only at your price or better.
+   - **Stop**: trigger once the price crosses your level.
+3. Enter **Margin** (USDC) and **Leverage**, or enter **Size** directly in XLM or USD; switch the unit with the toggle. Margin, size and leverage stay in sync.
+4. For limit and stop orders, set the trigger **Price** and **Expires in** (1 hour, 1 day, 7 days or 30 days).
+5. Optionally turn on **Take profit / Stop loss** and set either price. They're created with the order in the same transaction.
+6. Review the estimated liquidation price, trading fee and the total **You pay**, then click **Place order** and sign.
+
+## Managing positions
+
+The panel under the chart has five tabs: **Positions**, **Open Orders**, **Order History**, **Trades** and **Closed**.
+
+Each open position shows size, entry and liquidation price, margin, leverage and net PnL (after funding and borrowing). Its actions:
+
+| Action | What it does |
+| --- | --- |
+| **Close** | Close all or part of the position at market |
+| **Add margin** | Post more USDC to lower leverage and move liquidation away |
+| **Withdraw** | Take margin out (within the initial-margin limit) |
+| **TP / SL** | Add or change take-profit and stop-loss orders |
+
+Open limit, stop, TP and SL orders can be cancelled from **Open Orders**. Cancelling returns the order's escrow.
+
+### Account summary
+
+The account card shows wallet USDC, position equity, margin in use, unrealised net PnL, open orders and **Claimable credit**: funding earned and payouts the market couldn't send directly. Click **Claim** to move it to your wallet.
+
+## Ongoing costs
+
+- **Funding** moves between longs and shorts to keep the market balanced. The more crowded side pays.
+- **Borrowing** is charged to positions that use the vault's liquidity.
+
+Both accrue every second and settle against your margin when the position changes or closes.
+
+## Liquidation
+
+If your equity falls below the maintenance margin (2% of size), a keeper liquidates the whole position and charges the 0.5% liquidation fee. You can lose all the margin in that position. Watch the liquidation price, and add margin or reduce size if the market moves against you.
 
 :::caution
-A stop-loss is not guaranteed to execute at the trigger price. A keeper must fill the order, and the fill can happen later or at a worse price, especially in a fast market. Until it fills, your position remains open and can still be liquidated.
+Stop-losses and take-profits are executed by keepers once the oracle price crosses the trigger. In a fast market they can fill later, and at a worse price, than the level you set.
 :::
 
-## Positions
+## Chart
 
-A position gives you leveraged exposure to a market's price.
-
-- You can hold one long and one short in the same market.
-- An order on a side you already hold changes that position.
-- You can increase a position, partially close it, or adjust margin.
-- Some markets apply a **decrease lock** that prevents reducing a position during a short window.
-- Closing a position realises profit or loss and settles accrued funding and borrowing costs.
-
-## Orders
-
-| Order type | Use |
-| --- | --- |
-| **Market** | Execute at the best available price within your slippage limit |
-| **Limit** | Execute at your trigger price or better |
-| **Stop** | Trigger an exit when a price level is reached |
-| **Take-profit** | Close or reduce a position at a target profit level |
-| **Stop-loss** | Close or reduce a position at a loss limit |
-
-Orders can expire. An expired order still holds its escrow until it is cancelled. Cancelling returns the escrow but does not refund transaction fees already spent.
-
-## Margin and leverage
-
-Margin is the collateral backing your position. Leverage multiplies your exposure relative to that collateral.
-
-- Higher leverage increases both potential profit and liquidation risk.
-- The maximum leverage depends on the market.
-- Your liquidation price depends on your entry price, collateral, size, fees, and accrued costs.
-- A position's margin bounds its trading loss, but separate orders, relay fees, and active session permissions can still commit other available funds.
-
-## Fees and ongoing costs
-
-| Charge | When it applies |
-| --- | --- |
-| **Trade fee** | When a fill moves size, including a close |
-| **Impact fee** | When a fill moves size; larger fills pay more |
-| **Execution fee** | When an order is created and executed; each order escrows its own fee |
-| **Borrowing interest** | While your side pays for reserved liquidity |
-| **Funding** | While your side is the paying side of the funding rate |
-| **Liquidation fee** | When a keeper liquidates your position |
-| **Network fee** | When you submit a Stellar transaction, or a token fee for a relayed action |
-
-Rates vary by market. Check the market's current parameters before trading.
-
-## Funding and borrowing interest
-
-- **Funding** is a periodic payment between longs and shorts that helps keep the perpetual price close to the underlying price.
-- **Borrowing interest** accrues while your side uses reserved liquidity.
-- Both are settled against the position and can reduce your equity over time.
-
-## Liquidation and auto-deleveraging
-
-If your position's equity falls below the maintenance requirement, a keeper can close the whole position and charge a liquidation fee. You may lose all of the margin behind that position.
-
-In extreme conditions, auto-deleveraging (ADL) can reduce eligible positions without another approval when one side's profit grows too large relative to the vault.
-
-## Market data
-
-Seidar shows live market data from Zenex:
-
-- Mid prices
-- Order book depth
-- Recent trades
-- OHLC candles across multiple intervals
-
-Data updates in real time while the market view is open.
-
-## Risks
-
-Perpetual futures involve significant risk:
-
-- **Leverage** can consume all of the margin behind a position.
-- **Liquidation** can close a position at a loss.
-- **Funding and borrowing costs** accrue over time.
-- **Delayed exits** can leave a stop or limit order unfilled.
-- **Oracle or network failure** can delay execution or produce a price that differs from the display.
-- **Protocol risk** — Zenex is a third-party protocol. Its markets, contracts, and governance can change. The Zenex documentation states that the current deployed contracts have not had an independent audit; the published report covers an earlier version.
-- **Vault risk** — Zenex market vaults take the other side of trades, and vault shares can lose value.
-
-Review the [Zenex documentation](https://docs.zenex.trade) and the market's current parameters before trading. Nothing in Seidar is financial advice.
+The price chart is TradingView's XLM/USD chart. Zenex fills at its own oracle price, which tracks major markets closely but can differ slightly from the chart at any moment. The **Recent** tab lists the latest fills on Zenex.

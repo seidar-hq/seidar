@@ -2,87 +2,45 @@
 id: send-receive
 title: Send & Receive
 sidebar_label: Send & Receive
-description: Send XLM and Stellar assets, and receive funds with your address, QR code, and memos.
+description: "Send XLM and Stellar assets to any address, with an optional memo, and share your address or QR code to receive."
 ---
 
-Seidar lets you send and receive Stellar assets directly from your connected wallet.
+<p className="lead">Send and Receive sit next to Swap in the trading widget on the Dashboard and on Trade → Swap.</p>
 
-## Sending assets
+## Sending
 
-1. Click **Send**.
-2. Select the asset you want to send.
-3. Enter the recipient's Stellar address.
-4. Enter the amount.
-5. Optionally add a memo.
-6. Review the recipient, amount, memo, and network fee.
-7. Sign the transaction in your wallet.
+1. Open the **Send** tab.
+2. Pick a token. Only tokens with a balance are listed.
+3. Enter the amount.
+4. Paste the recipient's Stellar address (`G…`).
+5. Add a **Memo** if the recipient needs one (see below).
+6. Click **SEND** and approve in your wallet.
 
-The transaction is submitted to Stellar and appears in [Transaction History](/features/transactions). Incoming transfers are detected from the network shortly after they confirm.
+Seidar checks the recipient before you sign:
 
-### Stellar addresses
+| Situation | Result |
+| --- | --- |
+| Recipient account exists and holds the asset | A normal payment |
+| Recipient doesn't exist yet, sending XLM | The account is created with your XLM. At least **1 XLM** is required. |
+| Recipient doesn't exist yet, sending another asset | Blocked: a new account can only be funded with XLM |
+| Recipient has no trustline for the asset | Blocked: they need to add the trustline before they can receive it |
 
-Stellar has two address formats:
+## Memos
 
-| Format | Starts with | Notes |
-| --- | --- | --- |
-| **Account address** | `G` | The standard public key for a Stellar account |
-| **Muxed address** | `M` | Encodes an account plus a 64-bit memo ID, often used by custodians and exchanges |
-
-If a recipient gives you an `M` address, send to it as-is. Do not add a separate memo unless they ask for one — the memo ID is already encoded in the address.
+A memo is a short note attached to the transaction. Exchanges and custodial services often share one deposit address between all customers and use the memo to know whose deposit it is.
 
 :::caution
-Stellar transactions are irreversible. Check the address and network before signing. Sending to the wrong address or network can result in permanent loss.
+If an exchange gives you a memo with its deposit address, you **must** include it. A deposit without the right memo may be lost or take weeks to recover through support.
 :::
 
-### Memos
+Seidar sends memos as text, up to 28 characters.
 
-Some recipients — particularly exchanges and custodial services — require a **memo** so they can credit your deposit to the right account.
+## Receiving
 
-| Memo type | Use |
-| --- | --- |
-| **Text** | Short text, up to 28 bytes |
-| **ID** | A 64-bit unsigned integer |
-| **Hash** | A 32-byte hash |
-| **Return** | A 32-byte hash used to return a payment |
+Open the **Receive** tab to see your active wallet's address and its QR code. Copy the address or let the sender scan the code.
 
-Always include the exact memo a recipient requires. An incorrect or missing memo can cause a deposit to be lost or miscredited.
+To receive a classic asset such as USDC, your account needs a trustline for it first; add it in your wallet. XLM needs no trustline.
 
-### Trustlines and reserves
+## Fees
 
-- You can only send an asset your wallet holds.
-- The recipient must have a **trustline** for issued assets, or the payment will fail.
-- The sender must keep enough XLM to satisfy Stellar's **minimum reserve** after the payment.
-- You can send your entire balance of an asset, but not your entire XLM balance: the reserve and the network fee must remain.
-
-## Receiving assets
-
-1. Click **Receive**.
-2. Select the asset.
-3. Share your address or QR code.
-
-Your QR code encodes your Stellar address. The receive view also shows:
-
-- Your full address, with a copy button
-- The selected asset and network
-- A memo field where relevant
-- A warning if the asset requires a trustline
-
-### Before someone sends to you
-
-- Confirm they are sending on the **same network** — Mainnet or Testnet.
-- For issued assets, make sure your wallet has a **trustline** for the asset.
-- If the sender is a custodial service, provide the **memo** it requires.
-- Give the exact address shown in Seidar; do not edit it by hand.
-
-## Network fees
-
-Every Stellar payment pays a small fee in **XLM**. Fees are separate from the amount sent and are shown before you sign. Surge pricing on the network can raise the fee.
-
-## Common issues
-
-| Issue | Cause |
-| --- | --- |
-| Payment fails | Recipient lacks a trustline, or sender lacks XLM for the fee or reserve |
-| Asset not visible | No trustline in your wallet, or the asset is on another network |
-| Deposit not credited by a custodian | Missing or incorrect memo |
-| Wrong balance | The network may still be confirming, or the asset's issuer differs |
+Each payment costs the Stellar base fee, a fraction of a cent paid in XLM. Seidar adds nothing.

@@ -2,80 +2,47 @@
 id: transactions
 title: Transaction History
 sidebar_label: Transaction History
-description: Review swaps, transfers, lending activity, liquidity actions, vault deposits, and perps trades in one history.
+description: "Every transaction across the wallets in your portfolio, decoded by protocol, filterable by type and exportable to CSV."
 ---
 
-Seidar keeps a record of the activity it submits for your connected wallets, so you can review what happened and follow it on-chain.
+<p className="lead">History lists every transaction from every wallet in the active portfolio, decoded into plain actions: a swap on Soroswap, a supply to Blend, a vault deposit, a perps order.</p>
 
-## What is tracked
+Open it from **History** in the header.
 
-| Activity | Examples |
+## Tabs
+
+| Tab | Shows |
 | --- | --- |
-| **Swaps** | Spot swaps across Soroswap, Aqua, Phoenix, and Sushi |
-| **Transfers** | Sends and receives of XLM and Stellar assets |
-| **Lending** | Supply, withdraw, borrow, repay, and collateral changes |
-| **Liquidity** | Add liquidity, remove liquidity, and collect fees |
-| **Vaults** | Deposits and withdrawals |
-| **Perps** | Position opens, increases, decreases, closes, and order activity |
-| **Wallet operations** | Wallet linking and other account actions |
+| **Transaction** | All activity: payments, swaps, DeFi actions, trustline changes and more |
+| **Positions** | Only actions on DeFi positions: lending, liquidity, vaults and perps |
 
-## Viewing history
+## Columns
 
-Open **History** from the sidebar. Transactions are listed newest first, with:
+| Column | Meaning |
+| --- | --- |
+| **Type** | Date and the decoded action, such as *Swap*, *Supply*, *Add liquidity* or *Send* |
+| **Assets** | Tokens and amounts in and out |
+| **Protocol** | The protocol the action ran on |
+| **Counterparty** | The other address in a payment |
+| **Wallet** | Which of your wallets made it (when the portfolio has several) |
+| **Fee** | Network fee paid, in XLM |
+| **Transaction** | Link to the transaction on stellar.expert |
 
-- Transaction type and status
-- Assets and amounts
-- Protocol or venue
-- Timestamp
-- Transaction hash
+## Filtering
 
-## Filters
+On the **Transaction** tab, use the filter to show one category:
 
-Narrow the list by:
+- **Earn**: Lend & Borrow, Liquidity, Vaults
+- **Trade**: Swap, Perps
+- **Bridge**
+- **Others**: Send, Receive, Other
 
-- **Wallet**
-- **Portfolio**
-- **Transaction type**
-- **Asset**
-- **Protocol**
-- **Date range**
-- **Status** — pending, completed, or failed
+**Show dust** reveals tiny incoming payments, which are usually spam airdrops. They're hidden by default.
 
-## Transaction details
+## Loading more
 
-Click a transaction to see:
-
-- **Status** — pending, completed, or failed
-- **Timestamp**
-- **Transaction hash**
-- **Ledger**
-- **Network fee** in XLM
-- **Operation details** — assets, amounts, route, or position changes
-- **Memo**, where one was used
-
-For a completed transaction, use the hash to look it up in a Stellar block explorer such as [Stellar Expert](https://stellar.expert).
-
-## Pending and failed transactions
-
-- **Pending** — submitted to Stellar but not yet confirmed. Most transactions confirm within seconds.
-- **Failed** — the transaction was rejected by the network or a contract. A failed transaction can still consume the network fee.
-- **Dropped** — the transaction was not included before it expired.
-
-If a transaction is stuck, wait for it to expire, then retry. Check that your wallet has enough XLM for fees and reserves before retrying.
-
-## Position history
-
-Seidar also keeps position-level history for DeFi activity:
-
-- **Lending** — supply and borrow events, interest accrued, and repayments
-- **Liquidity** — deposits, withdrawals, fees collected, and position value over time
-- **Vaults** — deposits, withdrawals, and share price changes
-- **Perps** — fills, funding, borrowing interest, and realised PnL
+History loads recent activity first. Click **Load older activity** to page further back.
 
 ## Exporting
 
-Where available, use the download option to export your transaction history as a CSV file for accounting or record-keeping.
-
-:::note
-Seidar's history covers transactions submitted through Seidar and activity it can observe on-chain. Activity performed directly in another app may not appear with the same detail.
-:::
+**Download CSV** saves the rows currently shown, with your filter applied, as a spreadsheet-friendly file, for example for accounting or tax records.

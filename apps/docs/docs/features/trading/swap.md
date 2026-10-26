@@ -2,114 +2,58 @@
 id: swap
 title: Swap
 sidebar_label: Swap
-description: Swap Stellar assets through aggregated routes across Soroswap, Aqua, Phoenix, and Sushi.
+description: "Swap Stellar assets at the best price across Soroswap, Aquarius, Phoenix, Sushi and the Stellar DEX."
 ---
 
-Seidar aggregates liquidity from supported Stellar DEXs and gives you one swap interface with a single quote, route, and confirmation flow.
+<p className="lead">Swap finds the best price for a trade across Stellar's DEXs and can split one swap over several of them.</p>
 
-## How it works
+Open it from **Trade → Swap**, or use the widget on the Dashboard. The same widget has [Send & Receive](/features/send-receive) tabs.
 
-1. **Select assets** — choose the asset you want to swap from and the asset you want to receive.
-2. **Enter an amount** — specify how much you want to swap.
-3. **Get a quote** — Seidar compares available routes across supported venues.
-4. **Review the details** — check the rate, price impact, minimum received, route, and network fee.
-5. **Sign the transaction** — review and approve it in your Stellar wallet.
+## How routing works
 
-Seidar submits the signed transaction to Stellar and tracks it until it confirms.
+Quotes come from the Soroswap aggregator, which searches these venues:
 
-## Supported venues
-
-| Protocol | Type | Used for |
-| --- | --- | --- |
-| **Soroswap** | AMM and DEX aggregation | Swaps and liquidity |
-| **Aqua** | AMM liquidity layer | Swaps and liquidity |
-| **Phoenix** | AMM | Swaps and liquidity |
-| **Sushi** | AMM | Swaps and liquidity |
-
-Routing is not limited to a single venue. Seidar can compare direct pools and multi-hop routes through liquid intermediate assets such as XLM or USDC, then use the route with the best expected output.
-
-## Stellar asset model
-
-Stellar assets are not all native tokens:
-
-- **XLM** is the native Stellar asset.
-- **Issued assets** are identified by an asset code and issuer account (for example `USDC:GA5Z...`).
-- **Soroban assets** may also be identified by their contract address.
-
-Before your wallet can hold an issued asset, it needs a **trustline** for that asset. If you do not have one, add it in your wallet first.
-
-Swaps on Stellar do not use ERC-20-style token approvals. You sign one transaction that executes the swap.
-
-## Routing and price impact
-
-Seidar evaluates:
-
-- Direct pools between the two assets
-- Multi-hop routes through liquid intermediate assets
-- Available liquidity on each supported venue
-
-Price impact is measured across the whole route, not just the first pool. A multi-hop route can produce a better result than a direct pool with thin liquidity.
-
-:::note
-A quote is an estimate. The final amount depends on pool state when your transaction executes. **Minimum received** protects you against excessive slippage.
-:::
-
-## Slippage tolerance
-
-Slippage is the difference between the quoted price and the executed price. Configure it before you swap:
-
-| Preset | Tolerance |
+| Venue | Type |
 | --- | --- |
-| **Low** | 0.1% |
-| **Default** | 0.5% |
-| **Medium** | 1.0% |
-| **High** | 3.0% |
-| **Custom** | 0.1% – 50% |
+| **Soroswap** | Soroban AMM |
+| **Aquarius** | Soroban AMM (constant-product and stable pools) |
+| **Phoenix** | Soroban AMM |
+| **Sushi** | Soroban AMM (concentrated liquidity) |
+| **Stellar DEX** | Stellar's built-in order book and liquidity pools |
 
-:::caution
-Setting slippage too low can cause the transaction to fail. Setting it too high can result in a worse execution price.
-:::
+On **Auto** (the default), the aggregator picks the route with the best output and may split your amount across several venues and hops. To restrict a swap, open the DEX selector and pick one or more venues; the quote then only uses those.
 
-## Swap details
+## Making a swap
 
-Before you sign, Seidar shows:
+1. Choose the token to sell under **From** and enter an amount. **MAX** fills your full balance; for XLM it keeps 2 XLM back for the account reserve and fees.
+2. Choose the token to buy under **To**. Your balance of each token shows under its amount.
+3. Set **Max Slippage** (0.1%, 0.5% or 1%, or type your own). Default: 0.5%.
+4. Check the quote details, then click **EXCHANGE** and approve in your wallet.
 
-- **Exchange rate** — output asset per input asset
-- **Price impact** — how the swap affects the pool price
-- **Minimum received** — the minimum output after slippage
-- **Network fee** — the Stellar fee, paid in XLM
-- **Route** — the venue or venues used
-- **Protocol fees** — liquidity provider fees embedded in the quote
+Quotes refresh every 20 seconds while the form is open.
 
-## Network fees and reserves
+## Quote details
 
-Every Stellar transaction pays a small network fee in XLM. Your account must also maintain Stellar's minimum reserve, including the reserve for any trustlines. Keep enough XLM in the wallet to cover both.
+| Field | Meaning |
+| --- | --- |
+| **Rate** | The quoted exchange rate for your amount |
+| **Minimum received** | The least you get after slippage; below this the swap reverts and nothing is traded |
+| **Price impact** | How far your trade moves the pool price |
+| **Route** | The venues the swap is split across |
+| **Max slippage** | Your tolerance setting |
+| **Network fee** | The Stellar fee, paid in XLM by your wallet (usually well under 0.01 XLM) |
 
-## Token search
+Seidar warns you when price impact is **3%** or more and shows the warning in red from **10%**. High impact usually means the pools are shallow for your size; try a smaller amount or a different pair.
 
-Find an asset by:
+## Fees
 
-- Asset code (for example `USDC`)
-- Asset name
-- Issuer account
-- Soroban contract address
+Seidar adds no fee to swaps. You pay each venue's own pool fee (included in the quote) and the Stellar network fee.
 
-Always verify the issuer when swapping an issued asset. Multiple assets can share the same code.
+## Troubleshooting
 
-## Transaction history
-
-Completed swaps appear in [Transaction History](/features/transactions) with:
-
-- Input and output assets
-- Amounts
-- Route and venue
-- Transaction hash
-- Timestamp
-
-## Risks
-
-- **Slippage** — the executed price can differ from the quote.
-- **Thin liquidity** — low-depth pools can move significantly.
-- **Issuer risk** — an issued asset depends on its issuer.
-- **Smart contract risk** — AMM and aggregator contracts can contain bugs.
-- **Trustline requirements** — you cannot receive an issued asset without a trustline.
+| Message | What to do |
+| --- | --- |
+| **NO ROUTE** | No venue has liquidity for this pair, or none of the venues you selected does. Switch back to **Auto** or route through XLM or USDC. |
+| **INSUFFICIENT &lt;token&gt;** | The amount exceeds your balance. Remember the XLM reserve. |
+| **Missing trustline** | Your account can't hold the token you're buying yet. Add the trustline in your wallet first. |
+| **Swap reverted** | The price moved beyond your slippage before the transaction landed. Try again or raise slippage slightly. |

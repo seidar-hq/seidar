@@ -10,7 +10,6 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'features/dashboard',
-        'features/ai-insights',
         'features/wallets',
         {
           type: 'category',
@@ -29,10 +28,14 @@ const sidebars: SidebarsConfig = {
             'features/earn/vaults',
           ],
         },
+        'features/bridge',
         'features/send-receive',
         'features/transactions',
       ],
     },
+    'protocols',
+    'security',
+    'faq',
   ],
 };
 
