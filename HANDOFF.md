@@ -118,7 +118,11 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
     active wallet; everything persisted in localStorage. Re-linking a wallet never moves it between
     portfolios. Watch-only wallets exist for testing only (`?watch=G…` or `window.seidar.watch`),
     disabled in production builds unless `NEXT_PUBLIC_ENABLE_WATCH=1`.
-  - `lib/wallets.ts` — Stellar Wallets Kit modules: Freighter, Albedo, xBull, LOBSTR, Rabet, HANA.
+  - `lib/wallets.ts` — Stellar Wallets Kit modules: Freighter, Albedo, xBull, LOBSTR, Rabet, HANA, plus the kit's
+    **WalletConnect** module (phone wallets: Freighter / LOBSTR / Scopuly mobile; auto-connect inside Freighter
+    mobile's in-app browser). WalletConnect loads lazily and only when `NEXT_PUBLIC_WC_PROJECT_ID` is set; the kit
+    is warmed 1.5 s after load and waits for WalletConnect's client, otherwise the modal lists it as "Install".
+    On phones, extension wallets are listed only inside their own in-app browser (no dead-end install links).
   - `lib/useShared.ts` — shared fetch/cache hooks with localStorage mirrors (`PERSIST`) for instant revisits.
   - `lib/tx.ts`, `components/tx/useTxRunner.ts`, `TxDialog.tsx` — build → sign → submit flow.
   - `lib/tokens.ts`, `components/common/TokenLogo.tsx` — token icon resolution.
@@ -190,6 +194,9 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   `.dev.vars`): `SOROSWAP_API_KEY`, `DEFINDEX_API_KEY`, `RPC_URL`.
 - Worker vars: `CORS_ORIGINS=https://app.seidar.xyz,https://seidar-app.pages.dev`, rate limits.
 - App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`, docs/site/X links.
+- WalletConnect (Reown) project id: `NEXT_PUBLIC_WC_PROJECT_ID` in `apps/app/.env.production.local` (git-ignored,
+  on the owner's machine only; recreate it from dashboard.reown.com if lost). It ships in the bundle by design;
+  the Reown project's domain allowlist is what restricts it.
 - `app.seidar.xyz` was moved (with the owner's explicit permission, 2026-10-26) from the
   `droppo-labs` Pages project to `seidar-app`; its DNS CNAME now points to `seidar-app.pages.dev`.
   `droppo-labs` still serves `droppolabs.space` / `www.droppolabs.space` — **leave it alone.**

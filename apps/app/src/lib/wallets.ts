@@ -52,18 +52,20 @@ async function walletConnectModule() {
   if (!WC_PROJECT_ID) return [];
   try {
     const { WalletConnectModule, WalletConnectTargetChain } = await import("@creit.tech/stellar-wallets-kit/modules/wallet-connect");
-    return [
-      new WalletConnectModule({
-        projectId: WC_PROJECT_ID,
-        metadata: {
-          name: "Seidar",
-          description: "Stellar DeFi, all in one place",
-          url: APP_URL,
-          icons: [`${APP_URL}/assets/seidar-icon-256.png`],
-        },
-        allowedChains: [WalletConnectTargetChain.PUBLIC],
-      }),
-    ];
+    const wc = new WalletConnectModule({
+      projectId: WC_PROJECT_ID,
+      metadata: {
+        name: "Seidar",
+        description: "Stellar DeFi, all in one place",
+        url: typeof window !== "undefined" ? window.location.origin : APP_URL,
+        icons: [`${APP_URL}/assets/seidar-icon-256.png`],
+      },
+      allowedChains: [WalletConnectTargetChain.PUBLIC],
+    });
+    // Its sign client starts asynchronously. The kit checks availability when the modal opens, so a
+    // module that isn't ready yet would be listed as "Install"; wait for it (bounded) first.
+    for (let i = 0; i < 40 && !(await wc.isAvailable()); i++) await new Promise((r) => setTimeout(r, 200));
+    return [wc];
   } catch {
     return [];
   }
@@ -97,6 +99,11 @@ function kit(): Promise<typeof StellarWalletsKit> {
     return StellarWalletsKit;
   })();
   return starting;
+}
+
+/** Start the kit in the background (after page load) so the connect modal opens instantly. */
+export function warmWallets(): void {
+  void kit().catch(() => {});
 }
 
 /** Connect through the kit's auth modal. Null when the user closes it or rejects. */

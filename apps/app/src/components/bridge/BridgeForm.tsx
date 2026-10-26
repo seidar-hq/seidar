@@ -180,11 +180,11 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
     };
   }, [dest, toAccount]);
 
-  // Debounced quote.
+  // Debounced quote (only once a wallet is connected: the form is locked before that).
   useEffect(() => {
     setState({ quote: null });
     setQuoteError(null);
-    if (!chain || !token || !(Number(amount) > 0)) return;
+    if (!isConnected || !chain || !token || !(Number(amount) > 0)) return;
     const id = ++seq.current;
     const timer = setTimeout(async () => {
       setQuoting(true);
@@ -202,7 +202,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
     }, 500);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chain?.chain, token?.tokenAddress, dest, amount]);
+  }, [isConnected, chain?.chain, token?.tokenAddress, dest, amount]);
 
   const fillFromBrowserWallet = async () => {
     const eth = ethereum();
@@ -253,140 +253,147 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
       <Typography variant="subtitle2" sx={{ ...t.subheading, mb: "1rem" }}>
         Bridge to Stellar
       </Typography>
-      <Box sx={{ mb: "1rem" }}>
-        <Typography variant="subtitle1" sx={{ mb: "1rem", ...t.bodyLarge }}>
-          Select Network
-        </Typography>
-        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: "1rem" }}>
-          <Box sx={{ flex: 1 }}>
-            <ChainSelect
-              key={chain?.chain ?? "none"}
-              value={chain}
-              onChange={(c) => setState({ chain: c, token: c?.tokens.find((x) => x.symbol === "USDC") ?? c?.tokens[0], amount: "", fromAccount: "" })}
-              options={sources}
-              disabled={routesLoading && !sources.length}
-            />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <StellarTarget />
+      {/* Locked until a wallet is connected: visible, but nothing inside can be clicked, typed or focused. */}
+      <Box
+        inert={!isConnected}
+        aria-disabled={!isConnected}
+        sx={isConnected ? undefined : { pointerEvents: "none", userSelect: "none", opacity: 0.5 }}
+      >
+        <Box sx={{ mb: "1rem" }}>
+          <Typography variant="subtitle1" sx={{ mb: "1rem", ...t.bodyLarge }}>
+            Select Network
+          </Typography>
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: "1rem" }}>
+            <Box sx={{ flex: 1 }}>
+              <ChainSelect
+                key={chain?.chain ?? "none"}
+                value={chain}
+                onChange={(c) => setState({ chain: c, token: c?.tokens.find((x) => x.symbol === "USDC") ?? c?.tokens[0], amount: "", fromAccount: "" })}
+                options={sources}
+                disabled={routesLoading && !sources.length}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <StellarTarget />
+            </Box>
           </Box>
         </Box>
-      </Box>
 
-      <Box sx={{ mb: "1rem" }}>
-        <Typography variant="subtitle2" sx={{ mb: "0.5rem", ...t.bodyLarge }}>
-          You send
-        </Typography>
-        <Box sx={s.greyContainer}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
+        <Box sx={{ mb: "1rem" }}>
+          <Typography variant="subtitle2" sx={{ mb: "0.5rem", ...t.bodyLarge }}>
+            You send
+          </Typography>
+          <Box sx={s.greyContainer}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%" }}>
+              <TextField
+                variant="outlined"
+                placeholder="0"
+                size="small"
+                sx={{ ...s.transparentInput, flex: 1, "& .MuiInputBase-input": inputs.inputLarge }}
+                onChange={(e) => isNumber(e.target.value) && setState({ amount: e.target.value })}
+                value={amount}
+              />
+              {quoting && <CircularProgress size={18} />}
+              {chain && token ? (
+                <TokenChip symbol={token.symbol} chain={chain.chain} onClick={() => setPicker("source")} />
+              ) : (
+                <Button variant="outlined" color="cancel" onClick={() => setPicker("source")} disabled={!sources.length} sx={{ borderRadius: "999rem" }}>
+                  Select token
+                </Button>
+              )}
+            </Box>
+            <Box sx={{ ...s.flexSpaceBetween, width: "100%", mt: "0.75rem" }}>
+              <Typography variant="body2" sx={{ ...t.secondary }}>
+                ≈{formatUsd(quote?.amountInUsd ? Number(quote.amountInUsd) : token?.usdPrice ? Number(amount || 0) * token.usdPrice : 0)}
+              </Typography>
+              <Typography variant="body2" sx={{ ...t.secondary }}>
+                on {chain?.name ?? "—"}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box sx={{ mb: "1rem" }}>
+          <Typography variant="subtitle2" sx={{ mb: "0.5rem", ...t.bodyLarge }}>
+            You receive on Stellar
+          </Typography>
+          <Box sx={s.greyContainer}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "1rem", flexWrap: "wrap" }}>
+              <Typography variant="h5" color={quote ? "common.black" : "grey.200"}>
+                {quote ? formatAmount(Number(quote.amountOut), 6) : "0"}
+              </Typography>
+              <TokenChip symbol={dest} chain="SRB" stellar onClick={() => setPicker("dest")} />
+            </Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", mt: "0.75rem", pt: "0.75rem", borderTop: `0.0625rem solid ${theme.palette.grey[300]}`, flexWrap: "wrap", gap: "0.5rem" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <img src="/assets/bridge/timer.svg" alt="" style={{ width: "1.25rem", height: "1.25rem" }} />
+                <Typography variant="body1" color="grey.200">
+                  {quote ? `~${Math.max(1, Math.round(quote.timeEstimate / 60))} min` : "—"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <Typography variant="body1" color="grey.200">
+                  Min {quote ? `${formatAmount(Number(quote.minAmountOut), 6)} ${dest}` : "—"}
+                </Typography>
+                <Tooltip
+                  arrow
+                  placement="top"
+                  componentsProps={tip.tooltipProps}
+                  title={
+                    <Box>
+                      <Typography sx={tip.titleStyle}>Minimum received</Typography>
+                      <Typography sx={tip.descriptionStyle}>Fees are inside the quote. If solvers can&apos;t deliver at least this much, the deposit is refunded to your source address.</Typography>
+                    </Box>
+                  }
+                >
+                  <InfoOutlinedIcon sx={{ fontSize: "1rem", color: "primary.main" }} />
+                </Tooltip>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box sx={{ mb: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <Box sx={s.greyContainer}>
+            <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
+              Your Stellar address (receives the {dest})
+            </Typography>
             <TextField
-              variant="outlined"
-              placeholder="0"
+              value={toAccount}
+              onChange={(e) => setState({ toAccount: e.target.value.trim() })}
+              placeholder="G…"
+              fullWidth
               size="small"
-              sx={{ ...s.transparentInput, flex: 1, "& .MuiInputBase-input": inputs.inputLarge }}
-              onChange={(e) => isNumber(e.target.value) && setState({ amount: e.target.value })}
-              value={amount}
+              sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
             />
-            {quoting && <CircularProgress size={18} />}
-            {chain && token ? (
-              <TokenChip symbol={token.symbol} chain={chain.chain} onClick={() => setPicker("source")} />
-            ) : (
-              <Button variant="outlined" color="cancel" onClick={() => setPicker("source")} disabled={!sources.length} sx={{ borderRadius: "999rem" }}>
-                Select token
-              </Button>
+            {activeWallet && toAccount !== activeWallet.address && (
+              <ButtonBase onClick={() => setState({ toAccount: activeWallet.address })} sx={{ mt: "0.5rem", color: "primary.main", fontSize: "0.8125rem" }}>
+                Use my connected wallet
+              </ButtonBase>
             )}
           </Box>
-          <Box sx={{ ...s.flexSpaceBetween, width: "100%", mt: "0.75rem" }}>
-            <Typography variant="body2" sx={{ ...t.secondary }}>
-              ≈{formatUsd(quote?.amountInUsd ? Number(quote.amountInUsd) : token?.usdPrice ? Number(amount || 0) * token.usdPrice : 0)}
+          <Box sx={s.greyContainer}>
+            <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
+              Your {chain?.name ?? "source"} address (refunds go here if the bridge can&apos;t deliver)
             </Typography>
-            <Typography variant="body2" sx={{ ...t.secondary }}>
-              on {chain?.name ?? "—"}
-            </Typography>
+            <TextField
+              value={fromAccount}
+              onChange={(e) => setState({ fromAccount: e.target.value.trim() })}
+              placeholder={evm ? "0x…" : "Address"}
+              fullWidth
+              size="small"
+              sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
+            />
+            {evm && (
+              <ButtonBase onClick={() => void fillFromBrowserWallet()} sx={{ mt: "0.5rem", color: "primary.main", fontSize: "0.8125rem" }}>
+                Use browser wallet
+              </ButtonBase>
+            )}
           </Box>
         </Box>
       </Box>
 
-      <Box sx={{ mb: "1rem" }}>
-        <Typography variant="subtitle2" sx={{ mb: "0.5rem", ...t.bodyLarge }}>
-          You receive on Stellar
-        </Typography>
-        <Box sx={s.greyContainer}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "1rem", flexWrap: "wrap" }}>
-            <Typography variant="h5" color={quote ? "common.black" : "grey.200"}>
-              {quote ? formatAmount(Number(quote.amountOut), 6) : "0"}
-            </Typography>
-            <TokenChip symbol={dest} chain="SRB" stellar onClick={() => setPicker("dest")} />
-          </Box>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", mt: "0.75rem", pt: "0.75rem", borderTop: `0.0625rem solid ${theme.palette.grey[300]}`, flexWrap: "wrap", gap: "0.5rem" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <img src="/assets/bridge/timer.svg" alt="" style={{ width: "1.25rem", height: "1.25rem" }} />
-              <Typography variant="body1" color="grey.200">
-                {quote ? `~${Math.max(1, Math.round(quote.timeEstimate / 60))} min` : "—"}
-              </Typography>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-              <Typography variant="body1" color="grey.200">
-                Min {quote ? `${formatAmount(Number(quote.minAmountOut), 6)} ${dest}` : "—"}
-              </Typography>
-              <Tooltip
-                arrow
-                placement="top"
-                componentsProps={tip.tooltipProps}
-                title={
-                  <Box>
-                    <Typography sx={tip.titleStyle}>Minimum received</Typography>
-                    <Typography sx={tip.descriptionStyle}>Fees are inside the quote. If solvers can&apos;t deliver at least this much, the deposit is refunded to your source address.</Typography>
-                  </Box>
-                }
-              >
-                <InfoOutlinedIcon sx={{ fontSize: "1rem", color: "primary.main" }} />
-              </Tooltip>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-
-      <Box sx={{ mb: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <Box sx={s.greyContainer}>
-          <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
-            Your Stellar address (receives the {dest})
-          </Typography>
-          <TextField
-            value={toAccount}
-            onChange={(e) => setState({ toAccount: e.target.value.trim() })}
-            placeholder="G…"
-            fullWidth
-            size="small"
-            sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
-          />
-          {activeWallet && toAccount !== activeWallet.address && (
-            <ButtonBase onClick={() => setState({ toAccount: activeWallet.address })} sx={{ mt: "0.5rem", color: "primary.main", fontSize: "0.8125rem" }}>
-              Use my connected wallet
-            </ButtonBase>
-          )}
-        </Box>
-        <Box sx={s.greyContainer}>
-          <Typography variant="body1" sx={{ mb: "0.5rem", color: theme.palette.grey[200] }}>
-            Your {chain?.name ?? "source"} address (refunds go here if the bridge can&apos;t deliver)
-          </Typography>
-          <TextField
-            value={fromAccount}
-            onChange={(e) => setState({ fromAccount: e.target.value.trim() })}
-            placeholder={evm ? "0x…" : "Address"}
-            fullWidth
-            size="small"
-            sx={{ ...s.transparentInput, "& .MuiInputBase-input": inputs.inputMedium }}
-          />
-          {evm && (
-            <ButtonBase onClick={() => void fillFromBrowserWallet()} sx={{ mt: "0.5rem", color: "primary.main", fontSize: "0.8125rem" }}>
-              Use browser wallet
-            </ButtonBase>
-          )}
-        </Box>
-      </Box>
-
-      {trust === false && (
+      {isConnected && trust === false && (
         <Alert
           severity="warning"
           sx={{ mb: "0.75rem" }}
@@ -401,7 +408,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
           This Stellar account has no USDC trustline yet, so it cannot receive USDC.
         </Alert>
       )}
-      {quoteError && (
+      {isConnected && quoteError && (
         <Alert severity="error" sx={{ mb: "0.75rem" }}>
           {quoteError}
         </Alert>

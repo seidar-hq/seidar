@@ -8,6 +8,7 @@ import {
   kitDisconnect,
   kitOpenAuthModal,
   walletMeta,
+  warmWallets,
   type WalletKind,
 } from "@/lib/wallets";
 import { shortAddress } from "@/lib/format";
@@ -133,6 +134,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [portfolio, setPortfolioState] = useState<PortfolioSelection>("all");
+
+  // Warm the wallet kit (and WalletConnect's client) once the page has settled.
+  useEffect(() => {
+    const t = setTimeout(warmWallets, 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const stored = load<unknown[]>(WALLETS_KEY, []).filter(isLinkedWallet);
