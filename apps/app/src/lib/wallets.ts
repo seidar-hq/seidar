@@ -11,7 +11,7 @@ import { LobstrModule } from "@creit.tech/stellar-wallets-kit/modules/lobstr";
 import { RabetModule } from "@creit.tech/stellar-wallets-kit/modules/rabet";
 import { HanaModule } from "@creit.tech/stellar-wallets-kit/modules/hana";
 
-export type KitWalletId = "freighter" | "albedo" | "xbull" | "lobstr" | "rabet" | "hana";
+export type KitWalletId = "freighter" | "albedo" | "xbull" | "lobstr" | "rabet" | "hana" | "wallet_connect";
 
 /** "watch" = read-only test wallet: real mainnet data, no signing (dev builds or NEXT_PUBLIC_ENABLE_WATCH=1). */
 export type WalletKind = KitWalletId | "watch";
@@ -32,7 +32,14 @@ export const WALLETS: WalletMeta[] = [
   { id: "lobstr", name: "LOBSTR", logo: "/assets/wallets/lobstr-logo.png", bg: "#51A4BE", bleed: true },
   { id: "rabet", name: "Rabet", logo: "/assets/wallets/rabet-logo.png", bg: "#1B1B2F" },
   { id: "hana", name: "Hana", logo: "/assets/wallets/hana-logo.png", bg: "#16073A", bleed: true },
+  { id: "wallet_connect", name: "WalletConnect", logo: "/assets/wallets/walletconnect-logo.png", bg: "#3B99FC", bleed: true },
 ];
+
+// WalletConnect (Reown) project id. Without it the WalletConnect option is left out of the modal.
+// It is how phones connect: Freighter / LOBSTR mobile pair over WalletConnect, and inside
+// Freighter mobile's own browser the kit connects through it without showing the modal.
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.seidar.xyz";
 
 export const STELLAR_LOGO = "/assets/wallets/xlm-logo.png";
 export const MAINNET_PASSPHRASE = Networks.PUBLIC;
@@ -40,31 +47,62 @@ export const MAINNET_PASSPHRASE = Networks.PUBLIC;
 export const walletMeta = (id: WalletKind | null | undefined): WalletMeta | undefined =>
   id === "watch" ? WATCH_META : WALLETS.find((w) => w.id === id);
 
-let ready = false;
-function kit() {
-  if (typeof window === "undefined") throw new Error("wallets need a browser");
-  if (!ready) {
-    StellarWalletsKit.init({
-      network: Networks.PUBLIC,
-      theme: SwkAppDarkTheme,
-      modules: [
-        new FreighterModule(),
-        new AlbedoModule(),
-        new xBullModule(),
-        new LobstrModule(),
-        new RabetModule(),
-        new HanaModule(),
-      ],
-    });
-    ready = true;
+/** The WalletConnect module is large (Reown AppKit), so it loads only when the kit first starts. */
+async function walletConnectModule() {
+  if (!WC_PROJECT_ID) return [];
+  try {
+    const { WalletConnectModule, WalletConnectTargetChain } = await import("@creit.tech/stellar-wallets-kit/modules/wallet-connect");
+    return [
+      new WalletConnectModule({
+        projectId: WC_PROJECT_ID,
+        metadata: {
+          name: "Seidar",
+          description: "Stellar DeFi, all in one place",
+          url: APP_URL,
+          icons: [`${APP_URL}/assets/seidar-icon-256.png`],
+        },
+        allowedChains: [WalletConnectTargetChain.PUBLIC],
+      }),
+    ];
+  } catch {
+    return [];
   }
-  return StellarWalletsKit;
+}
+
+const isPhone = () =>
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && window.matchMedia("(pointer: coarse)").matches;
+
+/** True when the wallet answers within `ms` (some extension probes never settle when absent). */
+const availableWithin = (m: { isAvailable(): Promise<boolean> }, ms = 800) =>
+  Promise.race([m.isAvailable().catch(() => false), new Promise<boolean>((r) => setTimeout(() => r(false), ms))]);
+
+let starting: Promise<typeof StellarWalletsKit> | null = null;
+function kit(): Promise<typeof StellarWalletsKit> {
+  if (typeof window === "undefined") return Promise.reject(new Error("wallets need a browser"));
+  starting ??= (async () => {
+    // Browser-extension wallets. On a phone there are no extensions, so they only appear when the
+    // page is open inside that wallet's own in-app browser (which injects the same API).
+    const injected = [new FreighterModule(), new LobstrModule(), new RabetModule(), new HanaModule()];
+    const phone = isPhone();
+    const [wc, present] = await Promise.all([
+      walletConnectModule(),
+      phone ? Promise.all(injected.map((m) => availableWithin(m))) : Promise.resolve(injected.map(() => true)),
+    ]);
+    const [freighter, lobstr, rabet, hana] = injected.map((m, i) => (present[i] ? [m] : []));
+    // Web wallets (xBull, Albedo) work in any browser, desktop or mobile. Phones list WalletConnect first.
+    const modules = phone
+      ? [...wc, ...freighter, ...lobstr, ...hana, ...rabet, new xBullModule(), new AlbedoModule()]
+      : [...freighter, new AlbedoModule(), new xBullModule(), ...lobstr, ...rabet, ...hana, ...wc];
+    StellarWalletsKit.init({ network: Networks.PUBLIC, theme: SwkAppDarkTheme, modules });
+    return StellarWalletsKit;
+  })();
+  return starting;
 }
 
 /** Connect through the kit's auth modal. Null when the user closes it or rejects. */
 export async function kitOpenAuthModal(): Promise<{ address: string; walletId: KitWalletId } | null> {
   try {
-    const k = kit();
+    const k = await kit();
     const r = await k.authModal();
     const address = typeof r?.address === "string" ? r.address : "";
     if (!address) return null;
@@ -83,13 +121,19 @@ export async function kitOpenAuthModal(): Promise<{ address: string; walletId: K
 /** Silent address read from a wallet (no prompt). */
 export async function kitGetAddress(id: KitWalletId): Promise<string | null> {
   try {
-    const k = kit();
+    const k = await kit();
     k.setWallet(id);
     const r = await k.getAddress();
     return r?.address ?? null;
   } catch {
     return null;
   }
+}
+
+/** WalletConnect's sign client starts asynchronously; after a reload give it a few seconds before signing. */
+async function walletConnectReady(k: typeof StellarWalletsKit) {
+  const mod = k.selectedModule as { isAvailable(): Promise<boolean> } | null;
+  for (let i = 0; i < 40 && mod && !(await mod.isAvailable()); i++) await new Promise((r) => setTimeout(r, 250));
 }
 
 /** Thrown when a watch-only wallet is asked to sign; carries the built XDR for inspection. */
@@ -102,8 +146,9 @@ export class WatchOnlyError extends Error {
 /** Sign a transaction envelope on mainnet, resolving to the signed XDR. */
 export async function kitSignTransaction(id: WalletKind, xdr: string, address?: string): Promise<string> {
   if (id === "watch") throw new WatchOnlyError(xdr);
-  const k = kit();
+  const k = await kit();
   k.setWallet(id);
+  if (id === "wallet_connect") await walletConnectReady(k);
   const r = (await k.signTransaction(xdr, { networkPassphrase: Networks.PUBLIC, address })) as unknown;
   if (typeof r === "string" && r) return r;
   const out = (r as { signedTxXdr?: unknown } | null)?.signedTxXdr;
@@ -113,6 +158,6 @@ export async function kitSignTransaction(id: WalletKind, xdr: string, address?: 
 
 export async function kitDisconnect(): Promise<void> {
   try {
-    await kit().disconnect();
+    await (await kit()).disconnect();
   } catch {}
 }
