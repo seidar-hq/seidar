@@ -27,10 +27,10 @@ const DashedRule = styled(Box)(({ theme }) => ({ width: "100%", borderTop: `0.06
 
 const TABS: TabItem[] = [{ id: "portfolios", label: "Portfolios & Wallets" }];
 
-const WALLET_TEXT = "Connect a wallet to view balances, manage assets, and track activity across Stellar.";
+const WALLET_TEXT = "Connect a wallet to create portfolios, manage linked wallets, and track activity across Stellar.";
 
 export default function Settings() {
-  const { wallets } = useWallet();
+  const { isConnected } = useWallet();
 
   return (
     <Root>
@@ -48,9 +48,15 @@ export default function Settings() {
         <Box sx={{ alignSelf: "flex-start" }}>
           <Tabs tabs={TABS} activeTab="portfolios" setActiveTab={() => {}} isPathProvided={false} />
         </Box>
-        <PortfolioCards />
-        <DashedRule />
-        {wallets.length > 0 ? <WalletCards /> : <SpotLocked text={WALLET_TEXT} illustration="/assets/settingsWalletLocked.svg" />}
+        {isConnected ? (
+          <>
+            <PortfolioCards />
+            <DashedRule />
+            <WalletCards />
+          </>
+        ) : (
+          <SpotLocked text={WALLET_TEXT} illustration="/assets/settingsWalletLocked.svg" />
+        )}
       </Card>
     </Root>
   );

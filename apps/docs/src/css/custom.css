@@ -73,17 +73,26 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Navbar */
+/* Navbar. The blur lives on a pseudo-element: backdrop-filter on .navbar itself would make it the
+   containing block for the fixed mobile drawer and clip the drawer to the navbar's height. */
 .navbar {
   border-bottom: 1px solid var(--seidar-line);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   box-shadow: none;
 }
 
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
 .navbar__logo {
-  height: 22px;
-  margin-right: 0.6rem;
+  height: 14px;
+  margin-right: 0.5rem;
 }
 
 .navbar__title {
@@ -343,7 +352,42 @@ body {
     margin-top: 2.25rem;
   }
 
+  /* Hamburger on the left, logo + wordmark at the right end */
+  .navbar__items:not(.navbar__items--right) {
+    flex: 1;
+  }
+
+  .navbar__items:not(.navbar__items--right) > .navbar__brand {
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .navbar__toggle {
+    margin-right: 0;
+  }
+
+  /* The drawer: full height, opaque, above the page and its backdrop */
   .navbar-sidebar {
+    width: min(20rem, 85vw);
     background: var(--seidar-bg);
+    border-right: 1px solid var(--seidar-line);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+  }
+
+  .navbar-sidebar__backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  .navbar-sidebar__brand {
+    border-bottom: 1px solid var(--seidar-line);
+  }
+
+  .navbar-sidebar .menu {
+    padding: 0.75rem;
+    font-size: 1rem;
+  }
+
+  .navbar-sidebar .menu__link {
+    padding: 0.55rem 0.75rem;
   }
 }

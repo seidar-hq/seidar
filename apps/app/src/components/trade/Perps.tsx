@@ -2,13 +2,20 @@
 
 import Box from "@mui/material/Box";
 import { useWallet } from "@/wallet/WalletContext";
+import { PerpsLocked } from "./TradeLocked";
 import OrderEntry from "./perps/OrderEntry";
 import PerpsTables, { AccountCard } from "./perps/PerpsAccount";
 import PerpsChart from "./perps/PerpsChart";
 import { usePerpsAccounts, usePerpsMarket } from "./perps/usePerps";
 
 // Zenex perps (XLM/USD, settled in USDC): live chart, order entry, account and history.
+// Without a wallet the page shows the locked layout instead.
 export default function Perps() {
+  const { isConnected } = useWallet();
+  return isConnected ? <PerpsTrading /> : <PerpsLocked />;
+}
+
+function PerpsTrading() {
   const { activeWallet } = useWallet();
   const { market } = usePerpsMarket();
   const me = activeWallet?.address ?? null;

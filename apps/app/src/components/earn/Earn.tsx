@@ -14,24 +14,24 @@ import Vaults from "./Vaults";
 
 type EarnTab = "lending&borrow" | "pools" | "vaults";
 
-const COPY: Record<EarnTab, { promoText: string; promoIllustration: string; topText: string; newText: string }> = {
+const COPY: Record<EarnTab, { promoText: string; promoIllustration: string; topTitle: string; topText: string }> = {
   "lending&borrow": {
     promoText: "Connect a wallet to lend assets, borrow liquidity, and manage DeFi credit positions.",
     promoIllustration: "/assets/earnLendLocked.svg",
+    topTitle: "Top Markets",
     topText: "Connect a wallet to discover the highest APY lending and borrowing markets.",
-    newText: "Connect a wallet to explore newly added lending and borrowing opportunities.",
   },
   pools: {
     promoText: "Connect a wallet to provide liquidity, manage LP positions, and track pool rewards.",
     promoIllustration: "/assets/earnLiquidityLocked.svg",
+    topTitle: "Top Pools",
     topText: "Connect a wallet to discover the highest-performing liquidity pools.",
-    newText: "Connect a wallet to explore newly added liquidity pools.",
   },
   vaults: {
     promoText: "Connect a wallet to deposit into vaults and track your automated yield.",
     promoIllustration: "/assets/earnStakingLocked.svg",
+    topTitle: "Top Vaults",
     topText: "Connect a wallet to discover the highest APY vaults.",
-    newText: "Connect a wallet to explore newly added vaults.",
   },
 };
 
@@ -80,6 +80,7 @@ const PromoArt = styled("img")(({ theme }) => ({
 const PoolCard = styled(Box)(({ theme }) => {
   const dark = theme.palette.mode === "dark";
   return {
+    flex: 1,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -104,6 +105,7 @@ const PoolBody = styled(Box)(({ theme }) => ({
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
+  flex: 1,
   minHeight: "27.4375rem",
   padding: "1rem",
   backgroundColor: theme.palette.mode === "dark" ? theme.palette.overlay.white05 : theme.palette.common.white,
@@ -173,28 +175,18 @@ function PoolLocked({
   );
 }
 
-function PoolsLocked({ tab }: { tab: EarnTab }) {
+function TopLocked({ tab }: { tab: EarnTab }) {
   const { openConnectModal } = useWallet();
-  const { topText, newText } = COPY[tab];
+  const { topTitle, topText } = COPY[tab];
   return (
-    <>
-      <PoolLocked
-        title="Top Pools"
-        icon="/assets/topPools.svg"
-        illustration="/assets/earnTopPoolsGraphic.svg"
-        text={topText}
-        textMaxWidth="23.3125rem"
-        onConnect={openConnectModal}
-      />
-      <PoolLocked
-        title="New Pools"
-        icon="/assets/newPools.svg"
-        illustration="/assets/earnNewPoolsGraphic.svg"
-        text={newText}
-        textMaxWidth="24.9375rem"
-        onConnect={openConnectModal}
-      />
-    </>
+    <PoolLocked
+      title={topTitle}
+      icon="/assets/topPools.svg"
+      illustration="/assets/earnTopPoolsGraphic.svg"
+      text={topText}
+      textMaxWidth="23.3125rem"
+      onConnect={openConnectModal}
+    />
   );
 }
 
@@ -260,8 +252,8 @@ export default function Earn() {
             <EarnPromoLocked tab={current} />
           </Box>
         </Box>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", alignSelf: "start" }}>
-          <PoolsLocked tab={current} />
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", "@media (max-width: 75rem)": { alignSelf: "start" } }}>
+          <TopLocked tab={current} />
         </Box>
       </Box>
     </Box>

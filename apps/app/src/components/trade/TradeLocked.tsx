@@ -247,15 +247,15 @@ export function PerpsLocked() {
     <PerpsGrid>
       <Column>
         <MarketLocked
-          marketText="Connect a supported derivatives venue to load live charts, depth, and orderbook data."
-          transactionsText="Connect a venue to view your derivative orders, positions, fills, and PnL history."
+          marketText="Connect a wallet to load live perps charts, funding, and market data."
+          transactionsText="Connect a wallet to view your perps orders, positions, fills, and PnL history."
         />
       </Column>
       <Column>
         <SquareLocked
           illustration="/assets/derivOrderEntryLocked.png"
           illustrationWidth="13.25rem"
-          text="Connect a derivatives account to place limit or market orders securely."
+          text="Connect a perps account to place limit or market orders securely."
           textMaxWidth="19.0625rem"
           onConnect={openConnectModal}
         />

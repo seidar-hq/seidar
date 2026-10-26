@@ -43,10 +43,11 @@ export default function HeaderPortfolio() {
   const router = useRouter();
   const anchor = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
-  const { portfolios, activePortfolio, setActivePortfolio } = useWallet();
+  const { portfolios, activePortfolio, setActivePortfolio, isConnected } = useWallet();
   const line = theme.palette.mode === "light" ? theme.palette.border.main600 : theme.palette.overlay.white08;
 
-  if (!activePortfolio) return null;
+  // Portfolios only mean something once a wallet is linked (connected or watched).
+  if (!isConnected || !activePortfolio) return null;
 
   return (
     <>

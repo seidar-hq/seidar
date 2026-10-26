@@ -103,12 +103,12 @@ const MobileNavItem = styled(ListItemButton, { shouldForwardProp: (p) => p !== "
   ({ theme, active }) => ({
     display: "flex",
     alignItems: "center",
-    gap: "0.75rem",
+    gap: "0.875rem",
     width: "100%",
     minHeight: "unset",
-    padding: "0.625rem 0.875rem",
+    padding: "0.875rem 1.125rem",
     borderRadius: "999rem",
-    maxHeight: "3rem",
+    maxHeight: "4rem",
     whiteSpace: "nowrap",
     backgroundColor: active ? theme.palette.sidebar.primary : "transparent",
     color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText,
@@ -334,13 +334,13 @@ export default function Header() {
     </Menu>
   );
 
-  const navIcon = (item: NavEntry, active: boolean) =>
+  const navIcon = (item: NavEntry, active: boolean, size = "1.25rem") =>
     item.IconComponent ? (
       <item.IconComponent
-        sx={{ fontSize: "1.25rem", color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText }}
+        sx={{ fontSize: size, color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText }}
       />
     ) : (
-      <NavIconImg src={isDarkMode || active ? item.lightIcon : item.darkIcon} alt="" />
+      <NavIconImg src={isDarkMode || active ? item.lightIcon : item.darkIcon} alt="" sx={{ width: size, height: size }} />
     );
 
   const logoSrc = isDarkMode ? "/assets/seidarLogoDark.svg" : "/assets/seidarLogo.svg";
@@ -484,7 +484,7 @@ export default function Header() {
         sx={{
           display: { xs: "block", lg: "none" },
           "& .MuiDrawer-paper": {
-            width: "min(17.5rem, 85vw)",
+            width: "min(20rem, 85vw)",
             backgroundColor: theme.palette.surfaceBg.main,
             backgroundImage: "none",
             borderRight: 0,
@@ -499,10 +499,13 @@ export default function Header() {
             const active = isActive(item.value);
             return (
               <MobileNavItem key={item.value} active={active} onClick={() => navigate(item.value)}>
-                {navIcon(item, active)}
+                {navIcon(item, active, "1.75rem")}
                 <Typography
-                  variant="body1"
-                  sx={{ color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText }}
+                  sx={{
+                    fontSize: "1.25rem",
+                    fontWeight: 500,
+                    color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText,
+                  }}
                 >
                   {item.title}
                 </Typography>

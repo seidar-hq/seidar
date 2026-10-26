@@ -230,6 +230,8 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
 - Checks: app `npx tsc --noEmit` + `npx next lint --dir src`; API `npx tsc --noEmit -p .`;
   docs `npm run build` (fails on any broken link/anchor — intentional).
 - **Stop the app/web dev server before `next build`** — they share `.next` and the dev server breaks.
+  For the app you can instead build beside a running dev server: `NEXT_DIST_DIR=.next-build npm run build`
+  (the static export then lands in `.next-build/`, not `out/`; `rm -rf out && mv .next-build out` before deploying).
 - Test wallet (read-only, mainnet): `GDL75PXBUUMD43KPEMAIVHJVP2KG3EQCPJ3NYKK444M55FXAD6RKOZCJ`
   (XLM, ~2.9M BLND, Blend supplies, Zenex credit ~0.067 USDC). Open the app with `?watch=G…` in dev.
 - Browser checks: the `interceptor` CLI (`--group seidar`, `eval --main`, `screenshot --save`).
