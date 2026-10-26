@@ -6,7 +6,8 @@
 #   cron           warmers once a minute (Node's setInterval loops live in src/server.ts only)
 #
 # Secrets (never in this file): wrangler secret put SOROSWAP_API_KEY | DEFINDEX_API_KEY | RPC_URL
-# Needs the Workers Paid plan: the free plan's 10 ms CPU limit is below one Soroban XDR decode.
+# Runs on the Workers Free plan, but heavy routes (positions, vault catalogue, Zenex) exceed its
+# 10 ms CPU / 50 subrequest limits; Workers Paid ($5/mo) lifts both with no config change.
 
 name = "seidar-api"
 main = "src/worker.ts"
@@ -15,9 +16,6 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 routes = [{ pattern = "api.seidar.xyz", custom_domain = true }]
-
-[limits]
-cpu_ms = 60000
 
 [triggers]
 crons = ["* * * * *"]

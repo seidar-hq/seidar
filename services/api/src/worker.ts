@@ -1,5 +1,6 @@
 // Cloudflare Worker entry: the Hono app plus Cloudflare storage.
-//   CACHE  KV namespace  -> @seidar/cache (replaces Redis)
+//   CACHE  KV namespace  -> @seidar/cache, second tier (durable, shared by every location)
+//   Cache API            -> @seidar/cache, first tier (free and unlimited, per location)
 //   DB     D1 database   -> db.ts (replaces Postgres)
 // A cron trigger (wrangler.toml) runs the warmers once a minute; Node's setInterval loops
 // (server.ts) never run here.
@@ -13,18 +14,46 @@ type Kv = {
 };
 type Env = { CACHE?: Kv; DB?: D1Like };
 type Ctx = { waitUntil(p: Promise<unknown>): void; passThroughOnException?(): void };
+type EdgeCache = { match(k: string): Promise<Response | undefined>; put(k: string, r: Response): Promise<void> };
+
+/* KV writes are the metered resource (1k/day free, 1M/month paid), so KV is only the durable
+   fallback. Keys rewritten every few seconds (spot prices, Zenex ticks, trade tapes) live in the
+   location cache only; everything else reaches KV when its value changes, or every 10 minutes
+   to refresh the stored timestamp. */
+const EDGE_ONLY = ["prices:spot:", "zenex:tickers", "zenex:state:", "zenex:rates:", "zenex:vol24:", "zenex:udf:", "dextrades:"];
+const KV_REFRESH_MS = 10 * 60_000;
+const lastKv = new Map<string, { value: string; at: number }>();
+
+const edge = (): EdgeCache | null => (globalThis as { caches?: { default?: EdgeCache } }).caches?.default ?? null;
+const edgeKey = (k: string) => `https://api.seidar.xyz/__cache/${encodeURIComponent(k)}`;
+/** The value part of an @seidar/cache payload ({"at":…,"value":…}), for change detection. */
+const valuePart = (payload: string) => payload.slice(payload.indexOf(',"value":') + 1);
 
 let bound = false;
 function bind(env: Env): void {
   if (bound) return;
   bound = true;
   const kv = env.CACHE;
-  if (kv)
-    setCacheDriver({
-      get: (k) => kv.get(k),
+  setCacheDriver({
+    async get(k) {
+      const hit = await edge()?.match(edgeKey(k)).catch(() => undefined);
+      if (hit) return hit.text();
+      return kv ? kv.get(k) : null;
+    },
+    async put(k, v, ttlMs) {
+      const secs = Math.max(60, Math.ceil(ttlMs / 1000));
+      await edge()
+        ?.put(edgeKey(k), new Response(v, { headers: { "Cache-Control": `max-age=${secs}`, "Content-Type": "application/json" } }))
+        .catch(() => {});
+      if (!kv || EDGE_ONLY.some((p) => k.includes(p))) return;
+      const value = valuePart(v);
+      const prev = lastKv.get(k);
+      if (prev && prev.value === value && Date.now() - prev.at < KV_REFRESH_MS) return;
+      lastKv.set(k, { value, at: Date.now() });
       // KV's shortest expiry is 60s; readers judge freshness by the stored timestamp anyway.
-      put: (k, v, ttlMs) => kv.put(k, v, { expirationTtl: Math.max(60, Math.ceil(ttlMs / 1000)) }),
-    });
+      await kv.put(k, v, { expirationTtl: secs }).catch(() => lastKv.delete(k));
+    },
+  });
   if (env.DB) useD1(env.DB);
 }
 
