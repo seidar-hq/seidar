@@ -7,6 +7,7 @@ import Link from "@mui/material/Link";
 import Typography from "@mui/material/Typography";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorRoundedIcon from "@mui/icons-material/ErrorRounded";
+import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import GlassDialog from "@/components/common/GlassDialog";
 import { useAlerts } from "@/components/common/Alerts";
@@ -17,6 +18,8 @@ const STATUS_TEXT: Record<TxStep["status"], string> = {
   building: "Preparing transaction…",
   signing: "Confirm in your wallet…",
   sending: "Submitting to Stellar…",
+  confirming: "Checking Stellar for the result…",
+  submitted: "Submitted. Not confirmed yet: the explorer link shows the result, and balances update once it lands.",
   done: "Confirmed",
   failed: "Failed",
   unsigned: "Built (watch-only wallet, not signed)",
@@ -40,7 +43,7 @@ export default function TxDialog({
   onClose: () => void;
 }) {
   const { successAlert } = useAlerts();
-  const busy = steps.some((s) => ["building", "signing", "sending"].includes(s.status));
+  const busy = steps.some((s) => ["building", "signing", "sending", "confirming"].includes(s.status));
 
   return (
     <GlassDialog
@@ -74,6 +77,8 @@ export default function TxDialog({
                 <ErrorRoundedIcon sx={{ color: "error.main" }} />
               ) : s.status === "unsigned" ? (
                 <VisibilityOutlinedIcon sx={{ color: "primary.main" }} />
+              ) : s.status === "submitted" ? (
+                <HourglassTopRoundedIcon sx={{ color: "warning.main" }} />
               ) : (
                 <CircularProgress size={20} />
               )}

@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { WatchOnlyError } from "@/lib/wallets";
-import { TxError, signAndSend, type Signer, type TxStep } from "@/lib/tx";
+import { TxError, TxPending, signAndSend, type Signer, type TxMeta, type TxStep } from "@/lib/tx";
 import { refreshBalances } from "@/wallet/useBalances";
 import { pushNote } from "@/components/layout/NotificationButton";
 
@@ -22,17 +22,22 @@ export function useTxRunner() {
 
   /** Build with `build`, then sign + submit. Resolves true only on ledger success. */
   const runSingle = useCallback(
-    async (t: string, label: string, signer: Signer, build: () => Promise<string>): Promise<boolean> => {
+    async (t: string, label: string, signer: Signer, build: () => Promise<string>, meta?: TxMeta): Promise<boolean> => {
       start(t);
       const step: TxStep = { key: "s0", label, status: "building" };
       const emit = () => setSteps([{ ...step }]);
       emit();
       try {
         step.xdr = await build();
-        const r = await signAndSend(step.xdr, signer, (s) => {
-          step.status = s;
-          emit();
-        });
+        const r = await signAndSend(
+          step.xdr,
+          signer,
+          (s) => {
+            step.status = s;
+            emit();
+          },
+          meta,
+        );
         step.hash = r.hash;
         step.status = "done";
         emit();
@@ -43,6 +48,13 @@ export function useTxRunner() {
         if (e instanceof WatchOnlyError) {
           step.status = "unsigned";
           emit();
+          return false;
+        }
+        if (e instanceof TxPending) {
+          step.status = "submitted";
+          step.hash = e.hash;
+          emit();
+          setTimeout(() => refreshBalances([signer.address]), 20_000);
           return false;
         }
         step.status = "failed";
