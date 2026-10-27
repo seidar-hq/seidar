@@ -219,6 +219,20 @@ export function humanizeSimError(raw: string): string {
  * ok; FAILED/timeout surface as errors with the hash so the UI never reports
  * a reverted transaction as done.
  */
+/**
+ * scValToNative turns 64/128-bit integers into BigInt, which JSON cannot carry: the /tx/send reply
+ * then failed to serialize (HTTP 500) after the transaction had already succeeded. Integers become
+ * decimal strings; arrays and plain objects (Soroban maps) are converted recursively.
+ */
+export function jsonSafe(v: unknown): unknown {
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, jsonSafe(x)]));
+  }
+  return v;
+}
+
 export async function submitAndWait(
   signedXdr: string,
   waitMs = 45_000,
@@ -258,7 +272,7 @@ export async function submitAndWait(
       if (got.status === "SUCCESS") {
         let rv: unknown = null;
         try {
-          rv = got.returnValue ? sdk.scValToNative(got.returnValue) : null;
+          rv = got.returnValue ? jsonSafe(sdk.scValToNative(got.returnValue)) : null;
         } catch {
           rv = null;
         }
