@@ -28,6 +28,7 @@ import {
   upsertWatch,
 } from "./vaults.js";
 import { buildSwap, getIcon, getSwapTokens, quoteSwap, sendSwap, sendTx } from "./swap.js";
+import { analyticsAdjustments, analyticsSummary, isAnalyticsAdmin, pingWallet, writeAdjustments } from "./analytics.js";
 import { buildBlendClaim, buildBlendTx } from "./blend.js";
 import { buildBlendToXoxno, buildLending, xoxnoAccounts, xoxnoMarkets } from "./lending.js";
 import { feeInfo } from "./fees.js";
@@ -53,8 +54,8 @@ app.use(
   "*",
   cors({
     origin: ORIGINS.includes("*") ? "*" : ORIGINS,
-    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "X-API-Key"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-API-Key", "Authorization"],
   }),
 );
 
@@ -64,13 +65,17 @@ const RL_LIMIT = Number(process.env.API_RL_LIMIT) || 120;
 const RL_WINDOW = Number(process.env.API_RL_WINDOW_MS) || 60_000;
 app.use("*", async (c, next) => {
   const ip =
+    c.req.header("cf-connecting-ip")?.trim() ||
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("cf-connecting-ip") ||
     "local";
   const key = `${ip}:${c.req.path}`;
   const r = rateLimit(key, RL_LIMIT, RL_WINDOW);
-  if (!r.ok)
+  c.header("X-RateLimit-Limit", String(RL_LIMIT));
+  c.header("X-RateLimit-Remaining", String(r.remaining));
+  if (!r.ok) {
+    c.header("Retry-After", String(Math.ceil(RL_WINDOW / 1000)));
     return c.json({ ok: false, error: "rate-limited, retry shortly" }, 429);
+  }
   await next();
 });
 
@@ -369,6 +374,27 @@ app.get("/swap/tokens", async (c) => {
 
 app.post("/tx/send", async (c) => {
   const r = await sendTx(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+
+// Public analytics (analytics.seidar.xyz): aggregate, hashed, measured only.
+app.get("/analytics/summary", async (c) => {
+  const r = await analyticsSummary();
+  return c.json(r.body, r.status as 200);
+});
+app.post("/analytics/ping", async (c) => {
+  const r = await pingWallet(await c.req.json().catch(() => ({})));
+  return c.json(r.body, r.status as 200);
+});
+// Owner-only adjustments: authenticated with ANALYTICS_ADMIN_TOKEN (Bearer).
+app.get("/analytics/admin/adjustments", async (c) => {
+  if (!isAnalyticsAdmin(c.req.header("authorization"))) return c.json({ ok: false, error: "unauthorized" }, 401);
+  const r = await analyticsAdjustments();
+  return c.json(r.body, r.status as 200);
+});
+app.put("/analytics/admin/adjustments", async (c) => {
+  if (!isAnalyticsAdmin(c.req.header("authorization"))) return c.json({ ok: false, error: "unauthorized" }, 401);
+  const r = await writeAdjustments(await c.req.json().catch(() => ({})));
   return c.json(r.body, r.status as 200);
 });
 

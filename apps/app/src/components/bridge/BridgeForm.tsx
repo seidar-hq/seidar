@@ -231,7 +231,7 @@ export default function BridgeForm({ state, setState }: { state: BridgeState; se
   const addTrustline = () =>
     activeWallet &&
     void tx
-      .runSingle("Add USDC trustline", "Allow this wallet to hold Circle USDC", activeWallet, () => buildTrustline(activeWallet.address, "USDC", USDC_ISSUER))
+      .runSingle("Add USDC trustline", "Allow this wallet to hold Circle USDC", activeWallet, () => buildTrustline(activeWallet.address, "USDC", USDC_ISSUER), { kind: "trustline", protocol: "stellar" })
       .then((ok) => ok && setTrust(true));
 
   const validTo = /^G[A-Z2-7]{55}$/.test(toAccount);

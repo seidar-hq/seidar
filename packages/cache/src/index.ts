@@ -133,6 +133,11 @@ function track<T>(p: Promise<T>): Promise<T> {
   void p.finally(() => pending.delete(p)).catch(() => {});
   return p;
 }
+/** Run work after the response (a Worker drains it with ctx.waitUntil via drainBackground). */
+export function runInBackground(p: Promise<unknown>): void {
+  void track(p.catch(() => {}));
+}
+
 /** Settles once every background refresh started so far has finished. */
 export function drainBackground(): Promise<unknown> {
   return Promise.allSettled([...pending]);

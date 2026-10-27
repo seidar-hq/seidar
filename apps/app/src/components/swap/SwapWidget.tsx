@@ -25,7 +25,7 @@ import { useTxRunner } from "@/components/tx/useTxRunner";
 import { CopyButton, glassMenuPaperSx } from "@/components/wallet/WalletParts";
 import { apiJson } from "@/lib/api";
 import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
-import { buildPayment, cleanAmount } from "@/lib/payment";
+import { buildPayment, buildTrustline, cleanAmount, hasTrustline } from "@/lib/payment";
 import { postJson, toBase } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
 import { useWallet } from "@/wallet/WalletContext";
@@ -244,6 +244,9 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [trust, setTrust] = useState<boolean | null>(true);
+  const [checkingTrust, setCheckingTrust] = useState(false);
+  const [addingTrust, setAddingTrust] = useState(false);
   const seq = useRef(0);
 
   // Default pair once the catalogue loads: XLM -> USDC.
@@ -265,7 +268,30 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const base = from && cleanAmount(amount) ? toBase(cleanAmount(amount)!, from.decimals) : null;
   const insufficient = !!from && !!cleanAmount(amount) && Number(amount) > from.balance;
 
-  // Debounced quote; refreshes every 20s while the inputs stay the same.
+  // Receiving a classic asset needs a trustline on this wallet. XLM and
+  // Soroban-only tokens have no issuer, so they never need one.
+  const walletAddress = activeWallet?.address ?? null;
+  useEffect(() => {
+    if (!walletAddress || !to?.issuer) {
+      setTrust(true);
+      setCheckingTrust(false);
+      return;
+    }
+    let live = true;
+    setTrust(null);
+    setCheckingTrust(true);
+    void hasTrustline(walletAddress, to.code, to.issuer).then((v) => {
+      if (!live) return;
+      setTrust(v);
+      setCheckingTrust(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [walletAddress, to?.code, to?.issuer]);
+
+  // Debounced quote; refreshes every 30s while visible, and immediately when
+  // the tab comes back. Hidden tabs do not poll the aggregator.
   useEffect(() => {
     setQuote(null);
     setQuoteError(null);
@@ -286,11 +312,19 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       if (r.ok && r.quote) setQuote(r.quote);
       else setQuoteError(r.reason === "no-api-key" ? "Swaps are not configured on this server." : (r.error ?? "No route found."));
     };
+    const tick = () => {
+      if (document.visibilityState === "visible") void run();
+    };
     const t = setTimeout(run, 450);
-    const iv = setInterval(run, 20_000);
+    const iv = setInterval(tick, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void run();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearTimeout(t);
       clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from?.contract, to?.contract, base, slippage, dexes.join(",")]);
@@ -324,11 +358,42 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       });
       if (!b.ok || !b.xdr) throw new Error(b.error ?? "Could not build the swap.");
       return b.xdr;
-    });
+    }, { kind: "swap", protocol: "soroswap" });
     if (ok) setAmount("");
   };
 
-  const dexLabel = dexes.length === 0 ? "Auto · best route across all DEXs" : dexes.map(dexName).join(", ");
+  const watchOnly = activeWallet?.walletId === "watch";
+  const checkingNeededTrust = !!activeWallet && !!to?.issuer && checkingTrust;
+  const needsTrust = !!to?.issuer && trust === false;
+  const trustUnknown = !!activeWallet && !!to?.issuer && trust === null && !checkingTrust;
+
+  const addTrustline = async () => {
+    const issuer = to?.issuer;
+    if (!activeWallet || !to || !issuer) return;
+    setAddingTrust(true);
+    try {
+      const ok = await tx.runSingle(
+        `Add ${to.code} trustline`,
+        `Allow this wallet to hold ${to.code}`,
+        activeWallet,
+        () => buildTrustline(activeWallet.address, to.code, issuer),
+        { kind: "trustline", protocol: "stellar" },
+      );
+      if (ok) setTrust(true);
+    } finally {
+      setAddingTrust(false);
+    }
+  };
+
+  const primaryAction = () => {
+    if (needsTrust) {
+      if (!watchOnly) void addTrustline();
+      return;
+    }
+    void execute();
+  };
+
+  const dexLabel = dexes.length === 0 ? "Auto — best route across all DEXs" : dexes.map(dexName).join(", ");
   let cta = "EXCHANGE";
   let disabled = true;
   if (!from || !to) cta = "SELECT TOKENS";
@@ -336,7 +401,12 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   else if (!base) cta = "ENTER AMOUNT";
   else if (slipBad) cta = "SET SLIPPAGE";
   else if (insufficient) cta = `INSUFFICIENT ${from.code}`;
-  else if (quoting && !quote) cta = "FINDING BEST ROUTE…";
+  else if (checkingNeededTrust) cta = "CHECKING TRUSTLINE…";
+  else if (addingTrust) cta = "ADDING TRUSTLINE…";
+  else if (needsTrust) {
+    cta = watchOnly ? "WATCH-ONLY WALLET" : `ADD ${to.code} TRUSTLINE`;
+    disabled = watchOnly;
+  } else if (quoting && !quote) cta = "FINDING BEST ROUTE…";
   else if (!quote) cta = "NO ROUTE";
   else disabled = false;
 
@@ -508,8 +578,18 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
           {impact >= 10 ? "Very high" : "High"} price impact ({impact.toFixed(2)}%).
         </Typography>
       )}
+      {needsTrust && !watchOnly && !addingTrust && (
+        <Typography variant="subtitle3" color="grey.200" sx={{ textAlign: "center", mt: "-0.5rem" }}>
+          One-time trustline; locks 0.5 XLM as reserve.
+        </Typography>
+      )}
+      {trustUnknown && (
+        <Typography variant="subtitle3" color="warning.main" sx={{ textAlign: "center" }}>
+          Could not verify this trustline; the swap may fail if it is missing.
+        </Typography>
+      )}
 
-      <MainButton variant="solid" color="primary" fullWidth disabled={disabled} onClick={() => void execute()}>
+      <MainButton variant="solid" color="primary" fullWidth disabled={disabled} onClick={primaryAction}>
         {cta}
       </MainButton>
 
@@ -593,6 +673,7 @@ function SendPanel({ tokens }: { tokens: SwapToken[] }) {
     if (!activeWallet || !token || !clean) return;
     const ok = await tx.runSingle(`Send ${token.code}`, `Send ${clean} ${token.code} to ${shortAddress(to.trim())}`, activeWallet, () =>
       buildPayment({ from: activeWallet.address, to: to.trim(), code: token.code, issuer: token.issuer, amount: clean, memo }),
+      { kind: "send", protocol: "stellar" },
     );
     if (ok) {
       setAmount("");

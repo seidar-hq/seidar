@@ -5,7 +5,7 @@
 #   DB (D1)        SQLite, replacing Postgres (schema in src/db.ts, created on first use)
 #   cron           warmers once a minute (Node's setInterval loops live in src/server.ts only)
 #
-# Secrets (never in this file): wrangler secret put SOROSWAP_API_KEY | DEFINDEX_API_KEY | RPC_URL
+# Secrets (never in this file): wrangler secret put SOROSWAP_API_KEY | DEFINDEX_API_KEY | RPC_URL | ANALYTICS_ADMIN_TOKEN
 # Runs on the Workers Free plan, but heavy routes (positions, vault catalogue, Zenex) exceed its
 # 10 ms CPU / 50 subrequest limits; Workers Paid ($5/mo) lifts both with no config change.
 
@@ -30,7 +30,7 @@ database_name = "seidar-db"
 database_id = "1f0d1680-293c-47d2-8f10-22ee08d4c31f"
 
 [vars]
-CORS_ORIGINS = "https://app.seidar.xyz,https://seidar-app.pages.dev"
+CORS_ORIGINS = "https://app.seidar.xyz,https://seidar-app.pages.dev,https://analytics.seidar.xyz,https://seidar-analytics.pages.dev"
 API_RL_LIMIT = "120"
 API_RL_WINDOW_MS = "60000"
 

@@ -250,6 +250,26 @@ async function runSchema(): Promise<void> {
       name TEXT NOT NULL DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Public analytics (analytics.ts): transactions Seidar submitted, wallets (hashed), daily activity.
+    CREATE TABLE IF NOT EXISTS analytics_txs (
+      hash TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      protocol TEXT NOT NULL,
+      volume_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+      day TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS analytics_txs_day_idx ON analytics_txs (day);
+    CREATE INDEX IF NOT EXISTS analytics_txs_created_idx ON analytics_txs (created_at DESC);
+    CREATE TABLE IF NOT EXISTS analytics_wallets (hash TEXT PRIMARY KEY, first_day TEXT NOT NULL, last_day TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS analytics_active (day TEXT NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (day, hash));
+    -- Owner-only adjustments layered over the measured summary (single row).
+    CREATE TABLE IF NOT EXISTS analytics_adjustments (
+      id INTEGER PRIMARY KEY,
+      params TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
   `);
 }
 
@@ -269,7 +289,13 @@ CREATE INDEX IF NOT EXISTS wallet_snapshots_wallet_idx ON wallet_snapshots (wall
 CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, files TEXT NOT NULL DEFAULT '[]', created_at ${TS});
 CREATE TABLE IF NOT EXISTS defindex_vaults (idx INTEGER PRIMARY KEY, address TEXT NOT NULL UNIQUE, name TEXT NOT NULL DEFAULT '', symbol TEXT NOT NULL DEFAULT '', assets TEXT NOT NULL DEFAULT '[]', created_at ${TS});
 CREATE TABLE IF NOT EXISTS token_meta (contract TEXT PRIMARY KEY, code TEXT NOT NULL, decimals INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', updated_at ${TS});
-CREATE TABLE IF NOT EXISTS token_icons (contract TEXT PRIMARY KEY, icon TEXT, checked_at ${TS})
+CREATE TABLE IF NOT EXISTS token_icons (contract TEXT PRIMARY KEY, icon TEXT, checked_at ${TS});
+CREATE TABLE IF NOT EXISTS analytics_txs (hash TEXT PRIMARY KEY, account TEXT NOT NULL, kind TEXT NOT NULL, protocol TEXT NOT NULL, volume_usd REAL NOT NULL DEFAULT 0, day TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS analytics_txs_day_idx ON analytics_txs (day);
+CREATE INDEX IF NOT EXISTS analytics_txs_created_idx ON analytics_txs (created_at DESC);
+CREATE TABLE IF NOT EXISTS analytics_wallets (hash TEXT PRIMARY KEY, first_day TEXT NOT NULL, last_day TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS analytics_active (day TEXT NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (day, hash));
+CREATE TABLE IF NOT EXISTS analytics_adjustments (id INTEGER PRIMARY KEY, params TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT '')
 `;
 
 export type DbSessionGrant = {

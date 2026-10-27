@@ -3,6 +3,7 @@
 // app/api/{swap/quote,swap/build,swap/send,swap/tokens,tx/send,icon}/route.ts.
 // SOROSWAP_API_KEY stays server-side (services/api env, never the browser).
 
+import { recordSubmitted, type TxMeta } from "./analytics.js";
 import { cacheGetEntry, cacheSet } from "@seidar/cache";
 import { isTestnet, networkPassphrase, TESTNET } from "./net.js";
 import { sorobanView } from "./rpc.js";
@@ -17,6 +18,11 @@ export const soroNetwork = () => (isTestnet() ? "testnet" : "mainnet");
 export const SORO_PROTOCOLS = ["soroswap", "phoenix", "aqua", "sdex", "sushi"];
 
 const RPC_URL = process.env.RPC_URL?.trim() || "https://mainnet.sorobanrpc.com";
+
+/** Identical quotes are shared for a few seconds: tabs and retries must not
+ *  spend the aggregator's shared API-key budget. */
+const QUOTE_TTL_MS = 5_000;
+const quoteFlights = new Map<string, Promise<unknown>>();
 
 
 export function soroKey(): string | null {
@@ -138,37 +144,66 @@ export async function quoteSwap(body: {
         : NaN;
   const feeBps =
     Number.isFinite(feeNum) && feeNum > 0 && feeNum <= 1000 ? Math.floor(feeNum) : undefined;
+  const tradeType = body?.tradeType === "EXACT_OUT" ? "EXACT_OUT" : "EXACT_IN";
+  const protocols = body?.smart
+    ? (wantProto.length > 0 ? wantProto : SORO_PROTOCOLS).filter((p) =>
+        (SMART_SWAP_PROTOCOLS as readonly string[]).includes(p),
+      )
+    : wantProto.length > 0
+      ? wantProto
+      : SORO_PROTOCOLS;
+  const quoteKey = `swap:quote:v1:${JSON.stringify([
+    soroNetwork(),
+    assetIn,
+    assetOut,
+    amount,
+    tradeType,
+    body?.slippageBps ?? "",
+    [...protocols].sort(),
+    feeBps ?? null,
+    !!body?.smart,
+  ])}`;
+  const cached = await cacheGetEntry<unknown>(quoteKey).catch(() => null);
+  if (cached && Date.now() - cached.at < QUOTE_TTL_MS) {
+    return { status: 200, body: { ok: true, quote: cached.value } };
+  }
+
   try {
-    const quote = await soroPost("/quote", {
-      assetIn,
-      assetOut,
-      amount,
-      tradeType: body?.tradeType === "EXACT_OUT" ? "EXACT_OUT" : "EXACT_IN",
-      protocols: body?.smart
-        ? (wantProto.length > 0 ? wantProto : SORO_PROTOCOLS).filter((p) =>
-            (SMART_SWAP_PROTOCOLS as readonly string[]).includes(p),
-          )
-        : wantProto.length > 0
-          ? wantProto
-          : SORO_PROTOCOLS,
-      ...(body?.slippageBps ? { slippageBps: body.slippageBps } : {}),
-      // The API's feeBps only lowers its quote (the built swap carries no
-      // partner fee), so smart-account quotes leave it out: Seidar's fee is
-      // taken by the Seidar router and reported below.
-      ...(feeBps && !body?.smart ? { feeBps } : {}),
-    });
-    if (body?.smart) {
-      const q = quote as { amountOut?: string; rawTrade?: RawTrade };
-      const bps = swapFeeBps(feeBps);
-      const net = (v: unknown) => (/^\d+$/.test(String(v)) ? netOf(BigInt(String(v)), bps).toString() : null);
-      (quote as Record<string, unknown>).seidar = {
-        feeBps: bps,
-        router: routerAddress(),
-        amountOutNet: net(q.amountOut),
-        amountOutMinNet: net(q.rawTrade?.amountOutMin),
-      };
-    }
-    await sanitizeImpact(quote as Record<string, unknown>, assetIn, assetOut);
+    const load = async () => {
+      const quote = await soroPost("/quote", {
+        assetIn,
+        assetOut,
+        amount,
+        tradeType,
+        protocols,
+        ...(body?.slippageBps ? { slippageBps: body.slippageBps } : {}),
+        // The API's feeBps only lowers its quote (the built swap carries no
+        // partner fee), so smart-account quotes leave it out: Seidar's fee is
+        // taken by the Seidar router and reported below.
+        ...(feeBps && !body?.smart ? { feeBps } : {}),
+      });
+      if (body?.smart) {
+        const q = quote as { amountOut?: string; rawTrade?: RawTrade };
+        const bps = swapFeeBps(feeBps);
+        const net = (v: unknown) => (/^\d+$/.test(String(v)) ? netOf(BigInt(String(v)), bps).toString() : null);
+        (quote as Record<string, unknown>).seidar = {
+          feeBps: bps,
+          router: routerAddress(),
+          amountOutNet: net(q.amountOut),
+          amountOutMinNet: net(q.rawTrade?.amountOutMin),
+        };
+      }
+      await sanitizeImpact(quote as Record<string, unknown>, assetIn, assetOut);
+      await cacheSet(quoteKey, quote, QUOTE_TTL_MS).catch(() => {});
+      return quote;
+    };
+    const pending = quoteFlights.get(quoteKey);
+    const quote = await (pending ??
+      (() => {
+        const p = load().finally(() => quoteFlights.delete(quoteKey));
+        quoteFlights.set(quoteKey, p);
+        return p;
+      })());
     return { status: 200, body: { ok: true, quote } };
   } catch (e) {
     const status = (e as { status?: number })?.status;
@@ -388,8 +423,8 @@ export async function getSwapTokens() {
   }
 }
 
-/** Submit a user-signed Soroban XDR (vault deposits/withdrawals). Refuses unsigned. */
-export async function sendTx(body: { xdr?: string }) {
+/** Submit a user-signed XDR (every in-app action). Refuses unsigned. Successes feed the public analytics. */
+export async function sendTx(body: { xdr?: string; meta?: TxMeta }) {
   if (typeof body?.xdr !== "string" || body.xdr.length < 16) {
     return { status: 200, body: { ok: false, error: "signed xdr required" } };
   }
@@ -401,7 +436,10 @@ export async function sendTx(body: { xdr?: string }) {
     }
     // Waits for the ledger verdict: ok only on SUCCESS, never on PENDING.
     const r = await submitAndWait(body.xdr);
-    if (r.ok) return { status: 200, body: { ok: true, hash: r.hash, status: "SUCCESS", returnValue: r.returnValue ?? null } };
+    if (r.ok) {
+      if (r.hash) recordSubmitted(r.hash, parsed.source, body.meta);
+      return { status: 200, body: { ok: true, hash: r.hash, status: "SUCCESS", returnValue: r.returnValue ?? null } };
+    }
     return { status: 200, body: { ok: false, hash: r.hash, error: r.error } };
   } catch (e) {
     return {

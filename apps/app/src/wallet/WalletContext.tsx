@@ -12,6 +12,7 @@ import {
   type WalletKind,
 } from "@/lib/wallets";
 import { shortAddress } from "@/lib/format";
+import { apiFetch } from "@/lib/api";
 
 // Wallet session for the whole app. Linked Stellar wallets are grouped into named portfolios.
 // One portfolio is active: the dashboard, earn and history follow its wallets, and one of its
@@ -134,6 +135,26 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [portfolio, setPortfolioState] = useState<PortfolioSelection>("all");
+
+  // Public analytics: each linked wallet counts once a day (hashed server-side; watch-only never counts).
+  useEffect(() => {
+    const day = new Date().toISOString().slice(0, 10);
+    for (const w of wallets) {
+      if (w.walletId === "watch") continue;
+      const key = `seidar.ping.${w.address}`;
+      try {
+        if (localStorage.getItem(key) === day) continue;
+        localStorage.setItem(key, day);
+      } catch {
+        continue;
+      }
+      void apiFetch("/api/analytics/ping", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: w.address }),
+      }).catch(() => {});
+    }
+  }, [wallets]);
 
   // Warm the wallet kit (and WalletConnect's client) once the page has settled.
   useEffect(() => {

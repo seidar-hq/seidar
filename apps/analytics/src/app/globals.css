@@ -1,0 +1,89 @@
+@font-face {
+  font-family: "Public Sans";
+  src: url(/assets/PublicSans-VariableFont_wght.ttf) format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url(/assets/PublicSans-Italic-VariableFont_wght.ttf) format("truetype-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[style*="cursor: pointer"] > svg,
+[style*="cursor:pointer"] > svg,
+[style*="cursor: pointer"] > img,
+[style*="cursor:pointer"] > img,
+.MuiButtonBase-root > svg,
+.MuiButtonBase-root > .MuiSvgIcon-root {
+  pointer-events: none;
+}
+
+* {
+  font-family: "Public Sans", sans-serif !important;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  font-size: 16px;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: var(--app-bg, #141414);
+}
+
+body {
+  font-family: "Public Sans", sans-serif;
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--app-bg, #141414);
+  padding: 0 !important;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@media screen and (max-width: 1853px) {
+  html {
+    font-size: 14px;
+  }
+}
+@media screen and (max-width: 1236px) {
+  html {
+    font-size: 12px;
+  }
+}
+
+/* Dark, thin scrollbars everywhere (tables, dialogs, lists). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
