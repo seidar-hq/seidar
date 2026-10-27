@@ -11,7 +11,7 @@ import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import GlassDialog from "@/components/common/GlassDialog";
 import { useAlerts } from "@/components/common/Alerts";
-import { explorerTx, type TxStep } from "@/lib/tx";
+import { explorerTx, readableError, type TxStep } from "@/lib/tx";
 
 const STATUS_TEXT: Record<TxStep["status"], string> = {
   queued: "Waiting",
@@ -83,11 +83,11 @@ export default function TxDialog({
                 <CircularProgress size={20} />
               )}
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle1" color="common.black">
+                <Typography variant="subtitle1" color="common.black" sx={{ overflowWrap: "anywhere" }}>
                   {steps.length > 1 ? `${i + 1}. ` : ""}
                   {s.label}
                 </Typography>
-                <Typography variant="subtitle3" color={s.status === "failed" ? "error.main" : "grey.200"}>
+                <Typography variant="subtitle3" color={s.status === "failed" ? "error.main" : "grey.200"} sx={{ display: "block", overflowWrap: "anywhere" }}>
                   {s.status === "failed" && s.error ? s.error : STATUS_TEXT[s.status]}
                 </Typography>
               </Box>
@@ -116,8 +116,8 @@ export default function TxDialog({
           </Box>
         ))}
         {error && !steps.some((s) => s.status === "failed") && (
-          <Typography variant="subtitle3" color="error.main">
-            {error}
+          <Typography variant="subtitle3" color="error.main" sx={{ display: "block", overflowWrap: "anywhere" }}>
+            {readableError(error)}
           </Typography>
         )}
       </Box>

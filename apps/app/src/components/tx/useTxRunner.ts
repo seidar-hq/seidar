@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { WatchOnlyError } from "@/lib/wallets";
-import { TxError, TxPending, signAndSend, type Signer, type TxMeta, type TxStep } from "@/lib/tx";
+import { TxError, TxPending, readableError, signAndSend, type Signer, type TxMeta, type TxStep } from "@/lib/tx";
 import { refreshBalances } from "@/wallet/useBalances";
 import { pushNote } from "@/components/layout/NotificationButton";
 
@@ -58,7 +58,7 @@ export function useTxRunner() {
           return false;
         }
         step.status = "failed";
-        step.error = e instanceof Error ? e.message : String(e);
+        step.error = e instanceof TxError ? e.message : readableError(e);
         step.hash = e instanceof TxError ? e.hash : null;
         emit();
         return false;

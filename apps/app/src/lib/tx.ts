@@ -68,6 +68,41 @@ export function txMeta(path: string, body: unknown): TxMeta | undefined {
   return undefined;
 }
 
+/** Stellar transaction result codes, in words. */
+const TX_CODES: Record<string, string> = {
+  txBAD_SEQ: "Your account sent another transaction first. Please try again.",
+  txTOO_LATE: "This transaction expired before it reached the network. Please try again.",
+  txTOO_EARLY: "This transaction isn't valid yet. Please try again in a moment.",
+  txINSUFFICIENT_BALANCE: "Not enough XLM to cover the network fee and your account's minimum balance.",
+  txINSUFFICIENT_FEE: "The network fee was too low at this moment. Please try again.",
+  txBAD_AUTH: "The signature doesn't match this account. Sign with the wallet that is connected.",
+  txBAD_AUTH_EXTRA: "The transaction carried an unexpected signature. Please try again.",
+  txNO_ACCOUNT: "This account doesn't exist on Stellar yet. Fund it with XLM first.",
+  txFAILED: "One of the steps in this transaction failed on Stellar.",
+  txMALFORMED: "The transaction was malformed. Please try again.",
+  txMISSING_OPERATION: "The transaction was malformed. Please try again.",
+  txINTERNAL_ERROR: "Stellar returned an internal error. Please try again.",
+  txSOROBAN_INVALID: "The smart-contract part of this transaction was rejected. Please try again.",
+};
+
+/**
+ * Turns raw failure text (network result codes, simulator output, HTTP or RPC errors) into a short
+ * sentence a user can act on. Messages that are already plain English pass through unchanged.
+ */
+export function readableError(raw: unknown): string {
+  const msg = (raw instanceof Error ? raw.message : String(raw ?? "")).replace(/\s+/g, " ").replace(/^(Error|TypeError):\s*/i, "").trim();
+  if (!msg) return "Something went wrong. Please try again.";
+  const code = msg.match(/\b(tx[A-Z_]+)\b/)?.[1];
+  if (code && TX_CODES[code]) return TX_CODES[code];
+  if (/^Simulation failed/i.test(msg)) return "The protocol rejected this transaction when it was checked before signing. Try a different amount, or try again shortly.";
+  if (/^Server error \((\d+)\)/i.test(msg)) return "Seidar's server couldn't handle this request. Please try again in a moment.";
+  if (/\b429\b|rate.?limit|too many requests/i.test(msg)) return "The network is busy right now. Please try again in a few seconds.";
+  if (/too many subrequests|failed to fetch|fetch failed|network ?error|networkerror|load failed|timed? ?out|ETIMEDOUT|ECONNRESET|aborted/i.test(msg))
+    return "Couldn't reach the Stellar network. Check your connection and try again.";
+  // Already readable: keep it, but never let a huge dump into the dialog.
+  return msg.length > 220 ? `${msg.slice(0, 217)}…` : msg;
+}
+
 export async function postJson<T = Record<string, unknown>>(path: string, body: unknown): Promise<T> {
   const r = await apiFetch(path, {
     method: "POST",
@@ -83,7 +118,7 @@ function walletError(e: unknown): Error {
   if (e instanceof WatchOnlyError) return e;
   const msg = e instanceof Error ? e.message : String(e);
   if (/declin|reject|denied|cancel|closed/i.test(msg)) return new TxError("Signature declined in your wallet.");
-  return new TxError(msg.slice(0, 200));
+  return new TxError(readableError(msg));
 }
 
 const HORIZON = "https://horizon.stellar.org";
@@ -196,7 +231,7 @@ export async function signAndSend(
     onStatus?.("done");
     return { hash: s.hash, returnValue: s.returnValue ?? null };
   }
-  if ((s && definite(s)) || !hash) throw new TxError(s?.error ?? "Submission failed.", s?.hash ?? hash);
+  if ((s && definite(s)) || !hash) throw new TxError(readableError(s?.error ?? "Submission failed."), s?.hash ?? hash);
 
   // No clear answer: read the outcome from the ledger.
   onStatus?.("confirming");
@@ -238,7 +273,7 @@ export async function runBuilt(
     }
     if (!b.ok || !b.xdr) {
       step.status = "failed";
-      step.error = b.error ?? "Could not build the transaction.";
+      step.error = readableError(b.error ?? "Could not build the transaction.");
       emit();
       throw new TxError(step.error);
     }
@@ -274,7 +309,7 @@ export async function runBuilt(
         return { hashes, unsigned: false, pending: true };
       }
       step.status = "failed";
-      step.error = e instanceof Error ? e.message : String(e);
+      step.error = e instanceof TxError ? e.message : readableError(e);
       step.hash = e instanceof TxError ? e.hash : null;
       emit();
       throw e;
