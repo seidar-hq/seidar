@@ -300,17 +300,30 @@ app.get("/vaults/detail", async (c) => {
 
 /* Position scans can take minutes on a cold cache (every pool/vault is read on chain). Answer
    within a deadline with an empty "warming" result instead of holding the browser connection;
-   the scan keeps running, so its caches are warm for the next poll. One scan per address. */
-const scans = new Map<string, Promise<{ status: number; body: unknown }>>();
+   the scan keeps running, so its caches are warm for the next poll. One scan per address.
+   A finished scan is only kept for a caller that was told "warming" (its next poll collects it);
+   otherwise it is dropped at once, so the refreshes after a transaction read the new state. */
+type Scan = { job: Promise<{ status: number; body: unknown }>; done: boolean; owed: boolean };
+const scans = new Map<string, Scan>();
 async function boundedScan(key: string, run: () => Promise<{ status: number; body: unknown }>, ms = 25_000) {
-  let job = scans.get(key);
-  if (!job) {
-    job = run().finally(() => setTimeout(() => scans.delete(key), 60_000));
-    scans.set(key, job);
+  let scan = scans.get(key);
+  if (scan?.done) scans.delete(key); // a warming caller collecting its result; the next read rescans
+  if (!scan) {
+    const s: Scan = { job: run(), done: false, owed: false };
+    s.job.finally(() => {
+      s.done = true;
+      if (!s.owed) scans.get(key) === s && scans.delete(key);
+      else setTimeout(() => scans.get(key) === s && scans.delete(key), 60_000);
+    }).catch(() => {});
+    scans.set(key, s);
+    scan = s;
   }
   const late = Symbol("late");
-  const r = await Promise.race([job, new Promise<typeof late>((res) => setTimeout(() => res(late), ms))]);
-  if (r === late) return { status: 200, body: { ok: true, positions: [], warming: true, notes: ["Still scanning: try again shortly."] } };
+  const r = await Promise.race([scan.job, new Promise<typeof late>((res) => setTimeout(() => res(late), ms))]);
+  if (r === late) {
+    scan.owed = true;
+    return { status: 200, body: { ok: true, positions: [], warming: true, notes: ["Still scanning: try again shortly."] } };
+  }
   return r;
 }
 
