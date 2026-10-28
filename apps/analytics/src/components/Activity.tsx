@@ -135,12 +135,9 @@ export default function Activity({ data, win }: { data: Summary | null; win: Win
                 ) : (
                   <Area dataKey="cumTxs" name="Cumulative transactions" stroke={BLUE} strokeWidth={2} fill="url(#fillBlue)" type="monotone" isAnimationActive={false} />
                 ))}
-              {view === "wallets" && (
-                <>
-                  <Area dataKey="totalWallets" name="Connected wallets" stroke={BLUE} strokeWidth={2} fill="url(#fillBlue)" type="monotone" isAnimationActive={false} />
-                  <Bar dataKey="activeWallets" name="Active that day" fill={CYAN} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-                </>
-              )}
+              {/* No fragment here: Recharts 2 uses react-is 18, which can't see React 19 fragments and drops their children. */}
+              {view === "wallets" && <Area dataKey="totalWallets" name="Connected wallets" stroke={BLUE} strokeWidth={2} fill="url(#fillBlue)" type="monotone" isAnimationActive={false} />}
+              {view === "wallets" && <Bar dataKey="activeWallets" name="Active that day" fill={CYAN} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />}
             </ComposedChart>
           </ResponsiveContainer>
         )}
