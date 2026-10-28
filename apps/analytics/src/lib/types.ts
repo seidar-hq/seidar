@@ -31,7 +31,7 @@ export type Coverage = {
   perpsMarkets: number | null;
 };
 
-export type RecentTx = { hash: string; kind: string; protocol: string; volumeUsd: number; at: string };
+export type RecentTx = { hash: string; kind: string; protocol: string; volumeUsd: number; at: string; account: string };
 
 export type Summary = {
   generatedAt: string;

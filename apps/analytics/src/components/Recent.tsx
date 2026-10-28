@@ -28,8 +28,8 @@ export default function Recent({ data }: { data: Summary | null }) {
           <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", minWidth: "40rem" }}>
             <Box component="thead">
               <Box component="tr">
-                {["When", "Product", "Protocol", "Value", "Transaction"].map((h, i) => (
-                  <Box component="th" key={h} sx={{ ...cell, pt: 0, textAlign: i >= 3 ? "right" : "left", fontSize: "0.75rem", fontWeight: 500, color: "grey.200" }}>
+                {["When", "Wallet", "Product", "Protocol", "Value", "Transaction"].map((h, i) => (
+                  <Box component="th" key={h} sx={{ ...cell, pt: 0, textAlign: i >= 4 ? "right" : "left", fontSize: "0.75rem", fontWeight: 500, color: "grey.200" }}>
                     {h}
                   </Box>
                 ))}
@@ -43,6 +43,9 @@ export default function Recent({ data }: { data: Summary | null }) {
                   <Box component="tr" key={r.hash}>
                     <Box component="td" sx={{ ...cell, fontSize: "0.875rem", color: "grey.200" }}>
                       {ago(r.at)}
+                    </Box>
+                    <Box component="td" sx={{ ...cell, fontFamily: "monospace", fontSize: "0.8125rem", color: "grey.200" }}>
+                      {r.account ? shortHash(r.account) : "—"}
                     </Box>
                     <Box component="td" sx={cell}>
                       <Box sx={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", px: "0.5rem", height: "1.5rem", borderRadius: "999rem", backgroundColor: "overlay.white04" }}>

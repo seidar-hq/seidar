@@ -763,8 +763,8 @@ async function buildSummary(): Promise<AnalyticsSummary> {
     db.query<{ day: string; n: Num }>("SELECT first_day AS day, COUNT(*) AS n FROM analytics_wallets WHERE first_day >= $1 GROUP BY first_day", [from]),
     db.query<{ n: Num }>("SELECT COUNT(*) AS n FROM analytics_wallets WHERE first_day < $1", [from]),
     db.query<{ day: string; n: Num }>("SELECT day, COUNT(*) AS n FROM analytics_active WHERE day >= $1 GROUP BY day", [from]),
-    db.query<{ hash: string; kind: string; protocol: string; volume_usd: Num; created_at: string }>(
-      "SELECT hash, kind, protocol, volume_usd, created_at FROM analytics_txs ORDER BY created_at DESC LIMIT 25",
+    db.query<{ hash: string; kind: string; protocol: string; volume_usd: Num; created_at: string; account: string }>(
+      "SELECT hash, kind, protocol, volume_usd, created_at, account FROM analytics_txs ORDER BY created_at DESC LIMIT 25",
     ),
     coverage(),
   ]);
@@ -829,7 +829,7 @@ async function buildSummary(): Promise<AnalyticsSummary> {
     byKind: [...byKind].map(([kind, v]) => ({ kind, ...v })).sort(sortDesc),
     byProtocol: [...byProtocol].map(([protocol, v]) => ({ protocol, ...v })).sort(sortDesc),
     daily,
-    recent: recent.rows.map((r) => ({ hash: r.hash, kind: r.kind, protocol: r.protocol, volumeUsd: n(r.volume_usd), at: String(r.created_at) })),
+    recent: recent.rows.map((r) => ({ hash: r.hash, kind: r.kind, protocol: r.protocol, volumeUsd: n(r.volume_usd), at: String(r.created_at), account: r.account })),
     coverage: cov,
     windows: { all: wAll, "30d": w30, "7d": w7, "24h": w24 },
     hourly,
@@ -848,3 +848,4 @@ export async function analyticsSummary() {
     return { status: 200, body: { ok: false, error: "db-unavailable" } };
   }
 }
+

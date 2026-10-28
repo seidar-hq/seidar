@@ -188,6 +188,7 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 | `seidar.xyz`, `www.seidar.xyz` | Pages `seidar-web` | `cd apps/web && npm run build`, then `npx wrangler pages deploy apps/web/out --project-name seidar-web --branch main` |
 | `docs.seidar.xyz` | Pages `seidar-docs` | `cd apps/docs && npm run build`, then `npx wrangler pages deploy apps/docs/build --project-name seidar-docs --branch main` |
 | `app.seidar.xyz` | Pages `seidar-app` (+ `functions/`) | `cd apps/app && npm run build && npx wrangler pages deploy out --project-name seidar-app --branch main` (run from `apps/app` so `functions/` is included) |
+| `analytics.seidar.xyz` | Pages `seidar-analytics` (static; reads `api.seidar.xyz/analytics/summary` directly, CORS-allowed) | `cd apps/analytics && npm run build && npx wrangler pages deploy out --project-name seidar-analytics --branch main` |
 | `api.seidar.xyz` | Worker `seidar-api`, D1 `seidar-db`, KV `seidar-cache`, cron `* * * * *` | `cd services/api && npx wrangler deploy` |
 
 - Worker secrets (set via `wrangler secret bulk`, values live only in `services/api/.env.local` /

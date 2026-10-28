@@ -4,6 +4,7 @@ import ThemeRegistry from "@/theme/ThemeRegistry";
 import { AdminProvider } from "@/admin/AdminContext";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://analytics.seidar.xyz"),
   title: "Seidar Analytics",
   description: "Live, on-chain-verifiable usage of Seidar, the non-custodial DeFi workspace for Stellar.",
   icons: { icon: "/assets/favicon.svg" },
