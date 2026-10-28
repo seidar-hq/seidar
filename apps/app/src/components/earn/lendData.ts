@@ -300,5 +300,7 @@ export const compactUsd = (v: number | null | undefined) => {
 };
 
 /** Link to a market's page (Supply / Borrow / Withdraw / Repay live there). */
-export const marketHref = (m: Pick<Market, "protocol" | "pool" | "contract" | "code">, mode: LendAction = "supply") =>
-  `/earn/lending&borrow/view?protocol=${m.protocol}&pool=${encodeURIComponent(m.pool)}&asset=${encodeURIComponent(m.contract ?? m.code)}&mode=${mode}`;
+export const marketHref = (m: Pick<Market, "protocol" | "pool" | "contract" | "code">, mode: LendAction = "supply", accountId?: string) =>
+  `/earn/lending&borrow/view?protocol=${m.protocol}&pool=${encodeURIComponent(m.pool)}&asset=${encodeURIComponent(m.contract ?? m.code)}&mode=${mode}${
+    accountId ? `&account=${encodeURIComponent(accountId)}` : ""
+  }`;

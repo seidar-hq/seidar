@@ -78,7 +78,7 @@ function CollateralMark({ ok }: { ok: boolean }) {
 
 export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   const router = useRouter();
-  const { activeWallet, portfolioAddresses, portfolioWallets } = useWallet();
+  const { activeWallet, portfolioAddresses, portfolioWallets, switchWallet } = useWallet();
   const { markets, loading } = useLendMarkets();
   const positions = useLendPositions(portfolioAddresses);
   const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
@@ -101,7 +101,10 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   const matches = (m: Market) => !query || m.code.toLowerCase().includes(query) || m.poolName.toLowerCase().includes(query);
 
   const venues = (["blend", "xoxno"] as LendProtocol[]).filter((p) => proto === "all" || proto === p);
-  const open = (m: Market, a: "supply" | "borrow" | "withdraw" | "repay") => router.push(marketHref(m, a));
+  const open = (m: Market, a: "supply" | "borrow" | "withdraw" | "repay", wallet?: string, accountId?: string) => {
+    if (wallet && wallet !== activeWallet?.address) switchWallet(wallet);
+    router.push(marketHref(m, a, accountId));
+  };
 
   const runClaim = async (pool: string) => {
     if (!activeWallet) return;
@@ -189,7 +192,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       align: "center",
       cell: (l) => {
         const m = marketOf(l);
-        return <RowAction label="Withdraw" disabled={!m} onClick={() => m && open(m, "withdraw")} />;
+        return <RowAction label="Withdraw" disabled={!m} onClick={() => m && open(m, "withdraw", l.wallet, l.xoxno?.accountId)} />;
       },
     },
   ];
@@ -226,7 +229,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       align: "center",
       cell: (l) => {
         const m = marketOf(l);
-        return <RowAction label="Repay" disabled={!m} onClick={() => m && open(m, "repay")} />;
+        return <RowAction label="Repay" disabled={!m} onClick={() => m && open(m, "repay", l.wallet, l.xoxno?.accountId)} />;
       },
     },
   ];
@@ -300,10 +303,10 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
                 title="Your Supplies"
                 columns={yourSupplyCols}
                 rows={supplies}
-                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}`}
+                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}:${l.xoxno?.accountId ?? ""}`}
                 onRowClick={(l) => {
                   const m = marketOf(l);
-                  if (m) open(m, "withdraw");
+                  if (m) open(m, "withdraw", l.wallet, l.xoxno?.accountId);
                 }}
                 defaultSort={{ id: "amount", dir: "desc" }}
               />
@@ -331,10 +334,10 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
                 title="Your Borrows"
                 columns={yourBorrowCols}
                 rows={borrows}
-                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}`}
+                getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}:${l.xoxno?.accountId ?? ""}`}
                 onRowClick={(l) => {
                   const m = marketOf(l);
-                  if (m) open(m, "repay");
+                  if (m) open(m, "repay", l.wallet, l.xoxno?.accountId);
                 }}
                 defaultSort={{ id: "debt", dir: "desc" }}
               />

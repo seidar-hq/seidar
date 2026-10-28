@@ -19,7 +19,7 @@ import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import ActionCard, { AmountBox, DetailRows, type DetailRow } from "./ActionCard";
 import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard, StatusPill } from "./EarnUI";
-import { LEND_PROTOCOLS, actionBlock, compactUsd, marketStatus, pct, useLendMarkets, useLendPositions, type LendAction, type Market } from "./lendData";
+import { LEND_PROTOCOLS, actionBlock, compactUsd, marketHref, marketStatus, pct, useLendMarkets, useLendPositions, type LendAction, type Market } from "./lendData";
 
 const Layout = styled(Box)({
   display: "grid",
@@ -51,7 +51,26 @@ const TABS: { id: LendAction; label: string }[] = [
   { id: "repay", label: "Repay" },
 ];
 
-type XoxnoAccount = { accountId: string; spokeId: number; hubId: number };
+type XoxnoAccountAsset = {
+  sac: string;
+  hubId: number;
+  amount: string | null;
+  priceUsd: number | null;
+  valueUsd: number | null;
+};
+
+type XoxnoAccount = {
+  accountId: string;
+  spokeId: number | null;
+  spokeName: string | null;
+  supplied?: XoxnoAccountAsset[];
+  borrow?: XoxnoAccountAsset[];
+  availableBorrowUsd: number | null;
+  healthFactor: number | null;
+};
+
+const xoxnoAssetAmount = (assets: XoxnoAccountAsset[] | undefined, sac: string, hubId: number) =>
+  (assets ?? []).reduce((sum, a) => (a.sac === sac && a.hubId === hubId ? sum + Number(a.amount ?? 0) : sum), 0);
 
 export default function LendMarket() {
   const params = useSearchParams();
@@ -60,6 +79,7 @@ export default function LendMarket() {
   const pool = params.get("pool") ?? "";
   const asset = params.get("asset") ?? "";
   const initial = (params.get("mode") as LendAction) || "supply";
+  const accountParam = params.get("account");
   const { activeWallet, isConnected, openConnectModal } = useWallet();
   const me = activeWallet?.address ?? null;
   const { markets, loading } = useLendMarkets();
@@ -70,6 +90,7 @@ export default function LendMarket() {
   const [amount, setAmount] = useState("");
   const [collateral, setCollateral] = useState(true);
   const [spoke, setSpoke] = useState<number | null>(null);
+  const [pickedAccount, setPickedAccount] = useState<string | null>(accountParam);
   const [tx, setTx] = useState<{ open: boolean; steps: TxStep[]; error: string | null }>({ open: false, steps: [], error: null });
 
   useEffect(() => setAmount(""), [tab]);
@@ -96,7 +117,54 @@ export default function LendMarket() {
     () => apiJson(`/api/lending/xoxno/accounts?owner=${me}`, undefined, 120_000),
     120_000,
   );
-  const account = xoxnoAccts.value?.accounts?.find((a) => a.hubId === m?.xoxno?.hubId) ?? null;
+  const xoxnoHubId = m?.xoxno?.hubId ?? null;
+  const xoxnoAccounts = useMemo(() => {
+    if (protocol !== "xoxno" || xoxnoHubId == null) return [];
+    return (xoxnoAccts.value?.accounts ?? []).filter((a) =>
+      [...(a.supplied ?? []), ...(a.borrow ?? [])].some((p) => p.hubId === xoxnoHubId),
+    );
+  }, [protocol, xoxnoHubId, xoxnoAccts.value]);
+  const actionAccounts = useMemo(() => {
+    if (!m?.contract || protocol !== "xoxno" || xoxnoHubId == null) return [];
+    if (tab === "withdraw")
+      return xoxnoAccounts
+        .filter((a) => xoxnoAssetAmount(a.supplied, m.contract!, xoxnoHubId) > 0)
+        .sort((a, b) => xoxnoAssetAmount(b.supplied, m.contract!, xoxnoHubId) - xoxnoAssetAmount(a.supplied, m.contract!, xoxnoHubId));
+    if (tab === "repay")
+      return xoxnoAccounts
+        .filter((a) => xoxnoAssetAmount(a.borrow, m.contract!, xoxnoHubId) > 0)
+        .sort((a, b) => xoxnoAssetAmount(b.borrow, m.contract!, xoxnoHubId) - xoxnoAssetAmount(a.borrow, m.contract!, xoxnoHubId));
+    if (tab === "borrow")
+      return xoxnoAccounts
+        .filter((a) => m.xoxno?.spokes.some((s) => s.spokeId === a.spokeId && s.canBorrow))
+        .sort((a, b) => {
+          const cap = (x: XoxnoAccount) => {
+            const spoke = m.xoxno?.spokes.find((s) => s.spokeId === x.spokeId);
+            return Math.min(x.availableBorrowUsd ?? 0, spoke?.borrowCapacity?.usd ?? Infinity);
+          };
+          return cap(b) - cap(a);
+        });
+    if (tab === "supply")
+      return xoxnoAccounts
+        .filter((a) => m.xoxno?.spokes.some((s) => s.spokeId === a.spokeId && s.canSupply))
+        .sort((a, b) => xoxnoAssetAmount(b.supplied, m.contract!, xoxnoHubId) - xoxnoAssetAmount(a.supplied, m.contract!, xoxnoHubId));
+    return xoxnoAccounts;
+  }, [m, protocol, tab, xoxnoHubId, xoxnoAccounts]);
+  const account = actionAccounts.find((a) => a.accountId === pickedAccount) ?? actionAccounts[0] ?? null;
+  useEffect(() => setPickedAccount(accountParam), [accountParam, m?.key, me]);
+
+  const accountSupplied = account && m?.contract && xoxnoHubId != null ? xoxnoAssetAmount(account.supplied, m.contract, xoxnoHubId) : 0;
+  const accountBorrowed = account && m?.contract && xoxnoHubId != null ? xoxnoAssetAmount(account.borrow, m.contract, xoxnoHubId) : 0;
+  const accountSpoke = protocol === "xoxno" && account ? m?.xoxno?.spokes.find((s) => s.spokeId === account.spokeId) : undefined;
+  const xoxnoBorrowCapUsd =
+    account && accountSpoke?.canBorrow
+      ? Math.min(account.availableBorrowUsd ?? Infinity, accountSpoke.borrowCapacity?.usd ?? Infinity)
+      : null;
+  const xoxnoMaxBorrow =
+    xoxnoBorrowCapUsd != null && Number.isFinite(xoxnoBorrowCapUsd) && price != null && price > 0
+      ? xoxnoBorrowCapUsd / price
+      : null;
+
   const supplySpokes = (m?.xoxno?.spokes ?? []).filter((s) => s.canSupply);
   const spokeId = account?.spokeId ?? spoke ?? supplySpokes[0]?.spokeId ?? null;
 
@@ -107,7 +175,12 @@ export default function LendMarket() {
     () => apiJson(`/api/lending/borrow-capacity?pool=${pool}&account=${me}&asset=${m!.contract}&minHealth=1.1`),
     60_000,
   );
-  const maxBorrow = cap.value?.ok && cap.value.amount && m ? Number(cap.value.amount) / 10 ** m.decimals : null;
+  const maxBorrow =
+    protocol === "xoxno"
+      ? xoxnoMaxBorrow
+      : cap.value?.ok && cap.value.amount && m
+        ? Number(cap.value.amount) / 10 ** m.decimals
+        : null;
 
   const activity = useActivity(me ? [me] : [], "positions");
   const marketActivity = useMemo(
@@ -130,22 +203,52 @@ export default function LendMarket() {
   const meta = LEND_PROTOCOLS[m.protocol];
   const status = marketStatus(m.status);
   const n = Number(amount || 0);
-  const available = tab === "supply" ? walletBal : tab === "withdraw" ? supplied : tab === "repay" ? borrowed : maxBorrow;
-  const balanceLabel = tab === "supply" ? "Wallet" : tab === "withdraw" ? "Supplied" : tab === "repay" ? "Debt" : "Can borrow";
+  const available =
+    tab === "supply"
+      ? walletBal
+      : tab === "withdraw"
+        ? protocol === "xoxno"
+          ? accountSupplied
+          : supplied
+        : tab === "repay"
+          ? protocol === "xoxno"
+            ? accountBorrowed
+            : borrowed
+          : maxBorrow;
+  const balanceLabel =
+    tab === "supply"
+      ? "Wallet"
+      : tab === "withdraw"
+        ? protocol === "xoxno"
+          ? "Account supplied"
+          : "Supplied"
+        : tab === "repay"
+          ? protocol === "xoxno"
+            ? "Account debt"
+            : "Debt"
+          : "Can borrow";
   const atMax = available != null && n > 0 && Math.abs(n - available) < 1e-9;
 
   const blocker = (() => {
     if (!isConnected) return "Connect a wallet";
     const b = actionBlock(m, tab);
     if (b) return b;
-    if (tab === "withdraw" && supplied <= 0) return "Nothing supplied here";
-    if (tab === "repay" && borrowed <= 0) return "No debt to repay";
-    if (m.protocol === "xoxno" && tab !== "supply" && !account) return "Supply first to open an XOXNO account";
+    if (m.protocol === "xoxno" && tab !== "supply" && !account) {
+      if (xoxnoAccts.loading) return "Loading XOXNO accounts…";
+      if (tab === "withdraw") return supplied > 0 ? "No XOXNO account with this supply" : "Nothing supplied here";
+      if (tab === "repay") return borrowed > 0 ? "No XOXNO account with this debt" : "No debt to repay";
+      return "No XOXNO account can borrow this asset";
+    }
+    if (m.protocol === "xoxno" && tab !== "supply" && account && !accountSpoke) return "This XOXNO account's spoke is unavailable";
+    if (tab === "withdraw" && (protocol === "xoxno" ? accountSupplied : supplied) <= 0) return "Nothing supplied here";
+    if (tab === "repay" && (protocol === "xoxno" ? accountBorrowed : borrowed) <= 0) return "No debt to repay";
     if (m.protocol === "xoxno" && tab === "supply" && !spokeId) return "No spoke accepts this asset";
     if (!(n > 0)) return "Enter an amount";
     if ((tab === "supply" || tab === "repay") && n > walletBal + 1e-9) return `Insufficient ${m.code} balance`;
-    if (tab === "withdraw" && n > supplied + 1e-9) return "More than supplied";
-    if (tab === "repay" && n > borrowed * 1.002 + 1e-9) return "More than your debt";
+    if (tab === "withdraw" && n > (protocol === "xoxno" ? accountSupplied : supplied) + 1e-9) return "More than supplied";
+    if (tab === "repay" && n > (protocol === "xoxno" ? accountBorrowed : borrowed) * 1.002 + 1e-9) return "More than your debt";
+    if (tab === "borrow" && protocol === "xoxno" && maxBorrow == null) return "Borrow capacity unavailable";
+    if (tab === "borrow" && maxBorrow != null && maxBorrow <= 0) return "No borrow capacity";
     if (tab === "borrow" && maxBorrow != null && n > maxBorrow + 1e-9) return "Above your borrow capacity";
     return null;
   })();
@@ -155,7 +258,7 @@ export default function LendMarket() {
     const amt = toBase(amount, m.decimals) ?? "0";
     if (tab === "supply") return [{ action: m.protocol === "blend" && !collateral ? "lend" : "supply", asset: m.contract!, amount: amt }];
     if (tab === "borrow") return [{ action: "borrow", asset: m.contract!, amount: amt }];
-    if (tab === "repay") return [{ action: "repay", asset: m.contract!, amount: atMax && Math.abs(n - borrowed) < 1e-9 ? "max" : amt }];
+    if (tab === "repay") return [{ action: "repay", asset: m.contract!, amount: atMax ? "max" : amt }];
     // Withdraw: Blend keeps collateral and plain supply apart; take collateral first, then plain supply.
     if (m.protocol === "xoxno") return [{ action: "withdraw", asset: m.contract!, amount: atMax ? "max" : amt }];
     const coll = Math.max(0, supplied - lent);
@@ -190,7 +293,10 @@ export default function LendMarket() {
   if (m.ltvPct != null) details.push({ label: "Collateral factor", value: pct(m.ltvPct, 0) });
   if (health != null) details.push({ label: "Health factor", value: health.toFixed(2), color: healthColor(health) });
   if (poolInfo && tab === "borrow") details.push({ label: "Borrow capacity", value: formatUsd(poolInfo.borrowCapacityUsd) });
-  if (m.protocol === "xoxno" && account) details.push({ label: "XOXNO account", value: `#${account.accountId}` });
+  if (m.protocol === "xoxno" && account)
+    details.push({ label: "XOXNO account", value: `#${account.accountId}${account.spokeName ? ` · ${account.spokeName}` : ""}` });
+  if (m.protocol === "xoxno" && tab === "borrow" && account)
+    details.push({ label: "Borrow capacity", value: maxBorrow != null ? `${formatAmount(maxBorrow, 4)} ${m.code}` : "—" });
   if (tab === "repay") details.push({ label: "Wallet balance", value: `${formatAmount(walletBal, 4)} ${m.code}`, color: walletBal + 1e-9 < n ? "error.main" : undefined });
 
   return (
@@ -261,7 +367,7 @@ export default function LendMarket() {
           active={tab}
           onTab={(id) => {
             setTab(id as LendAction);
-            router.replace(`/earn/lending&borrow/view?protocol=${protocol}&pool=${encodeURIComponent(pool)}&asset=${encodeURIComponent(asset)}&mode=${id}`, { scroll: false });
+            router.replace(marketHref(m, id as LendAction, account?.accountId), { scroll: false });
           }}
           cta={isConnected ? (TABS.find((t) => t.id === tab)?.label ?? "") : "Connect wallet"}
           blocker={isConnected ? blocker : null}
@@ -277,6 +383,30 @@ export default function LendMarket() {
             price={price}
             onMax={available ? () => setAmount(String(Number(available.toFixed(m.decimals)))) : undefined}
           />
+          {protocol === "xoxno" && actionAccounts.length > 1 && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO account</Typography>
+              <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {actionAccounts.map((a) => (
+                  <ButtonBase
+                    key={a.accountId}
+                    onClick={() => setPickedAccount(a.accountId)}
+                    sx={{
+                      height: "2.25rem",
+                      px: "0.875rem",
+                      borderRadius: "999rem",
+                      fontSize: "0.8125rem",
+                      color: account?.accountId === a.accountId ? "sidebar.white" : "common.black",
+                      backgroundColor: account?.accountId === a.accountId ? "sidebar.primary" : "overlay.white08",
+                    }}
+                  >
+                    #{a.accountId}
+                    {a.spokeName ? ` · ${a.spokeName}` : ""}
+                  </ButtonBase>
+                ))}
+              </Box>
+            </Box>
+          )}
           {tab === "supply" && m.protocol === "blend" && (
             <ButtonBase
               disabled={!m.canCollateral}
