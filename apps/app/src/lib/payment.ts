@@ -9,10 +9,16 @@ const HORIZON = "https://horizon.stellar.org";
 type HorizonAccount = { balances?: { asset_type: string; asset_code?: string; asset_issuer?: string }[] };
 
 async function loadAccount(address: string): Promise<HorizonAccount | null> {
-  const r = await fetch(`${HORIZON}/accounts/${address}`);
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error("Could not reach Horizon. Try again.");
-  return (await r.json()) as HorizonAccount;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8_000);
+  try {
+    const r = await fetch(`${HORIZON}/accounts/${address}`, { cache: "no-store", signal: ctl.signal });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("Could not reach Horizon. Try again.");
+    return (await r.json()) as HorizonAccount;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 export async function buildPayment(p: {

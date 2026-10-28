@@ -215,6 +215,10 @@ type Quote = {
 
 const fromBase = (v: string, decimals: number) => Number(v) / 10 ** decimals;
 
+const QUOTE_DEBOUNCE_MS = 700;
+const QUOTE_MIN_INTERVAL_MS = 1_500;
+const QUOTE_CACHE_MS = 15_000;
+
 function usePrices(codes: string[]) {
   const key = codes.length ? `px:${[...codes].sort().join(",")}` : null;
   const { value } = useShared<{ prices?: Record<string, number | null> } | null>(
@@ -244,10 +248,15 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [quotePaused, setQuotePaused] = useState(false);
   const [trust, setTrust] = useState<boolean | null>(true);
   const [checkingTrust, setCheckingTrust] = useState(false);
   const [addingTrust, setAddingTrust] = useState(false);
   const seq = useRef(0);
+  const quoteCache = useRef(new Map<string, { at: number; quote: Quote }>());
+  const lastQuoteAt = useRef(0);
+  const retryAt = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Default pair once the catalogue loads: XLM -> USDC.
   useEffect(() => {
@@ -291,15 +300,45 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   }, [walletAddress, to?.code, to?.issuer]);
 
   // Debounced quote; refreshes every 30s while visible, and immediately when
-  // the tab comes back. Hidden tabs do not poll the aggregator.
+  // the tab comes back. Hidden tabs do not poll the aggregator. Requests are
+  // throttled and cached so typing does not hammer the aggregator's shared key.
   useEffect(() => {
+    const id = ++seq.current;
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    if (!from || !to || !base || from.contract === to.contract || slipBad) {
+      setQuote(null);
+      setQuoteError(null);
+      setQuoting(false);
+      setQuotePaused(false);
+      return;
+    }
+    const key = `${from.contract}|${to.contract}|${base}|${Math.round(slipNum * 100)}|${[...dexes].sort().join("+")}`;
+    const cached = quoteCache.current.get(key);
+    if (cached && Date.now() - cached.at < QUOTE_CACHE_MS) {
+      setQuote(cached.quote);
+      setQuoteError(null);
+      setQuoting(false);
+      setQuotePaused(false);
+      return;
+    }
     setQuote(null);
     setQuoteError(null);
-    if (!from || !to || !base || from.contract === to.contract || slipBad) return;
-    const id = ++seq.current;
+    setQuotePaused(false);
     const run = async () => {
+      if (id !== seq.current) return;
+      const wait = Math.max(retryAt.current - Date.now(), QUOTE_MIN_INTERVAL_MS - (Date.now() - lastQuoteAt.current));
+      if (wait > 0) {
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(() => void run(), wait);
+        return;
+      }
       setQuoting(true);
-      type QuoteResp = { ok?: boolean; quote?: Quote; error?: string; reason?: string };
+      setQuotePaused(false);
+      type QuoteResp = { ok?: boolean; quote?: Quote; error?: string; reason?: string; retryAfter?: number };
+      lastQuoteAt.current = Date.now();
       const r: QuoteResp = await postJson<QuoteResp>("/api/swap/quote", {
         assetIn: from.contract,
         assetOut: to.contract,
@@ -308,14 +347,33 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
         ...(dexes.length ? { protocols: dexes } : {}),
       }).catch((e): QuoteResp => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
       if (id !== seq.current) return;
+      if (r.ok && r.quote) {
+        quoteCache.current.set(key, { at: Date.now(), quote: r.quote });
+        setQuote(r.quote);
+        setQuoteError(null);
+        setQuotePaused(false);
+        setQuoting(false);
+        return;
+      }
+      const message = r.reason === "no-api-key" ? "Swaps are not configured on this server." : (r.error ?? "No route found.");
+      if (r.retryAfter != null || /rate.?limit|too many|429/i.test(message)) {
+        const waitMs = Math.max(3_000, Number(r.retryAfter ?? 8) * 1_000);
+        retryAt.current = Date.now() + waitMs;
+        setQuoteError("Quote service is busy. Retrying shortly…");
+        setQuotePaused(true);
+        setQuoting(false);
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(() => void run(), waitMs);
+        return;
+      }
       setQuoting(false);
-      if (r.ok && r.quote) setQuote(r.quote);
-      else setQuoteError(r.reason === "no-api-key" ? "Swaps are not configured on this server." : (r.error ?? "No route found."));
+      setQuoteError(message);
     };
+    const delay = Math.max(QUOTE_DEBOUNCE_MS, lastQuoteAt.current + QUOTE_MIN_INTERVAL_MS - Date.now());
+    const t = setTimeout(() => void run(), delay);
     const tick = () => {
       if (document.visibilityState === "visible") void run();
     };
-    const t = setTimeout(run, 450);
     const iv = setInterval(tick, 30_000);
     const onVisibility = () => {
       if (document.visibilityState === "visible") void run();
@@ -325,6 +383,10 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       clearTimeout(t);
       clearInterval(iv);
       document.removeEventListener("visibilitychange", onVisibility);
+      if (retryTimer.current) {
+        clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from?.contract, to?.contract, base, slippage, dexes.join(",")]);
@@ -407,6 +469,7 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
     cta = watchOnly ? "WATCH-ONLY WALLET" : `ADD ${to.code} TRUSTLINE`;
     disabled = watchOnly;
   } else if (quoting && !quote) cta = "FINDING BEST ROUTE…";
+  else if (quotePaused) cta = "QUOTE PAUSED";
   else if (!quote) cta = "NO ROUTE";
   else disabled = false;
 
@@ -570,7 +633,7 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       {quoteError && base && (
         <Typography variant="subtitle3" color="error.main" sx={{ textAlign: "center" }}>
           {quoteError}
-          {dexes.length ? " Try Auto or another DEX." : ""}
+          {!quotePaused && dexes.length ? " Try Auto or another DEX." : ""}
         </Typography>
       )}
       {impact != null && impact >= 3 && (

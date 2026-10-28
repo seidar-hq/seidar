@@ -34,6 +34,8 @@ type WalletValue = {
   address: string | null;
   activeWallet: LinkedWallet | null;
   isConnected: boolean;
+  /** False until the saved wallet session has been read from localStorage. */
+  ready: boolean;
   portfolio: PortfolioSelection;
   /** Addresses the current view covers. */
   portfolioAddresses: string[];
@@ -65,6 +67,7 @@ const WalletContext = createContext<WalletValue>({
   address: null,
   activeWallet: null,
   isConnected: false,
+  ready: false,
   portfolio: "all",
   portfolioAddresses: [],
   setPortfolio: noop,
@@ -135,6 +138,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [portfolio, setPortfolioState] = useState<PortfolioSelection>("all");
+  const [ready, setReady] = useState(false);
 
   // Public analytics: each linked wallet counts once a day (hashed server-side; watch-only never counts).
   useEffect(() => {
@@ -163,19 +167,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const stored = load<unknown[]>(WALLETS_KEY, []).filter(isLinkedWallet);
-    const ps = normalize(load<Portfolio[]>(PORTFOLIOS_KEY, []), stored);
-    const pid = load<string | null>(ACTIVE_PORTFOLIO_KEY, null);
-    const active = ps.find((p) => p.id === pid) ?? ps[0];
-    const signer = load<string | null>(ACTIVE_KEY, null);
-    setWallets(stored);
-    setPortfolios(ps);
-    setActiveId(active.id);
-    setAddress(active.wallets.includes(signer ?? "") ? signer : (active.wallets[0] ?? null));
-    const view = load<PortfolioSelection>(PORTFOLIO_KEY, "all");
-    setPortfolioState(view === "all" || active.wallets.includes(view) ? view : "all");
-    save(PORTFOLIOS_KEY, ps);
-    save(ACTIVE_PORTFOLIO_KEY, active.id);
+    try {
+      const stored = load<unknown[]>(WALLETS_KEY, []).filter(isLinkedWallet);
+      const ps = normalize(load<Portfolio[]>(PORTFOLIOS_KEY, []), stored);
+      const pid = load<string | null>(ACTIVE_PORTFOLIO_KEY, null);
+      const active = ps.find((p) => p.id === pid) ?? ps[0];
+      const signer = load<string | null>(ACTIVE_KEY, null);
+      setWallets(stored);
+      setPortfolios(ps);
+      setActiveId(active.id);
+      setAddress(active.wallets.includes(signer ?? "") ? signer : (active.wallets[0] ?? null));
+      const view = load<PortfolioSelection>(PORTFOLIO_KEY, "all");
+      setPortfolioState(view === "all" || active.wallets.includes(view) ? view : "all");
+      save(PORTFOLIOS_KEY, ps);
+      save(ACTIVE_PORTFOLIO_KEY, active.id);
+    } finally {
+      setReady(true);
+    }
   }, []);
 
   /** Single write path: keeps portfolios normalized, the signer inside the active portfolio, and storage in sync. */
@@ -360,6 +368,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       address,
       activeWallet,
       isConnected: !!activeWallet,
+      ready,
       portfolio,
       portfolioAddresses: portfolio === "all" ? inActive : inActive.filter((a) => a === portfolio),
       setPortfolio,
@@ -381,6 +390,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     portfolios,
     activeId,
     address,
+    ready,
     portfolio,
     setPortfolio,
     setActivePortfolio,

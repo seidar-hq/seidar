@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
+import Skeleton from "@mui/material/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme, type Theme } from "@mui/material/styles";
@@ -58,12 +59,13 @@ const WalletPill = styled(ButtonBase)(({ theme }) => {
 
 export default function HeaderWallet() {
   const theme = useTheme();
-  const { activeWallet, disconnect } = useWallet();
+  const { activeWallet, disconnect, ready } = useWallet();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [walletsOpen, setWalletsOpen] = useState(false);
   const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
 
+  if (!ready) return <Skeleton variant="rounded" width="10rem" height="2.75rem" sx={{ borderRadius: "999rem" }} />;
   if (!activeWallet) return <ConnectWalletButton />;
 
   const bal = byAddress[activeWallet.address];

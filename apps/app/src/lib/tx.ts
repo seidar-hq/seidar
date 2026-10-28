@@ -86,12 +86,36 @@ const TX_CODES: Record<string, string> = {
 };
 
 /**
+ * Extracts the most useful message from wallet-kit errors. Some wallets reject with a string,
+ * others with `{ message }`, `{ error: { message } }`, or an Error-like object; `String(object)`
+ * would otherwise leak "[object Object]" into the dialog.
+ */
+function errorText(raw: unknown, depth = 0): string {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (raw instanceof Error) return raw.message || raw.name || "";
+  if (typeof raw === "object" && depth < 3) {
+    const o = raw as Record<string, unknown>;
+    for (const key of ["message", "error", "reason", "details", "cause", "data", "name"]) {
+      if (!(key in o) || o[key] === raw) continue;
+      const text = errorText(o[key], depth + 1);
+      if (text) return text;
+    }
+    try {
+      const json = JSON.stringify(raw);
+      if (json && json !== "{}" && json !== "[]") return json;
+    } catch {}
+  }
+  return "";
+}
+
+/**
  * Turns raw failure text (network result codes, simulator output, HTTP or RPC errors) into a short
  * sentence a user can act on. Messages that are already plain English pass through unchanged.
  */
 export function readableError(raw: unknown): string {
-  const msg = (raw instanceof Error ? raw.message : String(raw ?? "")).replace(/\s+/g, " ").replace(/^(Error|TypeError):\s*/i, "").trim();
-  if (!msg) return "Something went wrong. Please try again.";
+  const msg = errorText(raw).replace(/\s+/g, " ").replace(/^(Error|TypeError):\s*/i, "").trim();
+  if (!msg || /^\[object \w+\]$/.test(msg)) return "Something went wrong. Please try again.";
   const code = msg.match(/\b(tx[A-Z_]+)\b/)?.[1];
   if (code && TX_CODES[code]) return TX_CODES[code];
   if (/^Simulation failed/i.test(msg)) return "The protocol rejected this transaction when it was checked before signing. Try a different amount, or try again shortly.";
@@ -116,8 +140,11 @@ export async function postJson<T = Record<string, unknown>>(path: string, body: 
 
 function walletError(e: unknown): Error {
   if (e instanceof WatchOnlyError) return e;
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/declin|reject|denied|cancel|closed/i.test(msg)) return new TxError("Signature declined in your wallet.");
+  const code = (e as { code?: unknown } | null)?.code;
+  const msg = errorText(e);
+  if (code === 4001 || code === "4001" || /declin|reject|denied|cancel|closed|user.?cancel/i.test(msg)) {
+    return new TxError("Transaction cancelled.");
+  }
   return new TxError(readableError(msg));
 }
 

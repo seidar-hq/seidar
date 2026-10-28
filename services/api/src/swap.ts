@@ -23,6 +23,9 @@ const RPC_URL = process.env.RPC_URL?.trim() || "https://mainnet.sorobanrpc.com";
  *  spend the aggregator's shared API-key budget. */
 const QUOTE_TTL_MS = 5_000;
 const quoteFlights = new Map<string, Promise<unknown>>();
+/** When Soroswap itself answers 429, stop calling it for a few seconds. */
+const SORO_COOLDOWN_MS = 5_000;
+let soroCooldownUntil = 0;
 
 
 export function soroKey(): string | null {
@@ -167,6 +170,17 @@ export async function quoteSwap(body: {
   if (cached && Date.now() - cached.at < QUOTE_TTL_MS) {
     return { status: 200, body: { ok: true, quote: cached.value } };
   }
+  const cooldown = soroCooldownUntil - Date.now();
+  if (cooldown > 0) {
+    return {
+      status: 200,
+      body: {
+        ok: false,
+        error: "Quote service is busy. Retrying shortly.",
+        retryAfter: Math.ceil(cooldown / 1000),
+      },
+    };
+  }
 
   try {
     const load = async () => {
@@ -212,6 +226,17 @@ export async function quoteSwap(body: {
     if (body?.smart && status === 400 && body?.tradeType !== "EXACT_OUT") {
       const q = await directQuote(assetIn, assetOut, amount, body?.slippageBps, feeBps).catch(() => null);
       if (q) return { status: 200, body: { ok: true, quote: q } };
+    }
+    if (status === 429) {
+      soroCooldownUntil = Date.now() + SORO_COOLDOWN_MS;
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          error: "Quote service is busy. Retrying shortly.",
+          retryAfter: Math.ceil(SORO_COOLDOWN_MS / 1000),
+        },
+      };
     }
     const clean = e instanceof Error ? e.message : String(e).slice(0, 200);
     return {

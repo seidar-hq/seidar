@@ -32,6 +32,7 @@ database_id = "1f0d1680-293c-47d2-8f10-22ee08d4c31f"
 [vars]
 CORS_ORIGINS = "https://app.seidar.xyz,https://seidar-app.pages.dev,https://analytics.seidar.xyz,https://seidar-analytics.pages.dev"
 API_RL_LIMIT = "120"
+API_RL_QUOTE_LIMIT = "600"
 API_RL_WINDOW_MS = "60000"
 
 [observability]

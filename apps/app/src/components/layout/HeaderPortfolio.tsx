@@ -10,6 +10,7 @@ import MenuItem from "@mui/material/MenuItem";
 import MenuList from "@mui/material/MenuList";
 import Paper from "@mui/material/Paper";
 import Popper from "@mui/material/Popper";
+import Skeleton from "@mui/material/Skeleton";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
@@ -43,8 +44,10 @@ export default function HeaderPortfolio() {
   const router = useRouter();
   const anchor = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
-  const { portfolios, activePortfolio, setActivePortfolio, isConnected } = useWallet();
+  const { portfolios, activePortfolio, setActivePortfolio, isConnected, ready } = useWallet();
   const line = theme.palette.mode === "light" ? theme.palette.border.main600 : theme.palette.overlay.white08;
+
+  if (!ready) return <Skeleton variant="rounded" width="9.25rem" height="2.75rem" sx={{ borderRadius: "3.125rem" }} />;
 
   // Portfolios only mean something once a wallet is linked (connected or watched).
   if (!isConnected || !activePortfolio) return null;

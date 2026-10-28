@@ -60,8 +60,11 @@ app.use(
 );
 
 // Per-client rate limiting: 120 req/min/IP/route default (tune via env).
+// Quotes get a higher ceiling because the swap UI legitimately re-quotes as
+// the amount changes; the client also debounces and caches identical quotes.
 // Shared-Redis limits land later; per-instance gate already stops stampedes.
 const RL_LIMIT = Number(process.env.API_RL_LIMIT) || 120;
+const RL_QUOTE_LIMIT = Number(process.env.API_RL_QUOTE_LIMIT) || 600;
 const RL_WINDOW = Number(process.env.API_RL_WINDOW_MS) || 60_000;
 app.use("*", async (c, next) => {
   const ip =
@@ -69,8 +72,9 @@ app.use("*", async (c, next) => {
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     "local";
   const key = `${ip}:${c.req.path}`;
-  const r = rateLimit(key, RL_LIMIT, RL_WINDOW);
-  c.header("X-RateLimit-Limit", String(RL_LIMIT));
+  const limit = c.req.path === "/swap/quote" ? RL_QUOTE_LIMIT : RL_LIMIT;
+  const r = rateLimit(key, limit, RL_WINDOW);
+  c.header("X-RateLimit-Limit", String(limit));
   c.header("X-RateLimit-Remaining", String(r.remaining));
   if (!r.ok) {
     c.header("Retry-After", String(Math.ceil(RL_WINDOW / 1000)));
