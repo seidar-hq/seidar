@@ -80,10 +80,21 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
   return job;
 }
 
+/** Drop entries whose key starts with any of `prefixes` and refetch them for current listeners. */
+export function invalidateSharedMany(prefixes: string[]) {
+  let changed = false;
+  for (const k of [...store.keys()]) {
+    if (prefixes.some((p) => k.startsWith(p))) {
+      store.delete(k);
+      changed = true;
+    }
+  }
+  if (changed) notify();
+}
+
 /** Drop entries whose key starts with `prefix` and refetch them for current listeners. */
 export function invalidateShared(prefix: string) {
-  for (const k of [...store.keys()]) if (k.startsWith(prefix)) store.delete(k);
-  notify();
+  invalidateSharedMany([prefix]);
 }
 
 /** Values for every key (null while loading), refreshed every `ttl`. */

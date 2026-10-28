@@ -159,7 +159,7 @@ export function usePortfolio(addresses?: string[]) {
         if (hf != null) healthFactor = healthFactor == null ? hf : Math.min(healthFactor, hf);
         for (const g of l.legs ?? []) {
           const t = resolve(g.asset, g.code);
-          if (g.suppliedUsd > 0)
+          if (g.suppliedUsd > 0 || (g.supplyAmount ?? 0) > 0)
             supplied.push({
               kind: "lend",
               protocol: g.protocol,
@@ -172,7 +172,7 @@ export function usePortfolio(addresses?: string[]) {
               apy: null,
               wallet,
             });
-          if (g.borrowedUsd > 0)
+          if (g.borrowedUsd > 0 || (g.borrowAmount ?? 0) > 0)
             borrowed.push({
               protocol: g.protocol,
               code: t.code,

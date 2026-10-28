@@ -82,10 +82,12 @@ export default function LendMarket() {
   const held = me ? byAddress[me]?.tokens.find((t) => t.code === m?.code && (t.issuer ?? null) === (m?.issuer ?? null)) : undefined;
   const price = held?.price ?? m?.priceUsd ?? priceResp.value?.prices?.[code.toUpperCase()] ?? null;
   const walletBal = held?.amount ?? 0;
-  const leg = positions.legs.find((l) => l.protocol === protocol && l.pool === pool && l.contract === m?.contract);
-  const supplied = leg?.supplied ?? 0;
-  const lent = leg?.lent ?? 0;
-  const borrowed = leg?.borrowed ?? 0;
+  const marketLegs = positions.legs.filter((l) => l.protocol === protocol && l.pool === pool && l.contract === m?.contract);
+  const supplied = marketLegs.reduce((s, l) => s + l.supplied, 0);
+  const lent = marketLegs.reduce((s, l) => s + l.lent, 0);
+  const borrowed = marketLegs.reduce((s, l) => s + l.borrowed, 0);
+  const suppliedUsd = marketLegs.reduce((s, l) => s + l.suppliedUsd, 0);
+  const borrowedUsd = marketLegs.reduce((s, l) => s + l.borrowedUsd, 0);
   const poolInfo = me && protocol === "blend" ? positions.pools[me]?.[pool] : undefined;
   const health = protocol === "blend" ? (poolInfo?.healthFactor ?? null) : me ? (positions.xoxnoHealth[me] ?? null) : null;
 
@@ -217,13 +219,13 @@ export default function LendMarket() {
         <Box>
           <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "1rem" }}>My Position</Typography>
           <Figure
-            label="Total Supplied"
+            label="My Supply"
             value={`${formatAmount(supplied, 4)} ${m.code}`}
-            sub={price != null ? formatUsd(supplied * price) : leg ? formatUsd(leg.suppliedUsd) : "$0.00"}
+            sub={price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}
           />
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem", mt: "1.5rem" }}>
             <Figure label="Wallet Balance" value={`${formatAmount(walletBal, 4)} ${m.code}`} sub={price != null ? formatUsd(walletBal * price) : undefined} />
-            <Figure label="Borrowed" value={`${formatAmount(borrowed, 4)} ${m.code}`} sub={leg ? formatUsd(leg.borrowedUsd) : "$0.00"} />
+            <Figure label="Borrowed" value={`${formatAmount(borrowed, 4)} ${m.code}`} sub={formatUsd(borrowedUsd)} />
             <Figure label="Health Factor" value={health == null ? "—" : health.toFixed(2)} color={healthColor(health)} sub={protocol === "blend" ? "This pool" : "XOXNO account"} />
             <Figure label="Collateral" value={supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"} />
           </Box>

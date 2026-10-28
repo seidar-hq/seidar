@@ -20,26 +20,9 @@ import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import AccountModal from "./AccountModal";
 import WalletsModal from "./WalletsModal";
-import { CopyButton, StellarLogo, WalletAvatar, glassMenuPaperSx } from "./WalletParts";
+import { CopyButton, WalletAvatar, glassMenuPaperSx } from "./WalletParts";
 
 const pillLine = (dark: boolean, t: Theme) => (dark ? t.palette.overlay.white08 : t.palette.border.main600);
-
-// Network is fixed to Stellar mainnet: a static badge, not a selector.
-const NetworkBadge = styled(Box)(({ theme }) => {
-  const line = pillLine(theme.palette.mode === "dark", theme);
-  return {
-    width: "2.75rem",
-    height: "2.75rem",
-    flexShrink: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "50%",
-    backgroundColor: theme.palette.mode === "dark" ? theme.palette.overlay.white08 : theme.palette.grey[800],
-    borderTop: `0.0625rem solid ${line}`,
-    borderBottom: `0.0625rem solid ${line}`,
-  };
-});
 
 const WalletPill = styled(ButtonBase)(({ theme }) => {
   const line = pillLine(theme.palette.mode === "dark", theme);
@@ -73,11 +56,6 @@ export default function HeaderWallet() {
 
   return (
     <>
-      <Tooltip title="Stellar Mainnet" arrow placement="bottom">
-        <NetworkBadge>
-          <StellarLogo size="1.5rem" />
-        </NetworkBadge>
-      </Tooltip>
       <WalletPill onClick={(e) => setAnchor(e.currentTarget)} aria-label="Wallet menu">
         <WalletAvatar walletId={activeWallet.walletId} size="2rem" status="active" />
         <Typography variant="subtitle1" color="common.black" sx={{ display: { xs: "none", md: "block" } }}>

@@ -1,4 +1,4 @@
-// Native wallet positions: Blend (SDK + RPC) + XOXNO (REST). Ported verbatim from apps/app/src/app/api/positions/route.ts
+// Native wallet positions: Blend (SDK + RPC) + XOXNO (SDK read client). Ported from apps/app/src/app/api/positions/route.ts
 // with two changes: RPC URL from env, XLM leg from the Reflector price
 // cascade (./prices.js) instead of CoinGecko. Returns plain data (no
 // NextResponse) so any runtime (Node, Containers, Workers) can serve it.
@@ -6,7 +6,6 @@
 import { PoolV2, PoolUser, PositionsEstimate } from "@blend-capital/blend-sdk";
 import { livePrices } from "./prices.js";
 import { PINNED_POOLS } from "./pools.js";
-import { xoxnoDisplayPrices } from "./xoxno-position.js";
 import { isTestnet, networkPassphrase, TESTNET } from "./net.js";
 import { retryable, rpcUrl, rpcUrls, sorobanView as sharedView } from "./rpc.js";
 import { tokenMetas } from "./token-meta.js";
@@ -237,130 +236,85 @@ export async function getPositions(address: string, only?: PositionProtocol) {
     await Promise.all(workers);
   }
 
-  // ---- XOXNO: user positions (base units -> human -> USD) ----
-  const cfByCode: Record<string, number> = {};
-  const thrByCode: Record<string, number> = {};
-  // XOXNO is mainnet-only.
+  // ---- XOXNO: render-ready account positions (human amounts + USD) ----
+  // XOXNO is mainnet-only. The SDK read client is the same source the
+  // XOXNO app uses, so newly supplied assets appear without indexer lag.
   if ((!only || only === "xoxno") && !isTestnet()) {
     try {
-      const [posBody, reservesBody] = await Promise.all([
-        fetchJson(`https://api.xoxno.com/stellar-lending/users/${address}/positions`, 25000) as Promise<{ positions?: unknown[] }>,
-        fetchJson("https://api.xoxno.com/stellar-lending/reserves", 30000).catch(() => null),
-      ]);
-      const liqByAsset = new Map<string, number>();
-      const cfByAsset = new Map<string, number>();
-      try {
-        const toArr = (d: unknown): Record<string, unknown>[] =>
-          Array.isArray(d) ? (d as Record<string, unknown>[]) : (((d as { reserves?: unknown[] })?.reserves ?? []) as Record<string, unknown>[]);
-        for (const r of toArr(reservesBody)) {
-          const a = String(r.asset ?? "");
-          const t = Number(r.liquidationThresholdBps ?? 0);
-          if (a.startsWith("C") && t > 0 && !liqByAsset.has(a)) liqByAsset.set(a, t);
-          const cf = Number(r.collateralFactorBps ?? 0);
-          if (a.startsWith("C") && cf > 0 && !cfByAsset.has(a)) cfByAsset.set(a, cf);
+      const { createStellarLendingReadClient } = await import("@xoxno/sdk-js/stellar-lending/read");
+      const client = createStellarLendingReadClient({ baseUrl: "https://api.xoxno.com" });
+      const accounts = await client.positions(address);
+      const contracts = new Set<string>();
+      for (const account of accounts) {
+        for (const p of [...account.supplied, ...account.borrow]) {
+          if (p.sac?.startsWith("C")) contracts.add(p.sac);
         }
-      } catch { /* thresholds stay empty -> fallback below */ }
-      const arr = Array.isArray(posBody?.positions) ? posBody.positions : [];
-      type XPos = {
-        asset?: string;
-        decimals?: number;
-        supplyAmount?: string;
-        borrowAmount?: string;
-        supplyIndexRay?: string;
-        borrowIndexRay?: string;
-        entryLiquidationThresholdBps?: number;
-        accountId?: string;
-        spokeId?: number;
-        hubId?: number;
-      };
-      /* XOXNO's REST reports amounts as RAY (human amount x 1e27) once it
-         carries index fields; older rows were token base units. */
-      const human = (raw: string | undefined, p: XPos) => {
-        const s = String(raw ?? "0");
-        if (!/^\d+$/.test(s)) return 0;
-        if (p.supplyIndexRay != null || p.borrowIndexRay != null) return Number(BigInt(s) / BigInt(10) ** BigInt(15)) / 1e12;
-        return Number(s) / 10 ** Number(p.decimals ?? 7);
-      };
-      const contracts = (arr as XPos[]).map((p) => String(p.asset ?? "")).filter((a) => a.startsWith("C"));
-      const codes = await resolveCodes([...new Set(contracts)]);
+      }
       const codeByAsset = new Map<string, string>();
-      [...new Set(contracts)].forEach((a, i) => {
-        if (codes[i]) codeByAsset.set(a, codes[i] as string);
-      });
-      const unmapped = [...new Set([...liqByAsset.keys(), ...cfByAsset.keys()])].filter(
-        (a) => !codeByAsset.has(a),
-      );
-      if (unmapped.length > 0) {
-        try {
-          const extra = await resolveCodes(unmapped);
-          unmapped.forEach((a, i) => {
-            if (extra[i]) codeByAsset.set(a, extra[i] as string);
-          });
-        } catch { /* held-asset maps still served */ }
-      }
-      /* Live USD per token: XOXNO's own price aggregator (what it
-         liquidates on), else the Blend oracle print, else the app's price
-         stack by code. Never a fixed table, and never dependent on whether
-         the Blend leg was read in the same call. */
-      const xPx = await xoxnoDisplayPrices([...new Set(contracts)]).catch(() => new Map<string, number>());
-      const missing = [...codeByAsset].filter(([a]) => !xPx.has(a) && !priceMap.has(a)).map(([, code]) => code);
-      const byCode = missing.length ? ((await livePrices([...new Set(missing)]).catch(() => null))?.prices ?? {}) : {};
-      const usdOf = (asset: string, code: string, human: number): number => {
-        if (!(human > 0)) return 0;
-        const px = xPx.get(asset) ?? priceMap.get(asset) ?? (byCode as Record<string, number | null>)[code] ?? null;
-        if (px == null || !(px > 0)) {
-          errors.push(`xoxno: no live price for ${code} — counted at $0`);
-          return 0;
-        }
-        return human * px;
-      };
-      // Tokens the shared metadata can't name (e.g. SolvBTC): take XOXNO's own symbol, so a
-      // position is never hidden for want of a ticker.
-      const unnamed = contracts.filter((a) => !codeByAsset.has(a));
-      if (unnamed.length) {
-        try {
-          const { xoxnoMarkets } = await import("./lending.js");
-          const mk = (await xoxnoMarkets()).body as { assets?: { sac: string; symbol: string }[] };
-          for (const a of unnamed) {
-            const hit = mk.assets?.find((m) => m.sac === a);
-            codeByAsset.set(a, hit?.symbol ?? `${a.slice(0, 4)}…`);
-          }
-        } catch {
-          for (const a of unnamed) codeByAsset.set(a, `${a.slice(0, 4)}…`);
-        }
-      }
-      for (const [asset, code] of codeByAsset) {
-        const cf = cfByAsset.get(asset) ?? 0;
-        const th = liqByAsset.get(asset) ?? 0;
-        if (cf > 0) cfByCode[code] = cf;
-        if (th > 0) thrByCode[code] = th;
-      }
-      for (const p of arr as XPos[]) {
-        const asset = String(p.asset ?? "");
-        const code = codeByAsset.get(asset);
-        if (!code) continue;
-        const supHuman = human(p.supplyAmount, p);
-        const borHuman = human(p.borrowAmount, p);
-        if (!(supHuman > 0) && !(borHuman > 0)) continue;
-        const supUsd = usdOf(asset, code, supHuman);
-        const borUsd = usdOf(asset, code, borHuman);
-        xoxnoSupplied += supUsd;
-        xoxnoBorrowed += borUsd;
-        const liveLiq = liqByAsset.get(asset) ?? Number((p as XPos).entryLiquidationThresholdBps ?? 0) ?? 0;
-        const effBps = liveLiq > 0 ? liveLiq : 15000;
-        xoxnoEffColl += (supUsd * effBps) / 10000;
-        xoxnoEffLia += borUsd;
-        legs.push({
-          protocol: "xoxno",
-          asset,
-          code,
-          pool: p.hubId != null ? `xoxno-hub-${p.hubId}` : undefined,
-          suppliedUsd: supUsd,
-          borrowedUsd: borUsd,
-          supplyAmount: supHuman,
-          borrowAmount: borHuman,
-          xoxno: p.accountId != null ? { accountId: String(p.accountId), spokeId: Number(p.spokeId), hubId: Number(p.hubId) } : undefined,
+      const missingCodes = [...contracts];
+      if (missingCodes.length > 0) {
+        const codes = await resolveCodes(missingCodes);
+        missingCodes.forEach((asset, i) => {
+          if (codes[i]) codeByAsset.set(asset, codes[i] as string);
         });
+      }
+      const human = (p: { amount?: string | null; amountRaw?: string | null; decimals?: number | null }) => {
+        if (p.amount != null && Number.isFinite(Number(p.amount))) return Number(p.amount);
+        if (p.amountRaw != null && p.decimals != null) {
+          const raw = Number(p.amountRaw);
+          if (Number.isFinite(raw)) return raw / 10 ** p.decimals;
+        }
+        return 0;
+      };
+      const usd = (p: { amount?: string | null; amountRaw?: string | null; decimals?: number | null; valueUsd?: number | null; priceUsd?: number | null }) => {
+        if (p.valueUsd != null && Number.isFinite(p.valueUsd)) return p.valueUsd;
+        const amount = human(p);
+        return p.priceUsd != null && Number.isFinite(p.priceUsd) ? amount * p.priceUsd : 0;
+      };
+      for (const account of accounts) {
+        const byAsset = new Map<string, PositionLeg>();
+        const add = (p: (typeof account.supplied)[number], side: "supply" | "borrow") => {
+          const asset = p.sac;
+          if (!asset?.startsWith("C")) return;
+          const code = codeByAsset.get(asset) ?? p.symbol ?? `${asset.slice(0, 4)}...`;
+          const key = `${p.hubId}:${asset}`;
+          let leg = byAsset.get(key);
+          if (!leg) {
+            leg = {
+              protocol: "xoxno",
+              asset,
+              code,
+              pool: `xoxno-hub-${p.hubId}`,
+              suppliedUsd: 0,
+              borrowedUsd: 0,
+              supplyAmount: 0,
+              borrowAmount: 0,
+              xoxno: { accountId: account.accountId, spokeId: account.spokeId ?? 0, hubId: p.hubId },
+            };
+            byAsset.set(key, leg);
+          }
+          if (side === "supply") {
+            leg.suppliedUsd += usd(p);
+            leg.supplyAmount = (leg.supplyAmount ?? 0) + human(p);
+          } else {
+            leg.borrowedUsd += usd(p);
+            leg.borrowAmount = (leg.borrowAmount ?? 0) + human(p);
+          }
+        };
+        for (const p of account.supplied) add(p, "supply");
+        for (const p of account.borrow) add(p, "borrow");
+        for (const leg of byAsset.values()) {
+          const hasAmount = (leg.supplyAmount ?? 0) > 0 || (leg.borrowAmount ?? 0) > 0;
+          if (!(leg.suppliedUsd > 0) && !(leg.borrowedUsd > 0) && !hasAmount) continue;
+          legs.push(leg);
+          xoxnoSupplied += leg.suppliedUsd;
+          xoxnoBorrowed += leg.borrowedUsd;
+        }
+        const debt = account.borrow.reduce((sum, p) => sum + usd(p), 0);
+        if (debt > 0 && account.healthFactor != null && account.healthFactor > 0) {
+          xoxnoEffColl += debt * account.healthFactor;
+          xoxnoEffLia += debt;
+        }
       }
     } catch (e) {
       errors.push(`xoxno: ${String(e).slice(0, 100)}`);
@@ -405,8 +359,8 @@ export async function getPositions(address: string, only?: PositionProtocol) {
         legs: legs.filter((l) => l.protocol === "xoxno").length,
         effectiveCollateral: xoxnoEffColl,
         effectiveLiabilities: xoxnoEffLia,
-        collateralFactorsBps: cfByCode,
-        liquidationThresholdsBps: thrByCode,
+        collateralFactorsBps: {},
+        liquidationThresholdsBps: {},
         healthFactor: xoxnoHealth,
         dropToLiquidationPct: drop(xoxnoEffColl, xoxnoEffLia),
       },

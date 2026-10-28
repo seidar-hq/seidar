@@ -93,6 +93,15 @@ export function useActivity(addresses: string[], kind: "all" | "positions" | "sw
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
 
+  useEffect(() => {
+    if (!addresses.length) return;
+    const onRefresh = () => {
+      if (current.current === sig) void fetchPage(true);
+    };
+    window.addEventListener("seidar:refresh", onRefresh);
+    return () => window.removeEventListener("seidar:refresh", onRefresh);
+  }, [sig, addresses.length, fetchPage]);
+
   const hasMore = addresses.some((a) => cursors.current[a]);
   return { items, loading, error, hasMore, loadMore: () => fetchPage(false), reload: () => fetchPage(true) };
 }

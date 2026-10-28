@@ -8,7 +8,29 @@
 import { apiFetch } from "./api";
 import { MAINNET_PASSPHRASE, WatchOnlyError, kitSignTransaction, type WalletKind } from "./wallets";
 import { refreshBalances } from "@/wallet/useBalances";
+import { invalidateSharedMany } from "./useShared";
 import { pushNote } from "@/components/layout/NotificationButton";
+
+const WALLET_CACHE_PREFIXES = ["lend:", "vaults:", "lp:", "xoxno:accounts:", "borrowcap:", "zenex:acct:"];
+const MARKET_CACHE_PREFIXES = ["lend:markets", "vaults:list", "pools:", "dexpools:", "vaultdetail:", "poolhist:", "pooltrades:", "clpool:", "clpos:"];
+
+/** Refresh balances, wallet-scoped protocol caches and activity after a transaction. */
+export function refreshAfterTx(address: string) {
+  const run = () => {
+    refreshBalances([address]);
+    invalidateSharedMany([
+      ...WALLET_CACHE_PREFIXES.map((prefix) => `${prefix}${address}`),
+      ...MARKET_CACHE_PREFIXES,
+    ]);
+    try {
+      window.dispatchEvent(new Event("seidar:refresh"));
+    } catch {}
+  };
+  run();
+  // Indexers can lag the ledger by a few seconds; refresh again so the new row/amount appears.
+  setTimeout(run, 5_000);
+  setTimeout(run, 15_000);
+}
 
 export const explorerTx = (hash: string) => `https://stellar.expert/explorer/public/tx/${hash}`;
 
@@ -332,7 +354,7 @@ export async function runBuilt(
         step.status = "submitted";
         step.hash = e.hash;
         emit();
-        setTimeout(() => refreshBalances([signer.address]), 20_000);
+        refreshAfterTx(signer.address);
         return { hashes, unsigned: false, pending: true };
       }
       step.status = "failed";
@@ -343,10 +365,7 @@ export async function runBuilt(
     }
     body = b.next ?? null;
   }
-  refreshBalances([signer.address]);
-  try {
-    window.dispatchEvent(new Event("seidar:refresh"));
-  } catch {}
+  refreshAfterTx(signer.address);
   void pushNote(signer.address, `${steps.map((s) => s.label).join(" · ")} confirmed.`);
   return { hashes, unsigned: false };
 }

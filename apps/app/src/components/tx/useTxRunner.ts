@@ -2,8 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { WatchOnlyError } from "@/lib/wallets";
-import { TxError, TxPending, readableError, signAndSend, type Signer, type TxMeta, type TxStep } from "@/lib/tx";
-import { refreshBalances } from "@/wallet/useBalances";
+import { TxError, TxPending, readableError, refreshAfterTx, signAndSend, type Signer, type TxMeta, type TxStep } from "@/lib/tx";
 import { pushNote } from "@/components/layout/NotificationButton";
 
 /** State for TxDialog plus a runner for "build one XDR, then sign and send it" flows. */
@@ -41,7 +40,7 @@ export function useTxRunner() {
         step.hash = r.hash;
         step.status = "done";
         emit();
-        refreshBalances([signer.address]);
+        refreshAfterTx(signer.address);
         void pushNote(signer.address, `${label} confirmed.`);
         return true;
       } catch (e) {
@@ -54,7 +53,7 @@ export function useTxRunner() {
           step.status = "submitted";
           step.hash = e.hash;
           emit();
-          setTimeout(() => refreshBalances([signer.address]), 20_000);
+          refreshAfterTx(signer.address);
           return false;
         }
         step.status = "failed";
