@@ -7,6 +7,8 @@ import Slider from "@mui/material/Slider";
 import Typography from "@mui/material/Typography";
 import TokenLogo from "@/components/common/TokenLogo";
 import { formatAmount, formatUsd } from "@/lib/format";
+import { apiJson } from "@/lib/api";
+import { useShared } from "@/lib/useShared";
 import { toBase } from "@/lib/tx";
 import type { DetailRow } from "./ActionCard";
 import { pct, type Market } from "./lendData";
@@ -15,8 +17,9 @@ import { pct, type Market } from "./lendData";
 // - XOXNO (controller `multiply`, one transaction): the wallet deposits the market's asset, XOXNO
 //   flash-borrows the debt asset, swaps it into more of the deposit asset and supplies it all as
 //   collateral in a new account.
-// - Blend (no flash loans): a loop of transactions the API builds one after another
-//   (/lending/blend/leverage): supply + borrow, swap the borrow back, supply + borrow again...
+// - Blend: one transaction through Seidar's leverage contract (contracts/leverage: a Blend flash
+//   loan whose callback swaps the borrow into collateral) once the API has it configured; until
+//   then a loop of transactions the API builds one after another (/lending/blend/leverage).
 // Either way the finished position's health is held at MIN_HEALTH (as on the pools page, pools.ts).
 
 export const MIN_HEALTH = 1.3;
@@ -84,6 +87,8 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
   const [amount, setAmount] = useState("");
   const [lev, setLev] = useState(2);
   const blend = m?.protocol === "blend";
+  const cfg = useShared<{ oneStep?: boolean } | null>("lev:blend", () => apiJson("/api/lending/blend/leverage", undefined, 60_000), 600_000);
+  const oneStep = blend && cfg.value?.oneStep === true;
 
   const spoke = spokes.find((s) => s.spokeId === spokeId) ?? spokes[0] ?? null;
   // Default borrow: a dollar stablecoin when there is one (a classic "long" of the deposit asset).
@@ -144,10 +149,10 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
     details.push({ label: "Net APY (est.)", value: netApy != null ? pct(netApy) : "—", color: netApy != null && netApy < 0 ? "error.main" : "green.main" });
     details.push({ label: blend ? "Effective LTV" : "Max LTV", value: pct(ltv * 100, 0) });
     details.push({ label: "Swap slippage", value: pct(SLIPPAGE_BPS / 100, 1) });
-    if (blend) details.push({ label: "Transactions", value: rounds ? `about ${rounds * 2 + 1}` : "—" });
+    if (blend) details.push({ label: "Transactions", value: oneStep ? "1" : rounds ? `about ${rounds * 2 + 1}` : "—" });
   }
 
-  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, path, blend, details, available: spokes.length > 0 };
+  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, path, blend, oneStep, details, available: spokes.length > 0 };
 }
 
 const Chip = ({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) => (
@@ -217,7 +222,9 @@ export function LeverageFields({ lv }: { lv: ReturnType<typeof useLeverage> }) {
         />
         <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
           Max {lv.maxLev.toFixed(1)}x keeps health at {MIN_HEALTH} or above.{" "}
-          {lv.blend
+          {lv.blend && lv.oneStep
+            ? "Opens in one transaction: Blend lends the borrow, Seidar's leverage contract swaps it into more collateral and Blend supplies it all, or nothing happens. It adds to your position in this pool. Any swap output above the quoted minimum stays in your wallet."
+            : lv.blend
             ? "Blend has no one-step loop, so this runs as a few transactions you sign in turn: supply and borrow, swap the borrow back, supply again. It adds to your position in this pool. If you stop partway, you keep a smaller leveraged position."
             : "Opens a new XOXNO account."}{" "}
           If the price of what you borrowed rises against your collateral, the position can be liquidated.

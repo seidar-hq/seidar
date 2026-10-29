@@ -195,12 +195,22 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   `.dev.vars`): `SOROSWAP_API_KEY`, `DEFINDEX_API_KEY`, `RPC_URL`.
 - Worker vars: `CORS_ORIGINS=https://app.seidar.xyz,https://seidar-app.pages.dev`, rate limits.
 - Feedback (`POST /feedback`, header Feedback button): emailed through the `FEEDBACK_EMAIL` send_email
-  binding (Email Routing on seidar.xyz; `hello@seidar.xyz` forwards to the owner's verified Gmail). The
-  destination is the `FEEDBACK_TO` secret, which must be a *verified* Email Routing destination address.
-  Without it the route answers `feedback-not-configured`. Up to 4 images, 2 MB in total.
+  binding to `FEEDBACK_TO = feedback@seidar.xyz` (wrangler.toml `[vars]`; the binding only allows that
+  address). Email Routing rule `feedback@seidar.xyz` -> owner's Gmail was created 2026-10-29, next to the
+  existing `hello@seidar.xyz` rule (**leave hello@ alone, it works**). Sending to a routed (non-verified)
+  address needs **Email Sending (beta) onboarded for seidar.xyz** (Workers Paid): dashboard -> Email Service
+  -> Email Sending -> Onboard Domain. It adds `cf-bounce` MX/SPF/DKIM + `_dmarc` (no root MX change). Up to 4
+  images, 2 MB in total.
 - Leverage (`POST /lending/xoxno/multiply`, Lend & Borrow → Leverage tab on XOXNO markets): XOXNO controller
   `multiply` with an aggregator route from `stellar-swap.xoxno.com`; new account per position, health floor 1.3.
-- Blend leverage (`POST /lending/blend/leverage`, same tab on Blend markets): a loop of transactions, ported
+- Blend leverage, one transaction: `contracts/` (seidar-leverage + its receiver; see contracts/README.md).
+  `open` = approve + Blend `flash_loan` whose `exec_op` swaps the borrow into collateral on the Soroswap
+  aggregator; health checked on-chain. Mainnet-fork tested. When `BLEND_LEVERAGE_CONTRACT` is set on the
+  API, `/lending/blend/leverage` builds that single tx (quote with `smart: true`, `borrowCapacity` at 1.3
+  incl. the existing position, min_hf 1.29); `GET /lending/blend/leverage` tells the app. Not yet on
+  mainnet (owner deploys: `DEPLOYER_SECRET=S... node contracts/scripts/deploy.mjs mainnet`, ~26.2 XLM
+  uploads + ~0.1 XLM create). Testnet deploy 2026-10-29: CBDH4LNLZ5NPV26Y4GEBCJYSMFXQIHGK2DH5JSWTMTHWYD76A46RHKD6.
+- Blend leverage fallback (no contract configured): a loop of transactions, ported
   from real_seidar's leverage modal. open = supply deposit + borrow (sized by `borrowCapacity` at interim
   health 1.1) -> swap (Soroswap aggregator, debt -> collateral) -> supply what the swap returned (wallet
   balance delta) + borrow again, until debt = deposit value x (L - 1) by the pool oracle; at most 8 rounds.

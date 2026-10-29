@@ -1,6 +1,6 @@
 // In-app feedback: text, an optional reply address and up to 4 images (2 MB in all), emailed to
 // the team. On Cloudflare the mail goes out through the Email Routing send binding (worker.ts
-// registers it); it can only deliver to a verified destination address, set as FEEDBACK_TO.
+// registers it); it goes to FEEDBACK_TO (feedback@seidar.xyz, routed to the team inbox).
 // A row is also kept in the feedback table (text and file names only) when a database is there.
 
 import { randomBytes } from "node:crypto";

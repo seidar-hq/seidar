@@ -25,9 +25,11 @@ crons = ["* * * * *"]
 binding = "CACHE"
 id = "2c50734670de4eabb24814e5d2623946"
 
-# In-app feedback mail. Email Routing only delivers to verified destination addresses.
+# In-app feedback mail, sent to feedback@seidar.xyz (an Email Routing rule forwards it to the owner's
+# inbox). Sending to a routed address needs Email Sending onboarded for seidar.xyz (Workers Paid).
 [[send_email]]
 name = "FEEDBACK_EMAIL"
+allowed_destination_addresses = ["feedback@seidar.xyz"]
 
 [[d1_databases]]
 binding = "DB"
@@ -39,6 +41,7 @@ CORS_ORIGINS = "https://app.seidar.xyz,https://seidar-app.pages.dev,https://anal
 API_RL_LIMIT = "120"
 API_RL_QUOTE_LIMIT = "600"
 API_RL_WINDOW_MS = "60000"
+FEEDBACK_TO = "feedback@seidar.xyz"
 
 [observability]
 enabled = true

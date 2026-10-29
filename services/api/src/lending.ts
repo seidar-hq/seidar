@@ -451,7 +451,79 @@ export async function buildXoxnoMultiply(body: {
   }
 }
 
-// ---------- Blend leverage (loop) ----------
+// ---------- Blend leverage ----------
+
+/**
+ * Seidar's leverage contract (contracts/leverage): opens the whole position in ONE transaction
+ * through a Blend flash loan. Set BLEND_LEVERAGE_CONTRACT once it is deployed; until then
+ * buildBlendLeverage falls back to the multi-transaction loop below.
+ */
+export function blendLeverageContract(): string | null {
+  const c = process.env.BLEND_LEVERAGE_CONTRACT ?? "";
+  return isContract(c) && !isTestnet() ? c : null;
+}
+
+/** The contract's own floor (7 decimals) sits a hair under the API's so oracle rounding can't flip a sized trade. */
+const ONE_STEP_MIN_HF = 12_900_000n;
+
+async function buildOneStep(
+  contract: string,
+  o: {
+    from: string;
+    pool: string;
+    coll: string;
+    debt: string;
+    deposit: bigint;
+    target: bigint;
+    slippageBps: number;
+    cCode: string;
+    dCode: string;
+    rc: { decimals: number };
+    rd: { decimals: number };
+    fmt: (v: bigint, dec: number) => string;
+  },
+): Promise<Built> {
+  const sdk = await import("@stellar/stellar-sdk");
+  const { quoteSwap } = await import("./swap.js");
+  const { encodeRoutes } = await import("./swap-route.js");
+  const { borrowCapacity } = await import("./blend-position.js");
+  const { withRpc } = await import("./rpc.js");
+  // A route the contract can execute itself (Soroswap / Aqua legs on the aggregator).
+  const q = await quoteSwap({ assetIn: o.debt, assetOut: o.coll, amount: o.target.toString(), tradeType: "EXACT_IN", slippageBps: String(o.slippageBps), smart: true });
+  const quote = (q.body as { ok?: boolean; quote?: { amountIn?: string; rawTrade?: { amountOutMin?: string; distribution?: unknown[] } } }).quote;
+  const minOut = BigInt(String(quote?.rawTrade?.amountOutMin ?? "0").replace(/\D/g, "") || "0");
+  if (!quote?.rawTrade?.distribution?.length || minOut <= 0n) throw new Error(`No swap route from ${o.dCode} to ${o.cCode} right now. Try a smaller amount.`);
+  const supply = o.deposit + minOut;
+  // Sized on-chain like Blend checks it, existing position included: the target must fit at the floor.
+  const cap = await borrowCapacity(o.pool, o.from, o.debt, LEVERAGE_MIN_HEALTH, { asset: o.coll, amount: supply });
+  if (o.target > cap)
+    throw new Error(`At this swap price the position would open below health ${LEVERAGE_MIN_HEALTH}. Lower the leverage or the amount.`);
+  const routes = await encodeRoutes(quote.rawTrade as never);
+  const latest = await withRpc((s) => s.getLatestLedger());
+  const a = (x: string) => sdk.Address.fromString(x).toScVal();
+  const i128 = (v: bigint) => sdk.nativeToScVal(v, { type: "i128" });
+  const op = new sdk.Contract(contract).call(
+    "open",
+    a(o.from),
+    a(o.pool),
+    a(o.coll),
+    i128(o.deposit),
+    a(o.debt),
+    i128(o.target),
+    routes,
+    i128(minOut),
+    i128(ONE_STEP_MIN_HF),
+    sdk.nativeToScVal(BigInt(Math.floor(Date.now() / 1000) + 300), { type: "u64" }),
+    sdk.nativeToScVal(latest.sequence + 120, { type: "u32" }),
+  );
+  const { xdr } = await invokeAs(o.from, undefined, op);
+  return {
+    ok: true,
+    xdr,
+    label: `Supply ${o.fmt(supply, o.rc.decimals)} ${o.cCode}, borrow ${o.fmt(o.target, o.rd.decimals)} ${o.dCode} (one transaction)`,
+    next: null,
+  };
+}
 
 /** Intermediate rounds may dip to this health; the chosen leverage is capped so the finished position sits at LEVERAGE_MIN_HEALTH. */
 const LOOP_MIN_HEALTH = 1.1;
@@ -561,6 +633,8 @@ export async function buildBlendLeverage(body: BlendLeverageBody | null): Promis
       const lev = BigInt(Math.round((L - 1) * 10_000));
       const target = (deposit * pc * lev * 10n ** BigInt(rd.decimals)) / (pd * 10_000n * 10n ** BigInt(rc.decimals));
       if (target <= 0n) return fail("Amount too small to leverage.");
+      const oneStep = blendLeverageContract();
+      if (oneStep) return { status: 200, body: await buildOneStep(oneStep, { from, pool, coll, debt, deposit, target, slippageBps, cCode, dCode, rc, rd, fmt }) };
       return { status: 200, body: await submitRound(deposit, target, 0n, 0) };
     }
 

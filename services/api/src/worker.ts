@@ -2,7 +2,7 @@
 //   CACHE  KV namespace  -> @seidar/cache, second tier (durable, shared by every location)
 //   Cache API            -> @seidar/cache, first tier (free and unlimited, per location)
 //   DB     D1 database   -> db.ts (replaces Postgres)
-//   FEEDBACK_EMAIL       -> feedback.ts, Email Routing send binding (to the FEEDBACK_TO secret)
+//   FEEDBACK_EMAIL       -> feedback.ts, Email Routing send binding (to FEEDBACK_TO, feedback@seidar.xyz)
 // A cron trigger (wrangler.toml) runs the warmers once a minute; Node's setInterval loops
 // (server.ts) never run here.
 import "./worker-compat.js";

@@ -19,3 +19,7 @@ out/
 .dev.vars
 .dev.vars.*
 .wrangler/
+
+# Soroban build output
+contracts/target/
+contracts/fork/test_snapshots/
