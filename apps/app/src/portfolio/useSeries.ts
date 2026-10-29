@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { apiJson } from "@/lib/api";
 import { loadShared, useShared, useSharedMany } from "@/lib/useShared";
 import type { Exposure } from "./usePortfolio";
@@ -92,7 +92,14 @@ export function usePriceChanges(exposures: Exposure[], range: Range) {
       apiJson(`/api/prices/changes?assets=${encodeURIComponent(assets.join(","))}&range=${range}`),
     TTL,
   );
-  return { changes: value?.changes ?? {}, loading };
+  // The key is the asset set, so a deposit or withdrawal that adds or drops an asset starts a new
+  // key with no data: keep the last changes on screen until it arrives (else the movers and the
+  // performance KPI flash back to skeletons).
+  // Only within the same range: switching 1d -> 7d must not show 1d numbers as 7d.
+  const last = useRef<{ range: Range; changes: Record<string, number | null> } | null>(null);
+  if (value?.changes) last.current = { range, changes: value.changes };
+  const held = last.current?.range === range ? last.current.changes : null;
+  return { changes: value?.changes ?? (loading && held ? held : {}), loading: loading && !held };
 }
 
 /** Latest price per exposure, preferring the chart's last point over the stored price. */
