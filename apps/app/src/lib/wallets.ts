@@ -10,8 +10,10 @@ import { xBullModule } from "@creit.tech/stellar-wallets-kit/modules/xbull";
 import { LobstrModule } from "@creit.tech/stellar-wallets-kit/modules/lobstr";
 import { RabetModule } from "@creit.tech/stellar-wallets-kit/modules/rabet";
 import { HanaModule } from "@creit.tech/stellar-wallets-kit/modules/hana";
+// MetaMask's own Stellar adapter (@metamask/connect-stellar, SEP-43 over the MetaMask Multichain API).
+import { MetaMaskModule } from "@creit.tech/stellar-wallets-kit/modules/metamask";
 
-export type KitWalletId = "freighter" | "albedo" | "xbull" | "lobstr" | "rabet" | "hana" | "wallet_connect";
+export type KitWalletId = "freighter" | "metamask" | "albedo" | "xbull" | "lobstr" | "rabet" | "hana" | "wallet_connect";
 
 /** "watch" = read-only test wallet: real mainnet data, no signing (dev builds or NEXT_PUBLIC_ENABLE_WATCH=1). */
 export type WalletKind = KitWalletId | "watch";
@@ -29,6 +31,8 @@ export const WALLETS: WalletMeta[] = [
   // Freighter was renamed Varial (Oct 2026). Its extension API is unchanged, so the kit's Freighter
   // module and the stored "freighter" id still work; only the name and logo shown are new.
   { id: "freighter", name: "Varial", logo: "/assets/wallets/varial-logo.png", bg: "#1F3CFF", bleed: true },
+  // Stellar is a default network in MetaMask since Oct 29 2026 (extension 13.54+, mobile 8.17+).
+  { id: "metamask", name: "MetaMask", logo: "/assets/wallets/metamask-logo.svg", bg: "#FFFFFF", bleed: true },
   { id: "albedo", name: "Albedo", logo: "/assets/wallets/albedo-logo.png", bg: "#FFFFFF" },
   { id: "xbull", name: "xBull", logo: "/assets/wallets/xbull-logo.png", bg: "#202020", bleed: true },
   { id: "lobstr", name: "LOBSTR", logo: "/assets/wallets/lobstr-logo.png", bg: "#51A4BE", bleed: true },
@@ -184,17 +188,17 @@ function kit(): Promise<typeof StellarWalletsKit> {
       productUrl: "https://varialwallet.com",
       productIcon: `${window.location.origin}/assets/wallets/varial-logo.png`,
     });
-    const injected = [varial, new LobstrModule(), new RabetModule(), new HanaModule()];
+    const injected = [varial, new MetaMaskModule(), new LobstrModule(), new RabetModule(), new HanaModule()];
     const phone = isPhone();
     const [wc, present] = await Promise.all([
       walletConnectModule(),
       phone ? Promise.all(injected.map((m) => availableWithin(m))) : Promise.resolve(injected.map(() => true)),
     ]);
-    const [freighter, lobstr, rabet, hana] = injected.map((m, i) => (present[i] ? [m] : []));
+    const [freighter, metamask, lobstr, rabet, hana] = injected.map((m, i) => (present[i] ? [m] : []));
     // Web wallets (xBull, Albedo) work in any browser, desktop or mobile. Phones list WalletConnect first.
     const modules = phone
-      ? [...wc, ...freighter, ...lobstr, ...hana, ...rabet, new xBullModule(), new AlbedoModule()]
-      : [...freighter, new AlbedoModule(), new xBullModule(), ...lobstr, ...rabet, ...hana, ...wc];
+      ? [...wc, ...freighter, ...metamask, ...lobstr, ...hana, ...rabet, new xBullModule(), new AlbedoModule()]
+      : [...freighter, ...metamask, new AlbedoModule(), new xBullModule(), ...lobstr, ...rabet, ...hana, ...wc];
     StellarWalletsKit.init({ network: Networks.PUBLIC, theme: SwkAppDarkTheme, modules });
     return StellarWalletsKit;
   })();
