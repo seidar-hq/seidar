@@ -194,6 +194,14 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 - Worker secrets (set via `wrangler secret bulk`, values live only in `services/api/.env.local` /
   `.dev.vars`): `SOROSWAP_API_KEY`, `DEFINDEX_API_KEY`, `RPC_URL`.
 - Worker vars: `CORS_ORIGINS=https://app.seidar.xyz,https://seidar-app.pages.dev`, rate limits.
+- Feedback (`POST /feedback`, header Feedback button): emailed through the `FEEDBACK_EMAIL` send_email
+  binding (Email Routing on seidar.xyz; `hello@seidar.xyz` forwards to the owner's verified Gmail). The
+  destination is the `FEEDBACK_TO` secret, which must be a *verified* Email Routing destination address.
+  Without it the route answers `feedback-not-configured`.
+- Leverage (`POST /lending/xoxno/multiply`, Lend & Borrow → Leverage tab on XOXNO markets): XOXNO controller
+  `multiply` with an aggregator route from `stellar-swap.xoxno.com`; new account per position, health floor 1.3.
+- Agent (`POST /agent/chat`): built but switched off in the UI (header pill says "Coming soon"). Needs the
+  `ANTHROPIC_API_KEY` secret before it answers.
 - App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`, docs/site/X links.
 - WalletConnect (Reown) project id: `NEXT_PUBLIC_WC_PROJECT_ID` in `apps/app/.env.production.local` (git-ignored,
   on the owner's machine only; recreate it from dashboard.reown.com if lost). It ships in the bundle by design;
