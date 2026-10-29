@@ -297,10 +297,10 @@ export default function LendMarket() {
   const submitLeverage = async () => {
     const body = activeWallet ? lv.body(activeWallet.address) : null;
     if (!activeWallet || !body) return;
-    const label = `Leverage ${lv.amount} ${m.code} ${lv.lev.toFixed(1)}x with ${lv.debt?.code} · XOXNO`;
+    const label = `Leverage ${lv.amount} ${m.code} ${lv.lev.toFixed(1)}x with ${lv.debt?.code} · ${LEND_PROTOCOLS[m.protocol].name}`;
     setTx({ open: true, steps: [{ key: "s0", label, status: "building" }], error: null });
     try {
-      const r = await runBuilt("/api/lending/xoxno/multiply", body, activeWallet, (steps) => setTx((t) => ({ ...t, steps })));
+      const r = await runBuilt(lv.path, body, activeWallet, (steps) => setTx((t) => ({ ...t, steps })));
       if (!r.unsigned) lv.setAmount("");
     } catch (e) {
       setTx((t) => ({ ...t, error: e instanceof Error ? e.message : String(e) }));

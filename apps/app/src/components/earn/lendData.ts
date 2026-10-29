@@ -22,6 +22,8 @@ type BlendAsset = {
   canBorrow?: boolean;
   canCollateral?: boolean;
   poolStatus?: number | null;
+  lFactor?: number;
+  priceUsd?: number | null;
 };
 
 export type XoxnoSpoke = {
@@ -76,6 +78,8 @@ export type Market = {
   canBorrow: boolean;
   canCollateral: boolean;
   priceUsd: number | null;
+  /** Blend liability factor (0..1): debt counts as amount / lFactor in health. */
+  lFactor?: number | null;
   xoxno?: XoxnoMarket;
 };
 
@@ -104,13 +108,17 @@ export function marketStatus(status: number | null | undefined): StatusInfo | nu
   return { label: "In setup", tone: "setup", tip: "This pool's admin hasn't opened it yet: no supply or borrowing until it goes active." };
 }
 
-/** leverage: XOXNO only (one-transaction loop, see leverage.tsx). */
+/** leverage: XOXNO in one transaction, Blend as a loop of transactions (see leverage.tsx). */
 export type LendAction = "supply" | "borrow" | "withdraw" | "repay" | "leverage";
 
 /** Why an action is unavailable on this market (null when allowed). */
 export function actionBlock(m: Market, a: LendAction): string | null {
   if (!m.contract) return "Market unavailable";
-  if (a === "leverage") return m.protocol === "xoxno" ? (m.canCollateral ? null : "This asset can't be collateral") : "Leverage is available on XOXNO markets";
+  if (a === "leverage") {
+    if (!m.canCollateral) return "This asset can't be collateral";
+    if (m.status != null && m.status > 1) return "Borrowing is paused in this pool";
+    return null;
+  }
   const s = m.status;
   if (s != null && s >= 6) return "Pool is in setup";
   if (a === "supply" && s != null && s >= 4) return "Pool is frozen: supplying is paused";
@@ -162,7 +170,8 @@ export function useLendMarkets() {
         ltvPct: a.ltvPct ?? null,
         canBorrow: a.canBorrow !== false,
         canCollateral: a.canCollateral !== false,
-        priceUsd: null,
+        priceUsd: a.priceUsd ?? null,
+        lFactor: a.lFactor ?? null,
       });
     }
     for (const x of xoxno.value?.assets ?? []) {

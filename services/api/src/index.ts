@@ -455,6 +455,12 @@ app.get("/lending/borrow-capacity", async (c) => {
   }
 });
 
+// Blend leverage: a loop of supply + borrow / swap steps, each built after the last confirms.
+app.post("/lending/blend/leverage", async (c) => {
+  const { buildBlendLeverage } = await import("./lending.js");
+  const r = await buildBlendLeverage(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
 // XOXNO leverage in one transaction (flash-borrow, swap, supply as collateral).
 app.post("/lending/xoxno/multiply", async (c) => {
   const { buildXoxnoMultiply } = await import("./lending.js");

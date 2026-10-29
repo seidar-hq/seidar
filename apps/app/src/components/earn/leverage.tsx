@@ -11,21 +11,59 @@ import { toBase } from "@/lib/tx";
 import type { DetailRow } from "./ActionCard";
 import { pct, type Market } from "./lendData";
 
-// Leverage on XOXNO (controller `multiply`, one transaction): the wallet deposits the market's
-// asset, XOXNO flash-borrows the debt asset, swaps it into more of the deposit asset and supplies
-// it all as collateral in a new account. Health floor matches the pools page (pools.ts): 1.3.
+// Leverage, two ways:
+// - XOXNO (controller `multiply`, one transaction): the wallet deposits the market's asset, XOXNO
+//   flash-borrows the debt asset, swaps it into more of the deposit asset and supplies it all as
+//   collateral in a new account.
+// - Blend (no flash loans): a loop of transactions the API builds one after another
+//   (/lending/blend/leverage): supply + borrow, swap the borrow back, supply + borrow again...
+// Either way the finished position's health is held at MIN_HEALTH (as on the pools page, pools.ts).
 
 export const MIN_HEALTH = 1.3;
 export const SLIPPAGE_BPS = 50;
+/** Blend loop: intermediate rounds may dip to this health (matches the API). */
+const LOOP_MIN_HEALTH = 1.1;
+const LOOP_MAX_ROUNDS = 8;
 
 /** Highest leverage that keeps health = ltv x L / (L - 1) at the floor, rounded down to 0.1x. */
 export const maxLeverage = (ltv: number) => (ltv > 0 && ltv < MIN_HEALTH ? Math.floor((1 / (1 - ltv / MIN_HEALTH)) * 10) / 10 : 1);
 
+/** Borrow rounds a Blend loop takes to reach leverage L (same rule as the API, at oracle prices). */
+function loopRounds(ltv: number, L: number): number {
+  let coll = 1;
+  let debt = 0;
+  let n = 0;
+  const target = L - 1;
+  while (debt < target - 1e-6 && n < LOOP_MAX_ROUNDS) {
+    const cap = (coll * ltv) / LOOP_MIN_HEALTH - debt;
+    if (cap <= 1e-6) break;
+    const b = Math.min(target - debt, cap);
+    if (n > 0 && b < (target - debt) / 50) break;
+    debt += b;
+    coll += b;
+    n++;
+  }
+  return n;
+}
+
+/** A place to open the position: an XOXNO spoke, or the Blend pool itself. */
 type Spoke = { spokeId: number; spokeName: string; ltv: number; debts: Market[] };
 
-/** Spokes where `m` can be collateral, each with the other XOXNO assets it can borrow. */
+/** Pair LTV: XOXNO quotes it per spoke; Blend weighs collateral by c_factor and debt by 1 / l_factor. */
+const pairLtv = (s: Spoke, d: Market) => s.ltv * (d.protocol === "blend" ? (d.lFactor ?? 0) : 1);
+
+/** Venues where `m` can be collateral, each with the assets it can borrow there. */
 export function leverageSpokes(m: Market | undefined, markets: Market[]): Spoke[] {
-  if (!m?.xoxno || !m.contract) return [];
+  if (!m?.contract) return [];
+  if (m.protocol === "blend") {
+    if (!m.canCollateral || !((m.ltvPct ?? 0) > 0) || (m.status != null && m.status > 1) || !((m.priceUsd ?? 0) > 0)) return [];
+    const s: Spoke = { spokeId: 0, spokeName: m.poolName, ltv: (m.ltvPct ?? 0) / 100, debts: [] };
+    s.debts = markets.filter(
+      (x) => x.protocol === "blend" && x.pool === m.pool && x.contract && x.contract !== m.contract && x.canBorrow && (x.priceUsd ?? 0) > 0 && maxLeverage(pairLtv(s, x)) > 1.1,
+    );
+    return s.debts.length ? [s] : [];
+  }
+  if (!m.xoxno) return [];
   return m.xoxno.spokes
     .filter((s) => s.canBeCollateral !== false && s.ltvBps > 0)
     .map((s) => ({
@@ -45,11 +83,13 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
   const [debtKey, setDebtKey] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [lev, setLev] = useState(2);
+  const blend = m?.protocol === "blend";
 
   const spoke = spokes.find((s) => s.spokeId === spokeId) ?? spokes[0] ?? null;
   // Default borrow: a dollar stablecoin when there is one (a classic "long" of the deposit asset).
   const debt = spoke?.debts.find((d) => d.key === debtKey) ?? spoke?.debts.find((d) => d.code === "USDC") ?? spoke?.debts[0] ?? null;
-  const maxLev = spoke ? maxLeverage(spoke.ltv) : 1;
+  const ltv = spoke && debt ? pairLtv(spoke, debt) : 0;
+  const maxLev = spoke ? maxLeverage(ltv) : 1;
   const L = Math.min(Math.max(lev, 1.1), maxLev);
 
   useEffect(() => {
@@ -65,12 +105,13 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
   const depositUsd = pc != null ? n * pc : null;
   const debtUsd = depositUsd != null ? depositUsd * (L - 1) : null;
   const debtAmount = debtUsd != null && pd ? debtUsd / pd : null;
-  const health = spoke ? (spoke.ltv * L) / (L - 1) : null;
+  const health = spoke ? (ltv * L) / (L - 1) : null;
   const netApy =
     m?.supplyApy != null && debt?.borrowApy != null ? m.supplyApy * L - debt.borrowApy * (L - 1) : null;
+  const rounds = blend && ltv ? loopRounds(ltv, L) : 0;
 
   const blocker = (() => {
-    if (!m || !spoke || !debt) return "No XOXNO spoke offers leverage on this asset";
+    if (!m || !spoke || !debt) return blend ? "Nothing in this pool can be borrowed against it" : "No XOXNO spoke offers leverage on this asset";
     if (pc == null || pd == null) return "Prices unavailable right now";
     if (!(n > 0)) return "Enter an amount";
     if (n > walletBal + 1e-9) return `Insufficient ${m.code} balance`;
@@ -78,18 +119,22 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
     return null;
   })();
 
-  const body = (from: string) =>
-    m && spoke && debt && debtAmount
-      ? {
-          from,
-          spokeId: spoke.spokeId,
-          collateral: m.contract,
-          debt: debt.contract,
-          deposit: toBase(amount, m.decimals) ?? "0",
-          debtAmount: toBase(debtAmount.toFixed(debt.decimals), debt.decimals) ?? "0",
-          slippageBps: SLIPPAGE_BPS,
-        }
-      : null;
+  const path = blend ? "/api/lending/blend/leverage" : "/api/lending/xoxno/multiply";
+  const body = (from: string) => {
+    if (!m || !spoke || !debt || !debtAmount) return null;
+    const deposit = toBase(amount, m.decimals) ?? "0";
+    if (blend)
+      return { protocol: "blend", from, pool: m.pool, collateral: m.contract, debt: debt.contract, deposit, leverage: Math.round(L * 10) / 10, slippageBps: SLIPPAGE_BPS };
+    return {
+      from,
+      spokeId: spoke.spokeId,
+      collateral: m.contract,
+      debt: debt.contract,
+      deposit,
+      debtAmount: toBase(debtAmount.toFixed(debt.decimals), debt.decimals) ?? "0",
+      slippageBps: SLIPPAGE_BPS,
+    };
+  };
 
   const details: DetailRow[] = [];
   if (m && spoke && debt) {
@@ -97,11 +142,12 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
     details.push({ label: "Borrowed", value: debtAmount != null && n > 0 ? `${formatAmount(debtAmount, 4)} ${debt.code}` : "—" });
     details.push({ label: "Health (est.)", value: health != null ? health.toFixed(2) : "—", color: health != null && health < 1.5 ? "orange.main" : "green.main" });
     details.push({ label: "Net APY (est.)", value: netApy != null ? pct(netApy) : "—", color: netApy != null && netApy < 0 ? "error.main" : "green.main" });
-    details.push({ label: "Max LTV", value: pct(spoke.ltv * 100, 0) });
+    details.push({ label: blend ? "Effective LTV" : "Max LTV", value: pct(ltv * 100, 0) });
     details.push({ label: "Swap slippage", value: pct(SLIPPAGE_BPS / 100, 1) });
+    if (blend) details.push({ label: "Transactions", value: rounds ? `about ${rounds * 2 + 1}` : "—" });
   }
 
-  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, details, available: spokes.length > 0 };
+  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, path, blend, details, available: spokes.length > 0 };
 }
 
 const Chip = ({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) => (
@@ -128,7 +174,7 @@ export function LeverageFields({ lv }: { lv: ReturnType<typeof useLeverage> }) {
   if (!lv.spoke) return null;
   return (
     <>
-      {lv.spokes.length > 1 && (
+      {!lv.blend && lv.spokes.length > 1 && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO spoke</Typography>
           <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -170,7 +216,11 @@ export function LeverageFields({ lv }: { lv: ReturnType<typeof useLeverage> }) {
           sx={{ mx: "0.5rem", width: "auto", "& .MuiSlider-markLabel": { fontSize: "0.75rem", color: "grey.200" } }}
         />
         <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
-          Max {lv.maxLev.toFixed(1)}x keeps health at {MIN_HEALTH} or above. Opens a new XOXNO account; if the price of what you borrowed rises against your collateral, the position can be liquidated.
+          Max {lv.maxLev.toFixed(1)}x keeps health at {MIN_HEALTH} or above.{" "}
+          {lv.blend
+            ? "Blend has no one-step loop, so this runs as a few transactions you sign in turn: supply and borrow, swap the borrow back, supply again. It adds to your position in this pool. If you stop partway, you keep a smaller leveraged position."
+            : "Opens a new XOXNO account."}{" "}
+          If the price of what you borrowed rises against your collateral, the position can be liquidated.
         </Typography>
       </Box>
     </>

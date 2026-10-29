@@ -450,3 +450,153 @@ export async function buildXoxnoMultiply(body: {
     return fail(friendly("xoxno", errMsg(e)));
   }
 }
+
+// ---------- Blend leverage (loop) ----------
+
+/** Intermediate rounds may dip to this health; the chosen leverage is capped so the finished position sits at LEVERAGE_MIN_HEALTH. */
+const LOOP_MIN_HEALTH = 1.1;
+const LOOP_MAX_ROUNDS = 8;
+
+export interface BlendLeverageBody {
+  protocol?: "blend";
+  from?: string;
+  pool?: string;
+  collateral?: string;
+  debt?: string;
+  slippageBps?: number;
+  /** open: the wallet's deposit (base units) and the chosen leverage. */
+  deposit?: string;
+  leverage?: number;
+  /** Carried between steps (set by the server in `next`). */
+  phase?: "open" | "swap" | "supply";
+  target?: string;
+  borrowed?: string;
+  amount?: string;
+  collBefore?: string;
+  round?: number;
+}
+
+/**
+ * Leverage on Blend, as a loop of transactions (Blend has no flash-loan multiply): the first submit
+ * supplies the deposit and borrows what keeps health >= LOOP_MIN_HEALTH; the borrowed asset is
+ * swapped back into the collateral; the next submit supplies that output and borrows again, until
+ * the target debt (deposit value x (leverage - 1)) is reached. Each step comes back with `next`,
+ * built after the previous one confirms, so chain state is always read fresh.
+ *
+ *   POST /lending/blend/leverage { from, pool, collateral, debt, deposit, leverage, slippageBps }
+ */
+export async function buildBlendLeverage(body: BlendLeverageBody | null): Promise<{ status: number; body: Built | Fail }> {
+  try {
+    const from = String(body?.from ?? "");
+    const pool = String(body?.pool ?? "");
+    const coll = String(body?.collateral ?? "");
+    const debt = String(body?.debt ?? "");
+    const slippageBps = Number(body?.slippageBps ?? 50);
+    const phase = body?.phase ?? "open";
+    const round = Number(body?.round ?? 0);
+    if (!isAccount(from)) return fail("from must be a G... wallet");
+    if (!isContract(pool) || !isContract(coll) || !isContract(debt) || coll === debt) return fail("pool, collateral and debt (two different tokens) required");
+    if (!(slippageBps >= 1 && slippageBps <= 500)) return fail("slippage must be between 0.01% and 5%");
+    if (!["open", "swap", "supply"].includes(phase) || !(Number.isInteger(round) && round >= 0 && round <= LOOP_MAX_ROUNDS)) return fail("bad leverage step");
+
+    const sdk = await import("@stellar/stellar-sdk");
+    const { borrowCapacity, oraclePrice, poolOracle, reserveFactors } = await import("./blend-position.js");
+    const balance = async (token: string) => BigInt(String(await sorobanView(token, "balance", [sdk.Address.fromString(from).toScVal()])));
+    const symbol = async (t: string) => {
+      const s = String((await sorobanView(t, "symbol").catch(() => "")) || "token");
+      return s === "native" ? "XLM" : s.split(":")[0];
+    };
+    const [rc, rd, cCode, dCode] = await Promise.all([reserveFactors(pool, coll), reserveFactors(pool, debt), symbol(coll), symbol(debt)]);
+    const fmt = (v: bigint, dec: number) => {
+      const n = Number(v) / 10 ** dec;
+      return n >= 1000 ? n.toFixed(2) : n >= 1 ? String(Number(n.toFixed(4))) : n.toPrecision(4);
+    };
+    const big = (v: unknown) => (/^\d+$/.test(String(v ?? "")) ? BigInt(String(v)) : -1n);
+    const base = { protocol: "blend" as const, from, pool, collateral: coll, debt, slippageBps };
+
+    // One Blend submit: supply `toSupply`, plus the next borrow while the target isn't reached.
+    const submitRound = async (toSupply: bigint, target: bigint, borrowed: bigint, r: number): Promise<Built> => {
+      const remaining = target - borrowed;
+      let b = 0n;
+      if (remaining > 0n && r < LOOP_MAX_ROUNDS) {
+        const cap = await borrowCapacity(pool, from, debt, LOOP_MIN_HEALTH, { asset: coll, amount: toSupply });
+        b = remaining < cap ? remaining : cap;
+        // A dust top-up isn't worth another round of signatures.
+        if (borrowed > 0n && b < remaining / 50n) b = 0n;
+      }
+      const actions: LendingAction[] = [{ action: "supply", asset: coll, amount: toSupply.toString() }];
+      if (b > 0n) actions.push({ action: "borrow", asset: debt, amount: b.toString() });
+      const built = await buildBlend(from, pool, actions, undefined);
+      return {
+        ok: true,
+        xdr: built.xdr,
+        label:
+          b > 0n
+            ? `Supply ${fmt(toSupply, rc.decimals)} ${cCode} + borrow ${fmt(b, rd.decimals)} ${dCode}`
+            : `Supply ${fmt(toSupply, rc.decimals)} ${cCode} (last step)`,
+        next:
+          b > 0n
+            ? ({ ...base, phase: "swap", target: target.toString(), borrowed: (borrowed + b).toString(), amount: b.toString(), round: r + 1 } as never)
+            : null,
+      };
+    };
+
+    if (phase === "open") {
+      const deposit = big(body?.deposit);
+      const L = Number(body?.leverage);
+      if (deposit <= 0n) return fail("deposit must be a base-unit amount");
+      if (!(L >= 1.1 && L <= 10)) return fail("leverage must be between 1.1x and 10x");
+      if (!(rc.cf > 0)) return fail(`${cCode} can't be collateral in this pool.`);
+      if (!(rd.lf > 0)) return fail(`${dCode} can't be borrowed in this pool.`);
+      const status = Number(((await sorobanView(pool, "get_config")) as { status?: unknown })?.status ?? 0);
+      if (status > 1) return fail("This Blend pool isn't allowing new borrowing right now.");
+      // Finished-position health: (cf x lf) x L / (L - 1).
+      const health = (rc.cf * rd.lf * L) / (L - 1);
+      if (!(health >= LEVERAGE_MIN_HEALTH - 1e-9))
+        return fail(`That leverage would leave health at ${health.toFixed(2)}; Seidar keeps leveraged positions at ${LEVERAGE_MIN_HEALTH} or above. Lower the leverage.`);
+      if ((await balance(coll)) < deposit) return fail(`Not enough ${cCode} in your wallet.`);
+      const oracle = await poolOracle(pool);
+      const [pc, pd] = await Promise.all([oraclePrice(oracle, coll), oraclePrice(oracle, debt)]);
+      if (pc <= 0n || pd <= 0n) return fail("The pool's oracle has no price for one of these assets right now.");
+      const lev = BigInt(Math.round((L - 1) * 10_000));
+      const target = (deposit * pc * lev * 10n ** BigInt(rd.decimals)) / (pd * 10_000n * 10n ** BigInt(rc.decimals));
+      if (target <= 0n) return fail("Amount too small to leverage.");
+      return { status: 200, body: await submitRound(deposit, target, 0n, 0) };
+    }
+
+    const target = big(body?.target);
+    const borrowed = big(body?.borrowed);
+    if (target <= 0n || borrowed < 0n) return fail("bad leverage step");
+
+    if (phase === "swap") {
+      const amount = big(body?.amount);
+      if (amount <= 0n) return fail("bad leverage step");
+      const { quoteSwap, buildSwap } = await import("./swap.js");
+      const q = await quoteSwap({ assetIn: debt, assetOut: coll, amount: amount.toString(), tradeType: "EXACT_IN", slippageBps: String(slippageBps) });
+      const qb = q.body as { ok?: boolean; quote?: unknown; error?: string };
+      if (!qb.ok || !qb.quote) return fail(`No swap route from ${dCode} to ${cCode} right now. Your Blend position is open; retry to continue.`);
+      const sb = (await buildSwap({ quote: qb.quote, from })).body as { ok?: boolean; xdr?: string; error?: string };
+      if (!sb.ok || !sb.xdr) return fail(sb.error ?? "Couldn't build the swap.");
+      // Read before the swap lands; the next step supplies exactly what it returned.
+      const collBefore = await balance(coll);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          xdr: sb.xdr,
+          label: `Swap ${fmt(amount, rd.decimals)} ${dCode} → ${cCode}`,
+          next: { ...base, phase: "supply", target: target.toString(), borrowed: borrowed.toString(), collBefore: collBefore.toString(), round } as never,
+        },
+      };
+    }
+
+    // phase === "supply": what the swap returned (less its network fee when the collateral is XLM).
+    const before = big(body?.collBefore);
+    if (before < 0n) return fail("bad leverage step");
+    const got = (await balance(coll)) - before;
+    if (got <= 0n) return fail("The swap output hasn't reached your wallet yet. Try again in a moment.");
+    return { status: 200, body: await submitRound(got, target, borrowed, round) };
+  } catch (e) {
+    return fail(friendly("blend", errMsg(e)));
+  }
+}

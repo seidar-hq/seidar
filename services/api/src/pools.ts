@@ -90,6 +90,9 @@ export type PoolAsset = {
   /** This reserve's own totals in USD (oracle-priced), when readable. */
   suppliedUsd?: number | null;
   borrowedUsd?: number | null;
+  /** Blend liability factor (debt weight in health) and oracle price, for leverage sizing. */
+  lFactor?: number;
+  priceUsd?: number | null;
 };
 
 async function sorobanView(_rpcUrl: string, contractId: string, method: string, args: unknown[] = []): Promise<unknown> {
@@ -405,6 +408,8 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
             canCollateral: ltvPct > 0,
             canBorrow: (r.borrowApy ?? 0) > 0,
             poolStatus,
+            lFactor: r.lFactor,
+            priceUsd: px,
           });
         }
         for (const r of withCode) {

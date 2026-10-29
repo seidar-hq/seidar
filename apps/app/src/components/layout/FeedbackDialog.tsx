@@ -16,11 +16,11 @@ import { InsetRow } from "@/components/wallet/WalletParts";
 import { apiFetch } from "@/lib/api";
 import { useWallet } from "@/wallet/WalletContext";
 
-// Feedback form: a message, an optional reply address and up to 4 images (4 MB in all).
+// Feedback form: a message, an optional reply address and up to 4 images (2 MB in all).
 // The API emails it to the team (hello@seidar.xyz's inbox).
 
 const MAX_FILES = 4;
-const MAX_BYTES = 4 * 1024 * 1024;
+const MAX_BYTES = 2 * 1024 * 1024;
 const TEXT_MAX = 4000;
 const TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -68,7 +68,7 @@ export default function FeedbackDialog({ open, onClose }: { open: boolean; onClo
         break;
       }
       if (size + f.size > MAX_BYTES) {
-        setError(`Images can be 4 MB in total; ${f.name} would go over.`);
+        setError(`Images can be 2 MB in total; ${f.name} would go over.`);
         continue;
       }
       try {
@@ -185,7 +185,7 @@ export default function FeedbackDialog({ open, onClose }: { open: boolean; onClo
             Images (optional)
           </Typography>
           <Typography variant="subtitle3" color={total > MAX_BYTES * 0.9 ? "orange.main" : "grey.200"} sx={{ fontSize: "0.75rem" }}>
-            {files.length}/{MAX_FILES} · {mb(total)} of 4 MB
+            {files.length}/{MAX_FILES} · {mb(total)} of 2 MB
           </Typography>
         </Box>
         {files.length < MAX_FILES && (
@@ -217,7 +217,7 @@ export default function FeedbackDialog({ open, onClose }: { open: boolean; onClo
               Add images
             </Typography>
             <Typography variant="subtitle3" color="grey.200" sx={{ fontSize: "0.75rem" }}>
-              Click, drop or paste · PNG, JPEG, GIF, WebP · up to 4 MB in total
+              Click, drop or paste · PNG, JPEG, GIF, WebP · up to 2 MB in total
             </Typography>
           </ButtonBase>
         )}

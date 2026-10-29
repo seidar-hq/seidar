@@ -197,9 +197,15 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 - Feedback (`POST /feedback`, header Feedback button): emailed through the `FEEDBACK_EMAIL` send_email
   binding (Email Routing on seidar.xyz; `hello@seidar.xyz` forwards to the owner's verified Gmail). The
   destination is the `FEEDBACK_TO` secret, which must be a *verified* Email Routing destination address.
-  Without it the route answers `feedback-not-configured`.
+  Without it the route answers `feedback-not-configured`. Up to 4 images, 2 MB in total.
 - Leverage (`POST /lending/xoxno/multiply`, Lend & Borrow → Leverage tab on XOXNO markets): XOXNO controller
   `multiply` with an aggregator route from `stellar-swap.xoxno.com`; new account per position, health floor 1.3.
+- Blend leverage (`POST /lending/blend/leverage`, same tab on Blend markets): a loop of transactions, ported
+  from real_seidar's leverage modal. open = supply deposit + borrow (sized by `borrowCapacity` at interim
+  health 1.1) -> swap (Soroswap aggregator, debt -> collateral) -> supply what the swap returned (wallet
+  balance delta) + borrow again, until debt = deposit value x (L - 1) by the pool oracle; at most 8 rounds.
+  Each step returns `next` for `runBuilt`. Max L is quoted on cf x lf so the finished health is >= 1.3.
+  Only built + simulated on mainnet so far (no signed run). `/pools` Blend assets now carry `lFactor`, `priceUsd`.
 - Agent (`POST /agent/chat`): built but switched off in the UI (header pill says "Coming soon"). Needs the
   `ANTHROPIC_API_KEY` secret before it answers.
 - App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`, docs/site/X links.
@@ -214,7 +220,10 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 - `compatibility_date` is `2026-08-08` (newest the local workerd supports). Don't raise it past what
   `wrangler dev` accepts.
 
-### ⚠️ The account is on the Workers **Free** plan
+### Workers plan
+The owner upgraded to **Workers Paid** ($5/mo) on 2026-10-29; the Free-plan notes below are historical.
+
+### ⚠️ (Historical) The account was on the Workers **Free** plan
 Free = 10 ms CPU and **50 subrequests per invocation**, 1,000 KV writes/day. Verified effects on
 `api.seidar.xyz` (2026-10-26):
 

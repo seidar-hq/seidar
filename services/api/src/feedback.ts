@@ -1,4 +1,4 @@
-// In-app feedback: text, an optional reply address and up to 4 images (4 MB in all), emailed to
+// In-app feedback: text, an optional reply address and up to 4 images (2 MB in all), emailed to
 // the team. On Cloudflare the mail goes out through the Email Routing send binding (worker.ts
 // registers it); it can only deliver to a verified destination address, set as FEEDBACK_TO.
 // A row is also kept in the feedback table (text and file names only) when a database is there.
@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import { ensureSchema, getPool } from "./db.js";
 
 export const FEEDBACK_MAX_FILES = 4;
-export const FEEDBACK_MAX_BYTES = 4 * 1024 * 1024;
+export const FEEDBACK_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 export interface FeedbackFile {
@@ -103,7 +103,7 @@ export async function submitFeedback(body: {
     const size = Buffer.byteLength(data, "base64");
     if (!size) return bad(`${name} is empty.`);
     total += size;
-    if (total > FEEDBACK_MAX_BYTES) return bad("Images can be 4 MB in total.");
+    if (total > FEEDBACK_MAX_BYTES) return bad("Images can be 2 MB in total.");
     files.push({ name, type: head[1], base64: data, size });
   }
 
