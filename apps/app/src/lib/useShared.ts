@@ -4,8 +4,21 @@ import { useEffect, useState } from "react";
 
 // Shared, de-duplicated async cache: every component asking for the same key shares one request
 // and one result. Stale entries keep showing while they refresh.
+//
+// After a transaction the wallet's entries are also marked `pending` (refreshAfterTx): their values
+// are expected to change, so the UI shows its loading shimmer on those numbers until a refresh
+// returns something different (or settleShared gives up once the last post-tx refresh is done).
 
-type Entry = { at: number; value: unknown; error: boolean };
+type Entry = { at: number; value: unknown; error: boolean; pending?: string };
+
+/** Cheap identity of a value, to tell when a post-transaction refresh brought new data. */
+const sig = (v: unknown) => {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return String(Math.random());
+  }
+};
 
 const store = new Map<string, Entry>();
 const inflight = new Map<string, Promise<unknown>>();
@@ -60,17 +73,21 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
   const job = loader()
     .then((value) => {
       // A failed refresh (null) never replaces a good copy.
+      const prev = store.get(key);
       if (value == null && hit?.value != null) {
-        store.set(key, { ...hit, at: Date.now() });
+        store.set(key, { ...hit, at: Date.now(), pending: prev?.pending });
         return hit.value as T;
       }
-      store.set(key, { at: Date.now(), value, error: false });
+      // Still pending while the indexers haven't caught up with the transaction (same data back).
+      const pending = prev?.pending != null && sig(value) === prev.pending ? prev.pending : undefined;
+      store.set(key, { at: Date.now(), value, error: false, pending });
       mirror(key, value);
       return value;
     })
     .catch((e) => {
       // Keep a good copy on screen; it is retried at the next interval, not on every render.
-      store.set(key, hit ? { ...hit, at: Date.now() } : { at: Date.now(), value: null, error: true });
+      const prev = store.get(key);
+      store.set(key, hit ? { ...hit, at: Date.now(), pending: prev?.pending } : { at: Date.now(), value: null, error: true });
       throw e;
     })
     .finally(() => {
@@ -89,11 +106,24 @@ const STALE = 0;
  * values stay on screen until the new ones arrive (dropping them made every card fall back to its
  * loading state for a moment after each transaction, a visible flash).
  */
-export function invalidateSharedMany(prefixes: string[]) {
+export function invalidateSharedMany(prefixes: string[], opts: { pending?: boolean } = {}) {
   let changed = false;
   for (const [k, e] of [...store.entries()]) {
     if (prefixes.some((p) => k.startsWith(p))) {
-      store.set(k, { ...e, at: STALE });
+      const pending = opts.pending ? (e.pending ?? sig(e.value)) : e.pending;
+      store.set(k, { ...e, at: STALE, pending });
+      changed = true;
+    }
+  }
+  if (changed) notify();
+}
+
+/** Stop showing "updating" for these prefixes (the last post-transaction refresh has run). */
+export function settleShared(prefixes: string[]) {
+  let changed = false;
+  for (const [k, e] of [...store.entries()]) {
+    if (e.pending != null && prefixes.some((p) => k.startsWith(p))) {
+      store.set(k, { ...e, pending: undefined });
       changed = true;
     }
   }
@@ -110,7 +140,7 @@ export function useSharedMany<T>(
   keys: string[],
   loaderFor: (key: string) => () => Promise<T>,
   ttl: number,
-): { values: Record<string, T | null>; loading: boolean; errors: string[] } {
+): { values: Record<string, T | null>; loading: boolean; refreshing: boolean; errors: string[] } {
   const [, bump] = useState(0);
   const sig = keys.join("|");
 
@@ -143,16 +173,18 @@ export function useSharedMany<T>(
   const values: Record<string, T | null> = {};
   const errors: string[] = [];
   let loading = false;
+  let refreshing = false;
   for (const k of keys) {
     const e = store.get(k);
     values[k] = (e?.value as T) ?? null;
     if (!e) loading = true;
     else if (e.error) errors.push(k);
+    if (e?.pending != null) refreshing = true;
   }
-  return { values, loading, errors };
+  return { values, loading, refreshing, errors };
 }
 
 export function useShared<T>(key: string | null, loader: () => Promise<T>, ttl: number) {
   const r = useSharedMany<T>(key ? [key] : [], () => loader, ttl);
-  return { value: key ? r.values[key] : null, loading: r.loading, error: r.errors.length > 0 };
+  return { value: key ? r.values[key] : null, loading: r.loading, refreshing: r.refreshing, error: r.errors.length > 0 };
 }

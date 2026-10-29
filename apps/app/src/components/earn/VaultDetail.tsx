@@ -7,6 +7,7 @@ import Typography from "@mui/material/Typography";
 import { styled, useTheme } from "@mui/material/styles";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { PlainCard } from "@/components/common/SectionCard";
+import Shimmer from "@/components/common/Shimmer";
 import TokenLogo from "@/components/common/TokenLogo";
 import ActivityTable from "@/components/transactions/ActivityTable";
 import { useActivity } from "@/components/transactions/useActivity";
@@ -61,14 +62,19 @@ export default function VaultDetail() {
   const [tx, setTx] = useState<{ open: boolean; steps: TxStep[]; error: string | null }>({ open: false, steps: [], error: null });
   useEffect(() => setAmount(""), [tab]);
 
-  const detail = useShared<{ ok?: boolean; detail?: VaultDetailInfo } | null>(
+  const detailResp = useShared<{ ok?: boolean; detail?: VaultDetailInfo } | null>(
     vault ? `vaultdetail:${vault.protocol}:${address}` : null,
     () => apiJson(`/api/vaults/detail?protocol=${vault!.protocol}&address=${address}`, undefined, 90_000),
     600_000,
-  ).value?.detail;
+  );
+  const detail = detailResp.value?.detail;
+  const detailLoading = detailResp.loading && !detail;
   const portfolio = usePortfolio(me ? [me] : []);
   const mine = portfolio.vaults.find((v) => v.vault === address);
-  const { byAddress } = useBalances(me ? [me] : []);
+  const { byAddress, refreshing: balRefreshing } = useBalances(me ? [me] : []);
+  // Shimmer, not 0, while the position or wallet balance is first fetched or updating after a transaction.
+  const posLoading = !!me && ((portfolio.vaultsLoading && !mine) || portfolio.vaultsRefreshing);
+  const balLoading = !!me && ((byAddress[me]?.loading ?? true) || balRefreshing);
   const issuer = vault ? (byContract.get(vault.asset)?.issuer ?? null) : null;
   const held = me && vault ? byAddress[me]?.tokens.find((t) => t.code === vault.assetCode && (t.issuer ?? null) === issuer) : undefined;
   const priceResp = useShared<{ prices?: Record<string, number | null> } | null>(
@@ -102,6 +108,8 @@ export default function VaultDetail() {
   const blocker = (() => {
     if (!isConnected) return null;
     if (tab === "deposit" && vault.paused) return "Vault paused";
+    if (tab === "withdraw" && posLoading) return "Loading your position…";
+    if (tab === "deposit" && balLoading) return "Loading your balance…";
     if (tab === "withdraw" && deposited <= 0) return "Nothing deposited";
     if (!(n > 0)) return "Enter an amount";
     if (tab === "deposit" && n > walletBal + 1e-9) return `Insufficient ${vault.assetCode} balance`;
@@ -134,7 +142,8 @@ export default function VaultDetail() {
   ];
   if (tab === "deposit" && n > 0 && vault.apyPct != null && price != null) details.push({ label: "Est. yearly earnings", value: formatUsd((n * price * vault.apyPct) / 100) });
   if (detail?.feesBps?.vaultFee != null) details.push({ label: "Performance fee", value: `${(detail.feesBps.vaultFee / 100).toFixed(1)}%` });
-  if (mine) details.push({ label: "Your deposit", value: `${formatAmount(deposited, 4)} ${vault.assetCode}` });
+  if (mine || posLoading)
+    details.push({ label: "Your deposit", value: <Shimmer on={posLoading} width="4.5rem">{`${formatAmount(deposited, 4)} ${vault.assetCode}`}</Shimmer> });
 
   const strategies = detail?.assets?.flatMap((a) => a.strategies ?? []) ?? [];
   const fmtDay = (t: number) => new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
@@ -164,19 +173,34 @@ export default function VaultDetail() {
         <Box>
           <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "1rem" }}>My Position</Typography>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem" }}>
-            <Figure label="Deposited" value={`${formatAmount(deposited, 4)} ${vault.assetCode}`} sub={formatUsd(mine?.usd ?? 0)} />
-            <Figure label="Est. Yearly Earnings" value={yearly != null ? formatUsd(yearly) : "—"} color={yearly ? "green.main" : undefined} />
-            <Figure label="Share of Vault" value={sharePct != null ? pct(sharePct, sharePct < 0.01 ? 4 : 2) : "—"} />
-            <Figure label="Share Price" value={detail?.sharePrice != null ? detail.sharePrice.toFixed(6) : vault.sharePrice != null ? vault.sharePrice.toFixed(6) : "—"} />
+            <Figure
+              label="Deposited"
+              value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(deposited, 4)} ${vault.assetCode}`}</Shimmer>}
+              sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(mine?.usd ?? 0)}</Shimmer>}
+            />
+            <Figure
+              label="Est. Yearly Earnings"
+              value={<Shimmer on={posLoading} width="5rem" height="1.5rem">{yearly != null ? formatUsd(yearly) : "—"}</Shimmer>}
+              color={yearly && !posLoading ? "green.main" : undefined}
+            />
+            <Figure label="Share of Vault" value={<Shimmer on={posLoading} width="4rem" height="1.5rem">{sharePct != null ? pct(sharePct, sharePct < 0.01 ? 4 : 2) : "—"}</Shimmer>} />
+            <Figure
+              label="Share Price"
+              value={
+                <Shimmer on={detailLoading && vault.sharePrice == null} width="5.5rem" height="1.5rem">
+                  {detail?.sharePrice != null ? detail.sharePrice.toFixed(6) : vault.sharePrice != null ? vault.sharePrice.toFixed(6) : "—"}
+                </Shimmer>
+              }
+            />
           </Box>
         </Box>
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
           <StatCard label="TVL" value={compactUsd(vault.tvlUsd)} />
           <StatCard label="APY" value={apyText(vault)} color="green.main" sub={vault.apySource === "advertised" ? "Advertised by the curator" : "Measured on-chain"} />
-          <StatCard label="Realized APY (7d)" value={pct(detail?.ownApy7d)} color={detail?.ownApy7d != null ? "green.main" : undefined} />
-          <StatCard label="Realized APY (30d)" value={pct(detail?.ownApy30d)} color={detail?.ownApy30d != null ? "green.main" : undefined} />
-          <StatCard label="Depositors" value={detail?.depositors != null ? formatAmount(detail.depositors, 0) : "—"} />
+          <StatCard label="Realized APY (7d)" value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{pct(detail?.ownApy7d)}</Shimmer>} color={detail?.ownApy7d != null ? "green.main" : undefined} />
+          <StatCard label="Realized APY (30d)" value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{pct(detail?.ownApy30d)}</Shimmer>} color={detail?.ownApy30d != null ? "green.main" : undefined} />
+          <StatCard label="Depositors" value={<Shimmer on={detailLoading} width="3rem" height="1.5rem">{detail?.depositors != null ? formatAmount(detail.depositors, 0) : "—"}</Shimmer>} />
           <StatCard label="Withdrawals" value={withdrawalText(vault)} />
         </Box>
 
@@ -250,6 +274,7 @@ export default function VaultDetail() {
             onAmount={setAmount}
             balance={isConnected ? available : null}
             balanceLabel={tab === "deposit" ? "Wallet" : "Deposited"}
+            balanceLoading={isConnected && (tab === "deposit" ? balLoading : posLoading)}
             price={price}
             onMax={available ? () => setAmount(String(Number(available.toFixed(vault.assetDecimals)))) : undefined}
           />

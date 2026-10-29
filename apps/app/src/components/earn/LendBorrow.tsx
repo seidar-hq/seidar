@@ -9,6 +9,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import Tabs from "@/components/common/Tabs";
 import TokenLogo from "@/components/common/TokenLogo";
+import Shimmer from "@/components/common/Shimmer";
 import TxDialog from "@/components/tx/TxDialog";
 import { apiJson } from "@/lib/api";
 import { formatAmount, formatUsd } from "@/lib/format";
@@ -81,7 +82,11 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   const { activeWallet, portfolioAddresses, portfolioWallets, switchWallet } = useWallet();
   const { markets, loading } = useLendMarkets();
   const positions = useLendPositions(portfolioAddresses);
-  const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
+  const { byAddress, refreshing: balRefreshing } = useBalances(activeWallet ? [activeWallet.address] : []);
+  // Shimmer on the numbers while they first load or update after a transaction.
+  const balBusy = !!activeWallet && ((byAddress[activeWallet.address]?.loading ?? true) || balRefreshing);
+  const posBusy = positions.refreshing;
+  const posFirstLoad = positions.loading && positions.legs.length === 0 && portfolioAddresses.length > 0;
   const held = activeWallet ? (byAddress[activeWallet.address]?.tokens ?? []) : [];
   const [proto, setProto] = useState<string>("all");
   const [mode, setMode] = useState<string>("lend");
@@ -124,7 +129,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       header: "Wallet Balance",
       cell: (m) => (
         <Num>
-          {formatAmount(balanceOf(m), 4)} {m.code}
+          <Shimmer on={balBusy} width="4.5rem">{`${formatAmount(balanceOf(m), 4)} ${m.code}`}</Shimmer>
         </Num>
       ),
       sortValue: balanceOf,
@@ -175,10 +180,10 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       cell: (l) => (
         <Box>
           <Num color="common.black">
-            {formatAmount(l.supplied, 4)} {l.code}
+            <Shimmer on={posBusy} width="5rem">{`${formatAmount(l.supplied, 4)} ${l.code}`}</Shimmer>
           </Num>
           <Typography variant="caption" color="grey.200">
-            {formatUsd(l.suppliedUsd)}
+            <Shimmer on={posBusy} width="3.5rem" height="0.75rem">{formatUsd(l.suppliedUsd)}</Shimmer>
           </Typography>
         </Box>
       ),
@@ -205,10 +210,10 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       cell: (l) => (
         <Box>
           <Num color="common.black">
-            {formatAmount(l.borrowed, 4)} {l.code}
+            <Shimmer on={posBusy} width="5rem">{`${formatAmount(l.borrowed, 4)} ${l.code}`}</Shimmer>
           </Num>
           <Typography variant="caption" color="grey.200">
-            {formatUsd(l.borrowedUsd)}
+            <Shimmer on={posBusy} width="3.5rem" height="0.75rem">{formatUsd(l.borrowedUsd)}</Shimmer>
           </Typography>
         </Box>
       ),
@@ -220,7 +225,11 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       header: "Health Factor",
       cell: (l) => {
         const h = healthOf(l);
-        return <Num color={healthColor(h)}>{h == null ? "—" : h.toFixed(2)}</Num>;
+        return (
+          <Num color={healthColor(h)}>
+            <Shimmer on={posBusy} width="2.5rem">{h == null ? "—" : h.toFixed(2)}</Shimmer>
+          </Num>
+        );
       },
     },
     {
@@ -297,12 +306,13 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
         {mode === "lend" ? (
           <>
             {rewardsStrip(p)}
-            {supplies.length > 0 && (
+            {(supplies.length > 0 || posFirstLoad) && (
               <DataTable
                 variant="inset"
                 title="Your Supplies"
                 columns={yourSupplyCols}
                 rows={supplies}
+                isLoading={posFirstLoad}
                 getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}:${l.xoxno?.accountId ?? ""}`}
                 onRowClick={(l) => {
                   const m = marketOf(l);
@@ -328,12 +338,13 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
           </>
         ) : (
           <>
-            {borrows.length > 0 && (
+            {(borrows.length > 0 || posFirstLoad) && (
               <DataTable
                 variant="inset"
                 title="Your Borrows"
                 columns={yourBorrowCols}
                 rows={borrows}
+                isLoading={posFirstLoad}
                 getRowId={(l) => `${l.wallet}:${l.pool}:${l.contract}:${l.xoxno?.accountId ?? ""}`}
                 onRowClick={(l) => {
                   const m = marketOf(l);

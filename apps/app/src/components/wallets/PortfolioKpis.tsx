@@ -67,13 +67,15 @@ export default function PortfolioKpis() {
   const sk = <Skeleton variant="rounded" animation="wave" width="7rem" height="1.75rem" />;
   const skSmall = <Skeleton variant="rounded" animation="wave" width="4rem" height="1rem" />;
   const totalsLoading = p.assetsLoading || p.positionsLoading;
+  // Updating after a transaction: shimmer until the new totals land (no jump from the old figure).
+  const totalsBusy = p.assetsRefreshing || p.positionsRefreshing;
   const utilisation = t.assetsUsd + t.utilisedUsd > 0 ? (t.utilisedUsd / (t.assetsUsd + t.utilisedUsd)) * 100 : 0;
 
   const kpis: Kpi[] = [
     {
       heading: "Total Balance",
       infoTooltip: "Wallet assets plus your positions in Stellar protocols, net of anything borrowed.",
-      value: totalsLoading && !t.totalUsd ? sk : formatUsd(t.totalUsd),
+      value: (totalsLoading && !t.totalUsd) || totalsBusy ? sk : formatUsd(t.totalUsd),
       valueTooltip: totalsLoading ? "Positions are still loading" : undefined,
     },
     {
@@ -88,9 +90,9 @@ export default function PortfolioKpis() {
     {
       heading: "Total Utilised",
       infoTooltip: "Capital deployed into lending markets, liquidity pools and vaults.",
-      value: p.positionsLoading && !t.utilisedUsd ? sk : formatUsd(t.utilisedUsd),
+      value: (p.positionsLoading && !t.utilisedUsd) || totalsBusy ? sk : formatUsd(t.utilisedUsd),
       subtext: "Utilisation %",
-      subValue: p.positionsLoading && !t.utilisedUsd ? skSmall : `${utilisation.toFixed(2)}%`,
+      subValue: (p.positionsLoading && !t.utilisedUsd) || totalsBusy ? skSmall : `${utilisation.toFixed(2)}%`,
     },
     {
       heading: "Total Rewards",

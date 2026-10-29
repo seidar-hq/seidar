@@ -7,29 +7,58 @@
 
 import { apiFetch } from "./api";
 import { MAINNET_PASSPHRASE, WatchOnlyError, kitSignTransaction, type WalletKind } from "./wallets";
-import { refreshBalances } from "@/wallet/useBalances";
-import { invalidateSharedMany } from "./useShared";
+import { refreshBalances, settleBalances } from "@/wallet/useBalances";
+import { invalidateSharedMany, settleShared } from "./useShared";
 import { pushNote } from "@/components/layout/NotificationButton";
 
 const WALLET_CACHE_PREFIXES = ["lend:", "vaults:", "lp:", "xoxno:accounts:", "borrowcap:", "zenex:acct:"];
-const MARKET_CACHE_PREFIXES = ["lend:markets", "vaults:list", "pools:", "dexpools:", "vaultdetail:", "poolhist:", "pooltrades:", "clpool:", "clpos:"];
+const MARKET_CACHE_PREFIXES = ["lend:markets", "vaults:list", "pools:", "dexpools:", "vaultdetail:", "poolhist:", "pooltrades:", "clpool:"];
+/** Wallet data keyed without the address up front (only this browser's wallet is in the cache). */
+const WALLET_DATA_PREFIXES = ["clpos:"];
+/**
+ * Which wallet figures a transaction kind (TxMeta.kind) changes, and so show "updating". Balances
+ * always do (every transaction pays a fee); other kinds (swap, payment, trustline) only touch them.
+ */
+const CHANGES: Record<string, { wallet: string[]; data?: string[] }> = {
+  lending: { wallet: ["lend:", "xoxno:accounts:", "borrowcap:"] },
+  claim: { wallet: ["lend:"] },
+  vault: { wallet: ["vaults:"] },
+  liquidity: { wallet: ["lp:"], data: ["clpos:"] },
+  perps: { wallet: ["zenex:acct:"] },
+};
 
-/** Refresh balances, wallet-scoped protocol caches and activity after a transaction. */
-export function refreshAfterTx(address: string) {
-  const run = () => {
-    refreshBalances([address]);
-    invalidateSharedMany([
-      ...WALLET_CACHE_PREFIXES.map((prefix) => `${prefix}${address}`),
-      ...MARKET_CACHE_PREFIXES,
-    ]);
+/** How long the wallet's numbers may show "updating" after a transaction (covers the last refresh). */
+const SETTLE_MS = 22_000;
+let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Refresh balances, wallet-scoped protocol caches and activity after a transaction. The wallet's
+ * balances and positions show their loading shimmer until fresh numbers arrive; market data
+ * refreshes quietly.
+ */
+export function refreshAfterTx(address: string, kind?: string) {
+  const walletKeys = [...WALLET_CACHE_PREFIXES.map((prefix) => `${prefix}${address}`), ...WALLET_DATA_PREFIXES];
+  const touched = CHANGES[kind ?? ""];
+  const changing = touched ? [...touched.wallet.map((p) => `${p}${address}`), ...(touched.data ?? [])] : [];
+  const run = (first: boolean) => {
+    refreshBalances([address], { pending: first });
+    invalidateSharedMany(changing, { pending: first });
+    invalidateSharedMany(walletKeys);
+    invalidateSharedMany(MARKET_CACHE_PREFIXES);
     try {
       window.dispatchEvent(new Event("seidar:refresh"));
     } catch {}
   };
-  run();
+  run(true);
   // Indexers can lag the ledger by a few seconds; refresh again so the new row/amount appears.
-  setTimeout(run, 5_000);
-  setTimeout(run, 15_000);
+  setTimeout(() => run(false), 5_000);
+  setTimeout(() => run(false), 15_000);
+  if (settleTimer) clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => {
+    settleTimer = null;
+    settleBalances([address]);
+    settleShared(walletKeys);
+  }, SETTLE_MS);
 }
 
 export const explorerTx = (hash: string) => `https://stellar.expert/explorer/public/tx/${hash}`;
@@ -354,7 +383,7 @@ export async function runBuilt(
         step.status = "submitted";
         step.hash = e.hash;
         emit();
-        refreshAfterTx(signer.address);
+        refreshAfterTx(signer.address, txMeta(path, body)?.kind);
         return { hashes, unsigned: false, pending: true };
       }
       step.status = "failed";
@@ -365,7 +394,7 @@ export async function runBuilt(
     }
     body = b.next ?? null;
   }
-  refreshAfterTx(signer.address);
+  refreshAfterTx(signer.address, txMeta(path, firstBody)?.kind);
   void pushNote(signer.address, `${steps.map((s) => s.label).join(" · ")} confirmed.`);
   return { hashes, unsigned: false };
 }

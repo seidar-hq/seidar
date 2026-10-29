@@ -7,6 +7,7 @@ import ButtonBase from "@mui/material/ButtonBase";
 import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import { PlainCard } from "@/components/common/SectionCard";
+import Shimmer from "@/components/common/Shimmer";
 import TokenLogo from "@/components/common/TokenLogo";
 import ActivityTable from "@/components/transactions/ActivityTable";
 import { useActivity } from "@/components/transactions/useActivity";
@@ -86,7 +87,10 @@ export default function LendMarket() {
   const { markets, loading } = useLendMarkets();
   const m: Market | undefined = markets.find((x) => x.protocol === protocol && x.pool === pool && (x.contract === asset || x.code === asset));
   const positions = useLendPositions(me ? [me] : []);
-  const { byAddress } = useBalances(me ? [me] : []);
+  const { byAddress, refreshing: balRefreshing } = useBalances(me ? [me] : []);
+  // Shimmer, not 0, while the position or wallet balance is first fetched or updating after a transaction.
+  const posLoading = !!me && ((positions.loading && positions.legs.length === 0) || positions.refreshing);
+  const balLoading = !!me && ((byAddress[me]?.loading ?? true) || balRefreshing);
   const [tab, setTab] = useState<LendAction>(TABS.some((t) => t.id === initial) || initial === "leverage" ? initial : "supply");
   const [amount, setAmount] = useState("");
   const [collateral, setCollateral] = useState(true);
@@ -236,10 +240,13 @@ export default function LendMarket() {
           : "Can borrow";
   const atMax = available != null && n > 0 && Math.abs(n - available) < 1e-9;
 
+  const capLoading = tab === "borrow" && (protocol === "blend" ? cap.loading || cap.refreshing : posLoading);
+  const availLoading = tab === "supply" ? balLoading : tab === "borrow" ? capLoading : posLoading;
   const blocker = (() => {
     if (!isConnected) return "Connect a wallet";
     const b = actionBlock(m, tab);
     if (b) return b;
+    if (availLoading) return tab === "supply" ? "Loading your balance…" : tab === "borrow" ? "Loading borrow capacity…" : "Loading your position…";
     if (m.protocol === "xoxno" && tab !== "supply" && !account) {
       if (xoxnoAccts.loading) return "Loading XOXNO accounts…";
       if (tab === "withdraw") return supplied > 0 ? "No XOXNO account with this supply" : "Nothing supplied here";
@@ -312,13 +319,19 @@ export default function LendMarket() {
   if (tab === "supply" || tab === "withdraw") details.push({ label: "Supply APY", value: pct(m.supplyApy), color: "green.main" });
   if (tab === "borrow" || tab === "repay") details.push({ label: "Borrow APY", value: pct(m.borrowApy), color: "green.main" });
   if (m.ltvPct != null) details.push({ label: "Collateral factor", value: pct(m.ltvPct, 0) });
-  if (health != null) details.push({ label: "Health factor", value: health.toFixed(2), color: healthColor(health) });
-  if (poolInfo && tab === "borrow") details.push({ label: "Borrow capacity", value: formatUsd(poolInfo.borrowCapacityUsd) });
+  if (health != null || posLoading)
+    details.push({ label: "Health factor", value: <Shimmer on={posLoading} width="2.5rem">{health?.toFixed(2)}</Shimmer>, color: posLoading ? undefined : healthColor(health) });
+  if (poolInfo && tab === "borrow") details.push({ label: "Borrow capacity", value: <Shimmer on={posLoading} width="4rem">{formatUsd(poolInfo.borrowCapacityUsd)}</Shimmer> });
   if (m.protocol === "xoxno" && account)
     details.push({ label: "XOXNO account", value: `#${account.accountId}${account.spokeName ? ` · ${account.spokeName}` : ""}` });
   if (m.protocol === "xoxno" && tab === "borrow" && account)
-    details.push({ label: "Borrow capacity", value: maxBorrow != null ? `${formatAmount(maxBorrow, 4)} ${m.code}` : "—" });
-  if (tab === "repay") details.push({ label: "Wallet balance", value: `${formatAmount(walletBal, 4)} ${m.code}`, color: walletBal + 1e-9 < n ? "error.main" : undefined });
+    details.push({ label: "Borrow capacity", value: <Shimmer on={capLoading} width="4rem">{maxBorrow != null ? `${formatAmount(maxBorrow, 4)} ${m.code}` : "—"}</Shimmer> });
+  if (tab === "repay")
+    details.push({
+      label: "Wallet balance",
+      value: <Shimmer on={balLoading} width="4rem">{`${formatAmount(walletBal, 4)} ${m.code}`}</Shimmer>,
+      color: !balLoading && walletBal + 1e-9 < n ? "error.main" : undefined,
+    });
 
   return (
     <Layout>
@@ -348,12 +361,24 @@ export default function LendMarket() {
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem" }}>
             <Figure
               label="My Supply"
-              value={`${formatAmount(supplied, 4)} ${m.code}`}
-              sub={price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}
+              value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(supplied, 4)} ${m.code}`}</Shimmer>}
+              sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}</Shimmer>}
             />
-            <Figure label="Borrowed" value={`${formatAmount(borrowed, 4)} ${m.code}`} sub={formatUsd(borrowedUsd)} />
-            <Figure label="Health Factor" value={health == null ? "—" : health.toFixed(2)} color={healthColor(health)} sub={protocol === "blend" ? "This pool" : "XOXNO account"} />
-            <Figure label="Collateral" value={supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"} />
+            <Figure
+              label="Borrowed"
+              value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(borrowed, 4)} ${m.code}`}</Shimmer>}
+              sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(borrowedUsd)}</Shimmer>}
+            />
+            <Figure
+              label="Health Factor"
+              value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{health == null ? "—" : health.toFixed(2)}</Shimmer>}
+              color={posLoading ? undefined : healthColor(health)}
+              sub={protocol === "blend" ? "This pool" : "XOXNO account"}
+            />
+            <Figure
+              label="Collateral"
+              value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"}</Shimmer>}
+            />
           </Box>
         </Box>
 
@@ -402,6 +427,7 @@ export default function LendMarket() {
                 onAmount={lv.setAmount}
                 balance={walletBal}
                 balanceLabel="Wallet"
+                balanceLoading={balLoading}
                 price={m.priceUsd ?? price}
                 onMax={walletBal ? () => lv.setAmount(String(Number(walletBal.toFixed(m.decimals)))) : undefined}
               />
@@ -417,6 +443,7 @@ export default function LendMarket() {
                 onAmount={setAmount}
                 balance={available}
                 balanceLabel={balanceLabel}
+                balanceLoading={isConnected && availLoading}
                 price={price}
                 onMax={available ? () => setAmount(String(Number(available.toFixed(m.decimals)))) : undefined}
               />

@@ -6,6 +6,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import { PairLogos } from "@/components/common/TokenLogo";
+import Shimmer from "@/components/common/Shimmer";
 import { formatAmount, formatUsd } from "@/lib/format";
 import { usePortfolio, type SupplyRow } from "@/portfolio/usePortfolio";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
@@ -46,6 +47,8 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
   const query = q.trim().toLowerCase();
   const multi = portfolioWallets.length > 1 && portfolioAddresses.length > 1;
   const lp = portfolio.supplied.filter((r) => r.kind === "lp");
+  // Updating after a transaction: amounts shimmer until the new figures land.
+  const posBusy = portfolio.lpRefreshing;
   const poolOf = (r: SupplyRow) => pools.find((p) => p.protocol === r.protocol && p.address === r.pool);
   const open = (p: Pick<Pool, "protocol" | "address">, tab = "supply") => router.push(poolHref(p, tab));
 
@@ -71,13 +74,22 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
         <Box>
           {(r.legs ?? []).map((l) => (
             <Typography key={l.code} sx={{ fontSize: "0.875rem", color: "common.black" }}>
-              {formatAmount(l.amount, 4)} {l.code}
+              <Shimmer on={posBusy} width="5rem">{`${formatAmount(l.amount, 4)} ${l.code}`}</Shimmer>
             </Typography>
           ))}
         </Box>
       ),
     },
-    { id: "value", header: "Value", cell: (r) => <Num color="common.black">{formatUsd(r.usd)}</Num>, sortValue: (r) => r.usd },
+    {
+      id: "value",
+      header: "Value",
+      cell: (r) => (
+        <Num color="common.black">
+          <Shimmer on={posBusy} width="4rem">{formatUsd(r.usd)}</Shimmer>
+        </Num>
+      ),
+      sortValue: (r) => r.usd,
+    },
     { id: "apy", header: "APY", cell: (r) => <Num color="green.main">{pct(poolOf(r)?.apyPct)}</Num> },
     { id: "action", header: "Action", align: "center", cell: (r) => <RowAction label="Manage" onClick={() => open({ protocol: r.protocol as Pool["protocol"], address: r.pool }, "withdraw")} /> },
   ];

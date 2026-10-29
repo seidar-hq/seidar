@@ -293,9 +293,9 @@ export function useLendPositions(addresses: string[]) {
         });
       }
     }
-    return { legs, pools, xoxnoHealth, claimableBlnd, loading: r.loading };
+    return { legs, pools, xoxnoHealth, claimableBlnd, loading: r.loading, refreshing: r.refreshing };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addresses.join(","), r.values, r.loading]);
+  }, [addresses.join(","), r.values, r.loading, r.refreshing]);
 }
 
 export const pct = (v: number | null | undefined, digits = 2) =>

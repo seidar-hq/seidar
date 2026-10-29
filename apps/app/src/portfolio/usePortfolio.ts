@@ -295,6 +295,12 @@ export function usePortfolio(addresses?: string[]) {
     positionsLoading,
     vaultsLoading: vaults.loading,
     lpLoading: lps.loading,
+    // Updating after a transaction: the numbers are about to change (shown with the loading shimmer).
+    assetsRefreshing: balances.refreshing,
+    lendingRefreshing: lending.refreshing,
+    vaultsRefreshing: vaults.refreshing,
+    lpRefreshing: lps.refreshing,
+    positionsRefreshing: lending.refreshing || vaults.refreshing || lps.refreshing,
   };
 }
 

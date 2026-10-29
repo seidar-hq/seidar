@@ -6,6 +6,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import TokenLogo from "@/components/common/TokenLogo";
+import Shimmer from "@/components/common/Shimmer";
 import { formatAmount, formatUsd } from "@/lib/format";
 import { usePortfolio, useTokenCatalogue, type VaultRow } from "@/portfolio/usePortfolio";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
@@ -52,6 +53,8 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
   const { portfolioWallets, portfolioAddresses } = useWallet();
   const portfolio = usePortfolio();
   const { byContract } = useTokenCatalogue();
+  // Updating after a transaction: amounts shimmer until the new figures land.
+  const posBusy = portfolio.vaultsRefreshing;
   const [proto, setProto] = useState<string>("all");
   const [q, setQ] = useState("");
   const [hideSmall, setHideSmall] = useState(true);
@@ -107,9 +110,11 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       header: "Deposited",
       cell: (v) => (
         <Box>
-          <Num color="common.black">{v.underlying.map((u) => `${formatAmount(u.amount, 4)} ${u.code}`).join(" + ")}</Num>
+          <Num color="common.black">
+            <Shimmer on={posBusy} width="6rem">{v.underlying.map((u) => `${formatAmount(u.amount, 4)} ${u.code}`).join(" + ")}</Shimmer>
+          </Num>
           <Typography variant="caption" color="grey.200">
-            {formatUsd(v.usd)}
+            <Shimmer on={posBusy} width="3.5rem" height="0.75rem">{formatUsd(v.usd)}</Shimmer>
           </Typography>
         </Box>
       ),
@@ -131,12 +136,13 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
         <SearchBox value={q} onChange={setQ} placeholder="Search vault or asset" />
       </Box>
       <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {mine.length > 0 && (
+        {(mine.length > 0 || (portfolio.vaultsLoading && portfolio.addresses.length > 0)) && (
           <DataTable
             variant="inset"
             title="Your Deposits"
             columns={posColumns}
             rows={mine}
+            isLoading={portfolio.vaultsLoading && mine.length === 0}
             getRowId={(v) => `${v.wallet}:${v.vault}`}
             onRowClick={(v) => open(v.vault, "withdraw")}
             defaultSort={{ id: "amount", dir: "desc" }}

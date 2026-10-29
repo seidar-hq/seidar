@@ -40,7 +40,7 @@ export function useTxRunner() {
         step.hash = r.hash;
         step.status = "done";
         emit();
-        refreshAfterTx(signer.address);
+        refreshAfterTx(signer.address, meta?.kind);
         void pushNote(signer.address, `${label} confirmed.`);
         return true;
       } catch (e) {
@@ -53,7 +53,7 @@ export function useTxRunner() {
           step.status = "submitted";
           step.hash = e.hash;
           emit();
-          refreshAfterTx(signer.address);
+          refreshAfterTx(signer.address, meta?.kind);
           return false;
         }
         step.status = "failed";

@@ -23,6 +23,7 @@ import { useShared } from "@/lib/useShared";
 import { usePortfolio } from "@/portfolio/usePortfolio";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
+import Shimmer from "@/components/common/Shimmer";
 import { AmountBox } from "./ActionCard";
 import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard } from "./EarnUI";
 import { compactUsd, pct } from "./lendData";
@@ -132,6 +133,19 @@ function ChartCard({ pool, history, prices }: { pool: Pool; history: { t: number
   );
 }
 
+/** Placeholder for the user's liquidity while it loads. */
+function PositionShimmer() {
+  return (
+    <Inset sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <Shimmer on width="8rem" height="0.875rem" />
+      <Box sx={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+        <Shimmer on width="6rem" height="1.75rem" />
+        <Shimmer on width="6rem" height="1.75rem" />
+      </Box>
+    </Inset>
+  );
+}
+
 export default function PoolPage() {
   const params = useSearchParams();
   const router = useRouter();
@@ -151,7 +165,8 @@ export default function PoolPage() {
   const [tx, setTx] = useState<{ open: boolean; title: string; steps: TxStep[]; error: string | null }>({ open: false, title: "", steps: [], error: null });
 
   const legs = pool?.legs ?? [];
-  const { byAddress } = useBalances(me ? [me] : []);
+  const { byAddress, refreshing: balRefreshing } = useBalances(me ? [me] : []);
+  const balLoading = !!me && ((byAddress[me]?.loading ?? true) || balRefreshing);
   const bal = (l: PoolLeg | undefined): number | null => {
     if (!l || !me) return null;
     const hit = byAddress[me]?.tokens.find((t) => t.code === l.code && (t.issuer ?? null) === (l.issuer ?? null));
@@ -187,14 +202,17 @@ export default function PoolPage() {
     () => apiJson(`/api/dex/cl/pool?protocol=${protocol}&pool=${address}`, undefined, 60_000),
     60_000,
   ).value;
-  const clPos = useShared<{ ok?: boolean; positions?: ClPos[]; rewards?: string | null } | null>(
+  const clPosResp = useShared<{ ok?: boolean; positions?: ClPos[]; rewards?: string | null } | null>(
     pool && cl && me ? `clpos:${protocol}:${address}:${me}` : null,
     () => apiJson(`/api/dex/cl/positions?protocol=${protocol}&pool=${address}&address=${me}`, undefined, 60_000),
     60_000,
-  ).value;
+  );
+  const clPos = clPosResp.value;
 
   const portfolio = usePortfolio(me ? [me] : []);
   const myLp = portfolio.supplied.find((r) => r.kind === "lp" && r.protocol === protocol && r.pool === address);
+  // Shimmer, not stale figures, while the position is first fetched or updating after a transaction.
+  const lpBusy = portfolio.lpRefreshing || (cl && clPosResp.refreshing);
 
   // Pool price: token0 in token1 (reserves for share pools, the live tick for concentrated ones).
   const res = pool?.reserves ?? [];
@@ -422,6 +440,7 @@ export default function PoolPage() {
                 amount={amounts[i]}
                 onAmount={(v) => setLeg(i, v)}
                 balance={bal(l)}
+                balanceLoading={balLoading}
                 price={usd(i)}
                 onMax={bal(l) ? () => setLeg(i, String(Number(bal(l)!.toFixed(7)))) : undefined}
               />
@@ -450,7 +469,7 @@ export default function PoolPage() {
             <Typography sx={{ color: "grey.200" }}>Connect a wallet to see your liquidity.</Typography>
           ) : cl ? (
             clPos == null ? (
-              <Typography sx={{ color: "grey.200" }}>Loading your positions…</Typography>
+              <PositionShimmer />
             ) : clPositions.length === 0 ? (
               <Typography sx={{ color: "grey.200" }}>You have no position in this pool.</Typography>
             ) : (
@@ -465,7 +484,9 @@ export default function PoolPage() {
                       {fmtPx(p.priceLower)} → {p.priceUpper > 1e30 ? "∞" : fmtPx(p.priceUpper)} {legs[1]?.code} per {legs[0]?.code}
                     </Typography>
                     <Typography sx={{ fontSize: "0.875rem", color: "common.black" }}>
-                      {p.amounts.map((x, k) => `${formatAmount(Number(x) / 10 ** (legs[k]?.decimals ?? 7), 4)} ${legs[k]?.code}`).join(" + ")}
+                      <Shimmer on={lpBusy} width="9rem">
+                        {p.amounts.map((x, k) => `${formatAmount(Number(x) / 10 ** (legs[k]?.decimals ?? 7), 4)} ${legs[k]?.code}`).join(" + ")}
+                      </Shimmer>
                     </Typography>
                     {p.fees.some((f) => Number(f) > 0) && (
                       <Typography sx={{ fontSize: "0.8125rem", color: "green.main" }}>
@@ -505,16 +526,25 @@ export default function PoolPage() {
               ))
             )
           ) : !myLp?.shares ? (
-            <Typography sx={{ color: "grey.200" }}>{portfolio.lpLoading ? "Loading your liquidity…" : "You have no liquidity in this pool."}</Typography>
+            portfolio.lpLoading || lpBusy ? (
+              <PositionShimmer />
+            ) : (
+              <Typography sx={{ color: "grey.200" }}>You have no liquidity in this pool.</Typography>
+            )
           ) : (
             <Inset sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>Your liquidity · {formatUsd(myLp.usd)}</Typography>
+              <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>
+                Your liquidity ·{" "}
+                <Shimmer on={lpBusy} width="4rem" height="0.875rem">
+                  {formatUsd(myLp.usd)}
+                </Shimmer>
+              </Typography>
               <Box sx={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
                 {(myLp.legs ?? []).map((l) => (
                   <Box key={l.code} sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <TokenLogo code={l.code} issuer={l.issuer} size="1.75rem" />
                     <Typography sx={{ color: "common.black" }}>
-                      {formatAmount(l.amount, 4)} {l.code}
+                      <Shimmer on={lpBusy} width="5rem">{`${formatAmount(l.amount, 4)} ${l.code}`}</Shimmer>
                     </Typography>
                   </Box>
                 ))}

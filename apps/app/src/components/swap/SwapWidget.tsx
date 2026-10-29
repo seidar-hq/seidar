@@ -20,6 +20,7 @@ import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
 import QRCode from "qrcode";
 import Tabs from "@/components/common/Tabs";
 import TokenLogo from "@/components/common/TokenLogo";
+import Shimmer from "@/components/common/Shimmer";
 import TxDialog from "@/components/tx/TxDialog";
 import { useTxRunner } from "@/components/tx/useTxRunner";
 import { CopyButton, glassMenuPaperSx } from "@/components/wallet/WalletParts";
@@ -28,6 +29,7 @@ import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
 import { buildPayment, buildTrustline, cleanAmount, hasTrustline } from "@/lib/payment";
 import { postJson, toBase } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
+import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import { SWAP_TABS, SwapAccordion, SwapDetails, SwapSummary } from "./SwapLockedWidget";
 import TokenSelectDialog, { type SwapToken } from "./TokenSelectDialog";
@@ -233,8 +235,17 @@ function usePrices(codes: string[]) {
 
 export type PairListener = (from: SwapToken | null, to: SwapToken | null) => void;
 
+/** The active wallet's balances are still loading, or updating after a transaction. */
+function useBalanceBusy() {
+  const { activeWallet } = useWallet();
+  const address = activeWallet?.address ?? null;
+  const { byAddress, refreshing } = useBalances(address ? [address] : []);
+  return !!address && ((byAddress[address]?.loading ?? true) || refreshing);
+}
+
 function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange?: PairListener }) {
   const theme = useTheme();
+  const balBusy = useBalanceBusy();
   const { activeWallet } = useWallet();
   const tx = useTxRunner();
   const [fromC, setFromC] = useState<string | null>(null);
@@ -564,7 +575,10 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
           </SpaceRow>
           <SpaceRow>
             <Typography variant="subtitle3" color={insufficient ? "error.main" : "grey.200"}>
-              Balance: {from ? formatAmount(from.balance, 4) : "0"}
+              Balance:{" "}
+              <Shimmer on={balBusy} width="3.5rem" height="0.875rem">
+                {from ? formatAmount(from.balance, 4) : "0"}
+              </Shimmer>
             </Typography>
             <Typography variant="subtitle3" color="grey.200">
               ≈{formatUsd(pxIn ? Number(amount || 0) * pxIn : 0)}
@@ -589,7 +603,10 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
           </SpaceRow>
           <SpaceRow>
             <Typography variant="subtitle3" color="grey.200">
-              Balance: {to ? formatAmount(to.balance, 4) : "0"}
+              Balance:{" "}
+              <Shimmer on={balBusy} width="3.5rem" height="0.875rem">
+                {to ? formatAmount(to.balance, 4) : "0"}
+              </Shimmer>
             </Typography>
             <Typography variant="subtitle3" color="grey.200">
               ≈{formatUsd(pxOut ? outAmount * pxOut : 0)}
@@ -718,6 +735,7 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
 // ---------- Send ----------
 
 function SendPanel({ tokens }: { tokens: SwapToken[] }) {
+  const balBusy = useBalanceBusy();
   const { activeWallet } = useWallet();
   const tx = useTxRunner();
   const held = useMemo(() => tokens.filter((t) => t.balance > 0), [tokens]);
@@ -770,7 +788,10 @@ function SendPanel({ tokens }: { tokens: SwapToken[] }) {
         <SpaceRow>
           <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
             <Typography variant="subtitle3" color={tooMuch ? "error.main" : "grey.200"}>
-              Balance: {token ? formatAmount(token.balance, 4) : "0"}
+              Balance:{" "}
+              <Shimmer on={balBusy} width="3.5rem" height="0.875rem">
+                {token ? formatAmount(token.balance, 4) : "0"}
+              </Shimmer>
             </Typography>
             {token && (
               <SmallPill

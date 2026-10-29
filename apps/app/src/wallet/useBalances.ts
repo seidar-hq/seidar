@@ -18,7 +18,9 @@ type RawBalance = { code: string; issuer: string | null; balance: number | strin
 
 // One shared cache so the header, dashboard and settings never fetch the same wallet twice.
 const TTL = 60_000;
-const cache = new Map<string, { at: number; data: WalletBalances }>();
+/** pending: the balances as they were when a transaction landed; shown as updating until they change. */
+const cache = new Map<string, { at: number; data: WalletBalances; pending?: string }>();
+const tokenSig = (d: WalletBalances) => JSON.stringify(d.tokens.map((t) => [t.code, t.issuer, t.amount]));
 const inflight = new Map<string, Promise<WalletBalances>>();
 const listeners = new Set<() => void>();
 
@@ -64,11 +66,13 @@ function load(address: string, force = false): Promise<WalletBalances> {
   const job = fetchWallet(address)
     .then((data) => {
       // A failed refresh (indexers lag right after a transaction) keeps the last good balances.
+      const prev = cache.get(address);
       if (data.error && hit && !hit.data.error) {
-        cache.set(address, { ...hit, at: Date.now() });
+        cache.set(address, { ...hit, at: Date.now(), pending: prev?.pending });
         return hit.data;
       }
-      cache.set(address, { at: Date.now(), data });
+      const pending = prev?.pending != null && tokenSig(data) === prev.pending ? prev.pending : undefined;
+      cache.set(address, { at: Date.now(), data, pending });
       return data;
     })
     .finally(() => {
@@ -80,8 +84,22 @@ function load(address: string, force = false): Promise<WalletBalances> {
 }
 
 /** Drop cached balances (after a transaction) and refetch for anyone listening. */
-export function refreshBalances(addresses?: string[]) {
-  for (const a of addresses ?? [...cache.keys()]) void load(a, true);
+export function refreshBalances(addresses?: string[], opts: { pending?: boolean } = {}) {
+  for (const a of addresses ?? [...cache.keys()]) {
+    const hit = cache.get(a);
+    if (opts.pending && hit && hit.pending == null) cache.set(a, { ...hit, pending: tokenSig(hit.data) });
+    void load(a, true);
+  }
+  if (opts.pending) listeners.forEach((l) => l());
+}
+
+/** Stop showing "updating" for these wallets' balances. */
+export function settleBalances(addresses: string[]) {
+  for (const a of addresses) {
+    const hit = cache.get(a);
+    if (hit?.pending != null) cache.set(a, { ...hit, pending: undefined });
+  }
+  listeners.forEach((l) => l());
 }
 
 /** Balances for each address, keyed by address, plus the combined USD total. */
@@ -106,6 +124,7 @@ export function useBalances(addresses: string[]) {
   const list = Object.values(byAddress);
   const totalUsd = list.reduce((s, w) => s + w.usd, 0);
   const loading = list.some((w) => w.loading);
+  const refreshing = addresses.some((a) => cache.get(a)?.pending != null);
 
   // Same token held in several wallets is merged into one row.
   const merged = useMemo(() => {
@@ -120,5 +139,5 @@ export function useBalances(addresses: string[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, totalUsd, loading]);
 
-  return { byAddress, totalUsd, loading, tokens: merged };
+  return { byAddress, totalUsd, loading, refreshing, tokens: merged };
 }

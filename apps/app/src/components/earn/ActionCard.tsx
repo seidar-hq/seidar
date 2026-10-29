@@ -7,6 +7,7 @@ import InputBase from "@mui/material/InputBase";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Tabs from "@/components/common/Tabs";
+import Shimmer from "@/components/common/Shimmer";
 import TokenLogo from "@/components/common/TokenLogo";
 import { formatAmount, formatUsd } from "@/lib/format";
 import type { TokenRef } from "@/lib/tokens";
@@ -26,6 +27,7 @@ export function AmountBox({
   onAmount,
   balance,
   balanceLabel = "Balance",
+  balanceLoading = false,
   price,
   onMax,
   readOnly,
@@ -36,6 +38,8 @@ export function AmountBox({
   onAmount?: (v: string) => void;
   balance: number | null;
   balanceLabel?: string;
+  /** Balance still loading, or updating after a transaction: shimmer instead of a number. */
+  balanceLoading?: boolean;
   price: number | null;
   onMax?: () => void;
   readOnly?: boolean;
@@ -74,12 +78,16 @@ export function AmountBox({
       </Box>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
         <ButtonBase
-          disabled={!onMax || !balance}
+          disabled={!onMax || !balance || balanceLoading}
           onClick={onMax}
           sx={{ height: "1.75rem", px: "0.75rem", borderRadius: "999rem", backgroundColor: "overlay.white08", fontSize: "0.75rem", color: over ? "error.main" : "grey.200" }}
         >
-          {balanceLabel}: {balance == null ? "—" : formatAmount(balance, 6)} {token.code}
-          {onMax && !!balance && (
+          {balanceLabel}:&nbsp;
+          <Shimmer on={balanceLoading} width="3.5rem" height="0.875rem">
+            {balance == null ? "—" : formatAmount(balance, 6)}
+          </Shimmer>
+          &nbsp;{token.code}
+          {onMax && !!balance && !balanceLoading && (
             <Box component="span" sx={{ ml: "0.5rem", color: "primary.main", fontWeight: 600 }}>
               MAX
             </Box>

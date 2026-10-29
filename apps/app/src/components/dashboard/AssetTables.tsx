@@ -7,6 +7,7 @@ import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import { PlainCard } from "@/components/common/SectionCard";
+import Shimmer from "@/components/common/Shimmer";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import TokenComponent from "@/components/common/TokenComponent";
 import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
@@ -29,13 +30,17 @@ const TABS: TabItem[] = [
   { id: "perps", label: "Perps" },
 ];
 
-const Num = ({ children, tip, color = "black.main100" }: { children: React.ReactNode; tip?: string; color?: string }) => (
-  <Tooltip placement="top" arrow title={tip ?? ""}>
-    <Typography variant="body1" color={color} sx={{ display: "inline-block", cursor: "default" }}>
-      {children}
-    </Typography>
-  </Tooltip>
-);
+/** `busy`: updating after a transaction, so the figure shows the loading shimmer instead. */
+const Num = ({ children, tip, color = "black.main100", busy = false }: { children: React.ReactNode; tip?: string; color?: string; busy?: boolean }) =>
+  busy ? (
+    <Shimmer on width="4.5rem" />
+  ) : (
+    <Tooltip placement="top" arrow title={tip ?? ""}>
+      <Typography variant="body1" color={color} sx={{ display: "inline-block", cursor: "default" }}>
+        {children}
+      </Typography>
+    </Tooltip>
+  );
 
 const pctText = (v: number) => `${v.toFixed(2)}%`;
 
@@ -89,6 +94,17 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
   const { changes } = usePriceChanges(portfolio.exposures, "1d");
   const multi = portfolio.addresses.length > 1;
   const assetsTotal = portfolio.totals.assetsUsd;
+  // Which figures are updating after a transaction.
+  const busyOf = (kind: AllRow["kind"]) =>
+    kind === "Wallet"
+      ? portfolio.assetsRefreshing
+      : kind === "Vault"
+        ? portfolio.vaultsRefreshing
+        : kind === "Liquidity"
+          ? portfolio.lpRefreshing
+          : kind === "Perps"
+            ? false
+            : portfolio.lendingRefreshing;
 
   // Assets: one row per token per wallet, so a multi-wallet portfolio shows where each holding sits.
   const assetRows: (TokenBalance & { wallet: string })[] = [];
@@ -96,12 +112,12 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
 
   const assetCols: Column<TokenBalance & { wallet: string }>[] = [
     { id: "token", header: "Token", cell: (r) => token(r.code, r.issuer) },
-    { id: "balance", header: "Actual Balance", cell: (r) => <Num tip={String(r.amount)}>{formatAmount(r.amount)}</Num> },
+    { id: "balance", header: "Actual Balance", cell: (r) => <Num tip={String(r.amount)} busy={portfolio.assetsRefreshing}>{formatAmount(r.amount)}</Num> },
     {
       id: "usd",
       header: "USD Balance",
       cell: (r) => (
-        <Num color="common.black" tip={r.listed ? undefined : "Unlisted token: no reliable price"}>
+        <Num color="common.black" tip={r.listed ? undefined : "Unlisted token: no reliable price"} busy={portfolio.assetsRefreshing}>
           {r.listed && r.price != null ? formatUsd(r.usd) : "—"}
         </Num>
       ),
@@ -120,7 +136,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
         );
       },
     },
-    { id: "alloc", header: "Allocation", cell: (r) => <Num>{assetsTotal > 0 ? pctText((r.usd / assetsTotal) * 100) : "0.00%"}</Num> },
+    { id: "alloc", header: "Allocation", cell: (r) => <Num busy={portfolio.assetsRefreshing}>{assetsTotal > 0 ? pctText((r.usd / assetsTotal) * 100) : "0.00%"}</Num> },
   ];
 
   const supplyCols: Column<SupplyRow>[] = [
@@ -145,20 +161,28 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       header: "Amount",
       cell: (r) =>
         r.kind === "lp" ? (
-          <Num>{(r.legs ?? []).map((l) => `${formatAmount(l.amount, 4)} ${l.code}`).join(" + ")}</Num>
+          <Num busy={portfolio.lpRefreshing}>{(r.legs ?? []).map((l) => `${formatAmount(l.amount, 4)} ${l.code}`).join(" + ")}</Num>
         ) : (
-          <Num>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num>
+          <Num busy={portfolio.lendingRefreshing}>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num>
         ),
     },
-    { id: "usd", header: "USD Value", cell: (r) => <Num color="common.black">{formatUsd(r.usd)}</Num> },
+    {
+      id: "usd",
+      header: "USD Value",
+      cell: (r) => (
+        <Num color="common.black" busy={r.kind === "lp" ? portfolio.lpRefreshing : portfolio.lendingRefreshing}>
+          {formatUsd(r.usd)}
+        </Num>
+      ),
+    },
     ...(multi ? [{ id: "wallet", header: "Wallet", cell: (r: SupplyRow) => <WalletCell address={r.wallet} /> }] : []),
   ];
 
   const borrowCols: Column<BorrowRow>[] = [
     { id: "token", header: "Asset", cell: (r) => token(r.code, r.issuer) },
     { id: "protocol", header: "Protocol", cell: (r) => <Num>{r.protocol === "blend" ? "Blend" : "XOXNO"}</Num> },
-    { id: "amount", header: "Debt", cell: (r) => <Num>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num> },
-    { id: "usd", header: "USD Value", cell: (r) => <Num color="error.main">{formatUsd(r.usd)}</Num> },
+    { id: "amount", header: "Debt", cell: (r) => <Num busy={portfolio.lendingRefreshing}>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num> },
+    { id: "usd", header: "USD Value", cell: (r) => <Num color="error.main" busy={portfolio.lendingRefreshing}>{formatUsd(r.usd)}</Num> },
     ...(multi ? [{ id: "wallet", header: "Wallet", cell: (r: BorrowRow) => <WalletCell address={r.wallet} /> }] : []),
   ];
 
@@ -172,9 +196,9 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
     {
       id: "underlying",
       header: "Underlying",
-      cell: (r) => <Num>{r.underlying.map((u) => `${formatAmount(u.amount, 4)} ${u.code}`).join(" + ") || "—"}</Num>,
+      cell: (r) => <Num busy={portfolio.vaultsRefreshing}>{r.underlying.map((u) => `${formatAmount(u.amount, 4)} ${u.code}`).join(" + ") || "—"}</Num>,
     },
-    { id: "usd", header: "USD Value", cell: (r) => <Num color="common.black">{formatUsd(r.usd)}</Num> },
+    { id: "usd", header: "USD Value", cell: (r) => <Num color="common.black" busy={portfolio.vaultsRefreshing}>{formatUsd(r.usd)}</Num> },
     ...(multi ? [{ id: "wallet", header: "Wallet", cell: (r: VaultRow) => <WalletCell address={r.wallet} /> }] : []),
   ];
 
@@ -257,7 +281,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       sortValue: (r) => r.kind,
     },
     { id: "protocol", header: "Protocol", cell: (r) => <Num>{r.protocol}</Num>, sortValue: (r) => r.protocol },
-    { id: "amount", header: "Amount", cell: (r) => <Num tip={r.amountTip}>{r.amount}</Num> },
+    { id: "amount", header: "Amount", cell: (r) => <Num tip={r.amountTip} busy={busyOf(r.kind)}>{r.amount}</Num> },
     {
       id: "usd",
       header: "USD Value",
@@ -265,7 +289,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
         r.usd == null ? (
           <Num tip="Unlisted token: no reliable price">—</Num>
         ) : (
-          <Num color={r.usd < 0 ? "error.main" : "common.black"} tip={r.kind === "Perps" ? "Margin plus unrealized PnL" : undefined}>
+          <Num color={r.usd < 0 ? "error.main" : "common.black"} tip={r.kind === "Perps" ? "Margin plus unrealized PnL" : undefined} busy={busyOf(r.kind)}>
             {r.usd < 0 ? `-${formatUsd(-r.usd)}` : formatUsd(r.usd)}
           </Num>
         ),
