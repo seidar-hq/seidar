@@ -182,7 +182,7 @@ export default function NotificationButton() {
                   <Box sx={{ p: "0.5rem", maxHeight: "24rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                     {notes.length === 0 ? (
                       <Typography variant="subtitle3" sx={{ color: "grey.200", p: "1rem", textAlign: "center" }}>
-                        You're all caught up.
+                        You&apos;re all caught up.
                       </Typography>
                     ) : (
                       notes.map((n) => (
