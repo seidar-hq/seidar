@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 
-// Gliding page scroll for wheel and trackpad. Touch keeps the device's own momentum scrolling,
-// nested scroll areas (tables, the agent chat) scroll natively, and anything inside a MUI
-// dialog, menu or popover is left alone so their scroll locks keep working.
+// Gliding page scroll for wheel, trackpad and touch (syncTouch: a swipe eases out like the wheel
+// instead of the phone's own fling). Nested scroll areas (tables, the agent chat) scroll natively,
+// and anything inside a MUI dialog, menu or popover is left alone so their scroll locks keep working.
 const OVERLAY = ".MuiModal-root, .MuiPopover-root, .MuiPopper-root, .MuiDialog-root, [data-lenis-prevent]";
 
 export default function SmoothScroll() {
@@ -19,6 +19,10 @@ export default function SmoothScroll() {
       autoRaf: true,
       lerp: 0.085,
       wheelMultiplier: 1,
+      syncTouch: true,
+      syncTouchLerp: 0.075,
+      touchInertiaExponent: 1.7,
+      touchMultiplier: 1,
       allowNestedScroll: true,
       stopInertiaOnNavigate: true,
       prevent: (node) => !!node.closest?.(OVERLAY),
