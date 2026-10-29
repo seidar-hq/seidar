@@ -69,7 +69,8 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
       return value;
     })
     .catch((e) => {
-      if (!hit) store.set(key, { at: Date.now(), value: null, error: true });
+      // Keep a good copy on screen; it is retried at the next interval, not on every render.
+      store.set(key, hit ? { ...hit, at: Date.now() } : { at: Date.now(), value: null, error: true });
       throw e;
     })
     .finally(() => {
@@ -80,19 +81,26 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
   return job;
 }
 
-/** Drop entries whose key starts with any of `prefixes` and refetch them for current listeners. */
+/** Mark entries stale (at = 0) so the next read refetches them; listeners see "needs a refetch". */
+const STALE = 0;
+
+/**
+ * Refetch entries whose key starts with any of `prefixes` for current listeners. The current
+ * values stay on screen until the new ones arrive (dropping them made every card fall back to its
+ * loading state for a moment after each transaction, a visible flash).
+ */
 export function invalidateSharedMany(prefixes: string[]) {
   let changed = false;
-  for (const k of [...store.keys()]) {
+  for (const [k, e] of [...store.entries()]) {
     if (prefixes.some((p) => k.startsWith(p))) {
-      store.delete(k);
+      store.set(k, { ...e, at: STALE });
       changed = true;
     }
   }
   if (changed) notify();
 }
 
-/** Drop entries whose key starts with `prefix` and refetch them for current listeners. */
+/** Refetch entries whose key starts with `prefix` (current values stay until then). */
 export function invalidateShared(prefix: string) {
   invalidateSharedMany([prefix]);
 }
@@ -124,9 +132,12 @@ export function useSharedMany<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, ttl]);
 
-  // Re-run loaders when an entry was invalidated (store miss without an inflight request).
+  // Re-run loaders when an entry is missing or was invalidated, unless a request is already out.
   useEffect(() => {
-    for (const k of keys) if (!store.has(k) && !inflight.has(k)) void loadShared(k, loaderFor(k), ttl).catch(() => {});
+    for (const k of keys) {
+      const e = store.get(k);
+      if ((!e || e.at === STALE) && !inflight.has(k)) void loadShared(k, loaderFor(k), ttl).catch(() => {});
+    }
   });
 
   const values: Record<string, T | null> = {};

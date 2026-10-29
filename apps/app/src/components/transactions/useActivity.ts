@@ -50,10 +50,14 @@ export function useActivity(addresses: string[], kind: "all" | "positions" | "sw
   const current = useRef(sig);
 
   const fetchPage = useCallback(
-    async (reset: boolean) => {
+    async (reset: boolean, quiet = false) => {
       const run = sig;
-      setLoading(true);
-      setError(null);
+      // quiet: a background refresh after a transaction. No loading state, and a failed wallet
+      // keeps what is on screen (replacing it with nothing made the table flash).
+      if (!quiet) {
+        setLoading(true);
+        setError(null);
+      }
       const targets = reset ? addresses : addresses.filter((a) => cursors.current[a]);
       const results = await Promise.all(
         targets.map(async (a) => {
@@ -63,6 +67,7 @@ export function useActivity(addresses: string[], kind: "all" | "positions" | "sw
         }),
       );
       if (current.current !== run) return;
+      if (quiet && results.some(({ r }) => !r?.ok)) return;
       const fresh: ActivityItem[] = [];
       for (const { a, r } of results) {
         if (!r?.ok) {
@@ -96,7 +101,7 @@ export function useActivity(addresses: string[], kind: "all" | "positions" | "sw
   useEffect(() => {
     if (!addresses.length) return;
     const onRefresh = () => {
-      if (current.current === sig) void fetchPage(true);
+      if (current.current === sig) void fetchPage(true, true);
     };
     window.addEventListener("seidar:refresh", onRefresh);
     return () => window.removeEventListener("seidar:refresh", onRefresh);

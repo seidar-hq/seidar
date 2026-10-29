@@ -63,6 +63,11 @@ function load(address: string, force = false): Promise<WalletBalances> {
   if (pending) return pending;
   const job = fetchWallet(address)
     .then((data) => {
+      // A failed refresh (indexers lag right after a transaction) keeps the last good balances.
+      if (data.error && hit && !hit.data.error) {
+        cache.set(address, { ...hit, at: Date.now() });
+        return hit.data;
+      }
       cache.set(address, { at: Date.now(), data });
       return data;
     })
