@@ -15,7 +15,7 @@ import {
 
 // Stellar wallets supported through the wallet kit, shown as overlapping bubbles.
 const WALLETS = [
-  { name: "Freighter", src: "/assets/wallets/freighter-logo.svg" },
+  { name: "Varial", src: "/assets/wallets/varial-logo.png" },
   { name: "xBull", src: "/assets/wallets/xbull-logo.png" },
   { name: "LOBSTR", src: "/assets/wallets/lobstr-logo.png" },
   { name: "Albedo", src: "/assets/wallets/albedo-logo.png" },

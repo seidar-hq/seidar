@@ -8,10 +8,9 @@ export const SectionCard = styled(Grid)(({ theme }) => {
   const dark = theme.palette.mode === "dark";
   return {
     width: "100%",
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.surfaceBg.section,
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main1000}`,
-    borderRadius: dark ? "1.125rem" : "1.5rem",
-    ...(dark && { backdropFilter: "blur(3.125rem)", WebkitBackdropFilter: "blur(3.125rem)" }),
+    backgroundColor: theme.palette.surfaceBg.section,
+    border: `0.0625rem solid ${theme.palette.border.main1000}`,
+    borderRadius: dark ? "1.25rem" : "1.5rem",
     padding: "1rem",
     display: "flex",
     flexDirection: "column",
@@ -22,9 +21,8 @@ export const SectionCard = styled(Grid)(({ theme }) => {
 export const InsetCard = styled(Box)(({ theme }) => {
   const dark = theme.palette.mode === "dark";
   return {
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.surfaceBg.softInset,
-    border: dark ? `0.125rem solid ${theme.palette.overlay.white08}` : `0.0625rem solid ${theme.palette.border.main1000}`,
-    ...(dark && { boxShadow: `0rem 0.25rem 2.5rem 0rem ${theme.palette.shadow.heavy}` }),
+    backgroundColor: theme.palette.surfaceBg.softInset,
+    border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main1000}`,
     padding: "1rem",
     borderRadius: dark ? "0.75rem" : "0.5rem",
     ...(dark && { display: "flex", flexDirection: "column", gap: "1rem" }),
@@ -63,9 +61,8 @@ export const KpiHeader = styled(Box)({ display: "flex", alignItems: "center", pa
 export const KpiCard = styled(Grid)(({ theme }) => {
   const dark = theme.palette.mode === "dark";
   return {
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.surfaceBg.softInset,
-    border: dark ? `0.125rem solid ${theme.palette.overlay.white08}` : `0.0625rem solid ${theme.palette.border.main1000}`,
-    ...(dark && { boxShadow: `0rem 0.25rem 2.5rem 0rem ${theme.palette.shadow.heavy}` }),
+    backgroundColor: theme.palette.surfaceBg.softInset,
+    border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main1000}`,
     height: "8.875rem",
     padding: "1rem",
     borderRadius: dark ? "0.75rem" : "0.5rem",
@@ -106,20 +103,8 @@ export const PlainCard = styled(Grid)(({ theme }) => ({
   borderRadius: "1.5rem",
 }));
 
-// Gradient hairline border that fades out towards the bottom of locked cards.
+// Hairline border for the dashboard's portfolio cards (solid; it used to fade out towards the bottom).
 export const fadedBorder = (theme: import("@mui/material/styles").Theme) => ({
   position: "relative" as const,
-  border: "none",
-  "&::before": {
-    content: '""',
-    position: "absolute" as const,
-    inset: 0,
-    borderRadius: "inherit",
-    padding: "0.0625rem",
-    background: `linear-gradient(180deg, ${theme.palette.overlay.white08} 0%, ${theme.palette.overlay.white08} 28%, ${theme.palette.overlay.zero} 55%)`,
-    WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-    WebkitMaskComposite: "xor",
-    maskComposite: "exclude",
-    pointerEvents: "none" as const,
-  },
+  border: `0.0625rem solid ${theme.palette.border.main1000}`,
 });

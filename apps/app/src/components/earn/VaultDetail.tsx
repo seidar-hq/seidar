@@ -163,9 +163,8 @@ export default function VaultDetail() {
 
         <Box>
           <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "1rem" }}>My Position</Typography>
-          <Figure label="Deposited" value={`${formatAmount(deposited, 4)} ${vault.assetCode}`} sub={formatUsd(mine?.usd ?? 0)} />
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem", mt: "1.5rem" }}>
-            <Figure label="Wallet Balance" value={`${formatAmount(walletBal, 4)} ${vault.assetCode}`} sub={price != null ? formatUsd(walletBal * price) : undefined} />
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem" }}>
+            <Figure label="Deposited" value={`${formatAmount(deposited, 4)} ${vault.assetCode}`} sub={formatUsd(mine?.usd ?? 0)} />
             <Figure label="Est. Yearly Earnings" value={yearly != null ? formatUsd(yearly) : "—"} color={yearly ? "green.main" : undefined} />
             <Figure label="Share of Vault" value={sharePct != null ? pct(sharePct, sharePct < 0.01 ? 4 : 2) : "—"} />
             <Figure label="Share Price" value={detail?.sharePrice != null ? detail.sharePrice.toFixed(6) : vault.sharePrice != null ? vault.sharePrice.toFixed(6) : "—"} />

@@ -6,7 +6,7 @@ import Tooltip from "@mui/material/Tooltip";
 import { styled, type Theme } from "@mui/material/styles";
 import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import { useAlerts } from "@/components/common/Alerts";
-import { STELLAR_LOGO, walletMeta, type WalletKind } from "@/lib/wallets";
+import { STELLAR_LOGO, displayMeta, walletMeta, type WalletKind, type WalletPeer } from "@/lib/wallets";
 
 export const EXPLORER_ACCOUNT = (address: string) => `https://stellar.expert/explorer/public/account/${address}`;
 
@@ -35,14 +35,18 @@ const StatusDot = styled(Box, { shouldForwardProp: (p) => p !== "active" })<{ ac
 /** Wallet logo in a dark circle, with an optional active/inactive dot. */
 export function WalletAvatar({
   walletId,
+  peer,
   size = "2rem",
   status,
 }: {
   walletId: WalletKind | null | undefined;
+  /** Over WalletConnect: the wallet app that answered, whose logo is shown. */
+  peer?: WalletPeer;
   size?: string;
   status?: "active" | "inactive";
 }) {
-  const meta = walletMeta(walletId);
+  const meta = displayMeta(walletId, peer);
+  const fallback = walletMeta(walletId)?.logo ?? "/assets/defaultWallet.svg";
   return (
     <AvatarRoot sx={{ width: size, height: size }}>
       <AvatarCircle sx={{ width: size, height: size, backgroundColor: meta?.bg ?? "sidebar.black" }}>
@@ -50,6 +54,10 @@ export function WalletAvatar({
           component="img"
           src={meta?.logo ?? "/assets/defaultWallet.svg"}
           alt={meta?.name ?? "Wallet"}
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement;
+            if (!img.src.endsWith(fallback)) img.src = fallback;
+          }}
           sx={meta?.bleed ? { width: "100%", height: "100%", objectFit: "cover" } : { width: "66%", height: "66%", objectFit: "contain" }}
         />
       </AvatarCircle>

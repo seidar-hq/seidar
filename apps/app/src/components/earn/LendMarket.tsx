@@ -19,6 +19,7 @@ import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import ActionCard, { AmountBox, DetailRows, type DetailRow } from "./ActionCard";
 import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard, StatusPill } from "./EarnUI";
+import { LeverageFields, useLeverage } from "./leverage";
 import { LEND_PROTOCOLS, actionBlock, compactUsd, marketHref, marketStatus, pct, useLendMarkets, useLendPositions, type LendAction, type Market } from "./lendData";
 
 const Layout = styled(Box)({
@@ -86,7 +87,7 @@ export default function LendMarket() {
   const m: Market | undefined = markets.find((x) => x.protocol === protocol && x.pool === pool && (x.contract === asset || x.code === asset));
   const positions = useLendPositions(me ? [me] : []);
   const { byAddress } = useBalances(me ? [me] : []);
-  const [tab, setTab] = useState<LendAction>(TABS.some((t) => t.id === initial) ? initial : "supply");
+  const [tab, setTab] = useState<LendAction>(TABS.some((t) => t.id === initial) || initial === "leverage" ? initial : "supply");
   const [amount, setAmount] = useState("");
   const [collateral, setCollateral] = useState(true);
   const [spoke, setSpoke] = useState<number | null>(null);
@@ -103,6 +104,12 @@ export default function LendMarket() {
   const held = me ? byAddress[me]?.tokens.find((t) => t.code === m?.code && (t.issuer ?? null) === (m?.issuer ?? null)) : undefined;
   const price = held?.price ?? m?.priceUsd ?? priceResp.value?.prices?.[code.toUpperCase()] ?? null;
   const walletBal = held?.amount ?? 0;
+  const lv = useLeverage(m, markets, walletBal, tab === "leverage");
+  // Leverage shows only on markets that can be looped; a stale ?mode=leverage link falls back to Supply.
+  const tabs: { id: LendAction; label: string }[] = lv.available ? [...TABS, { id: "leverage", label: "Leverage" }] : TABS;
+  useEffect(() => {
+    if (tab === "leverage" && m && !lv.available) setTab("supply");
+  }, [tab, m, lv.available]);
   const marketLegs = positions.legs.filter((l) => l.protocol === protocol && l.pool === pool && l.contract === m?.contract);
   const supplied = marketLegs.reduce((s, l) => s + l.supplied, 0);
   const lent = marketLegs.reduce((s, l) => s + l.lent, 0);
@@ -287,6 +294,20 @@ export default function LendMarket() {
     }
   };
 
+  const submitLeverage = async () => {
+    const body = activeWallet ? lv.body(activeWallet.address) : null;
+    if (!activeWallet || !body) return;
+    const label = `Leverage ${lv.amount} ${m.code} ${lv.lev.toFixed(1)}x with ${lv.debt?.code} · XOXNO`;
+    setTx({ open: true, steps: [{ key: "s0", label, status: "building" }], error: null });
+    try {
+      const r = await runBuilt("/api/lending/xoxno/multiply", body, activeWallet, (steps) => setTx((t) => ({ ...t, steps })));
+      if (!r.unsigned) lv.setAmount("");
+    } catch (e) {
+      setTx((t) => ({ ...t, error: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+  const levBlocker = !isConnected ? "Connect a wallet" : (actionBlock(m, "leverage") ?? lv.blocker);
+
   const details: DetailRow[] = [];
   if (tab === "supply" || tab === "withdraw") details.push({ label: "Supply APY", value: pct(m.supplyApy), color: "green.main" });
   if (tab === "borrow" || tab === "repay") details.push({ label: "Borrow APY", value: pct(m.borrowApy), color: "green.main" });
@@ -309,7 +330,7 @@ export default function LendMarket() {
             { label: meta.name, href: "/earn/lending&borrow" },
             { label: m.poolName },
             { label: m.code },
-            { label: TABS.find((t) => t.id === tab)?.label ?? "" },
+            { label: tabs.find((t) => t.id === tab)?.label ?? "" },
           ]}
         />
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.875rem", flexWrap: "wrap" }}>
@@ -324,13 +345,12 @@ export default function LendMarket() {
 
         <Box>
           <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "1rem" }}>My Position</Typography>
-          <Figure
-            label="My Supply"
-            value={`${formatAmount(supplied, 4)} ${m.code}`}
-            sub={price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}
-          />
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem", mt: "1.5rem" }}>
-            <Figure label="Wallet Balance" value={`${formatAmount(walletBal, 4)} ${m.code}`} sub={price != null ? formatUsd(walletBal * price) : undefined} />
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem" }}>
+            <Figure
+              label="My Supply"
+              value={`${formatAmount(supplied, 4)} ${m.code}`}
+              sub={price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}
+            />
             <Figure label="Borrowed" value={`${formatAmount(borrowed, 4)} ${m.code}`} sub={formatUsd(borrowedUsd)} />
             <Figure label="Health Factor" value={health == null ? "—" : health.toFixed(2)} color={healthColor(health)} sub={protocol === "blend" ? "This pool" : "XOXNO account"} />
             <Figure label="Collateral" value={supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"} />
@@ -362,92 +382,111 @@ export default function LendMarket() {
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", position: { lg: "sticky" }, top: { lg: "6.5rem" } }}>
         <ActionCard
-          title={TABS.find((t) => t.id === tab)?.label ?? ""}
-          tabs={TABS.map((t) => ({ ...t, blocked: actionBlock(m, t.id) }))}
+          title={tabs.find((t) => t.id === tab)?.label ?? ""}
+          tabs={tabs.map((t) => ({ ...t, blocked: actionBlock(m, t.id) }))}
           active={tab}
           onTab={(id) => {
             setTab(id as LendAction);
             router.replace(marketHref(m, id as LendAction, account?.accountId), { scroll: false });
           }}
-          cta={isConnected ? (TABS.find((t) => t.id === tab)?.label ?? "") : "Connect wallet"}
-          blocker={isConnected ? blocker : null}
-          onSubmit={() => (isConnected ? void submit() : void openConnectModal())}
+          cta={isConnected ? (tab === "leverage" ? "Open Leveraged Position" : (tabs.find((t) => t.id === tab)?.label ?? "")) : "Connect wallet"}
+          blocker={isConnected ? (tab === "leverage" ? levBlocker : blocker) : null}
+          onSubmit={() => (isConnected ? void (tab === "leverage" ? submitLeverage() : submit()) : void openConnectModal())}
         >
-          <AmountBox
-            label={`${TABS.find((t) => t.id === tab)?.label} ${m.code}`}
-            token={{ code: m.code, issuer: m.issuer, contract: m.contract }}
-            amount={amount}
-            onAmount={setAmount}
-            balance={available}
-            balanceLabel={balanceLabel}
-            price={price}
-            onMax={available ? () => setAmount(String(Number(available.toFixed(m.decimals)))) : undefined}
-          />
-          {protocol === "xoxno" && actionAccounts.length > 1 && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO account</Typography>
-              <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {actionAccounts.map((a) => (
-                  <ButtonBase
-                    key={a.accountId}
-                    onClick={() => setPickedAccount(a.accountId)}
-                    sx={{
-                      height: "2.25rem",
-                      px: "0.875rem",
-                      borderRadius: "999rem",
-                      fontSize: "0.8125rem",
-                      color: account?.accountId === a.accountId ? "sidebar.white" : "common.black",
-                      backgroundColor: account?.accountId === a.accountId ? "sidebar.primary" : "overlay.white08",
-                    }}
-                  >
-                    #{a.accountId}
-                    {a.spokeName ? ` · ${a.spokeName}` : ""}
-                  </ButtonBase>
-                ))}
-              </Box>
-            </Box>
+          {tab === "leverage" ? (
+            <>
+              <AmountBox
+                label={`Deposit ${m.code}`}
+                token={{ code: m.code, issuer: m.issuer, contract: m.contract }}
+                amount={lv.amount}
+                onAmount={lv.setAmount}
+                balance={walletBal}
+                balanceLabel="Wallet"
+                price={m.priceUsd ?? price}
+                onMax={walletBal ? () => lv.setAmount(String(Number(walletBal.toFixed(m.decimals)))) : undefined}
+              />
+              <LeverageFields lv={lv} />
+              <DetailRows rows={lv.details} />
+            </>
+          ) : (
+            <>
+              <AmountBox
+                label={`${TABS.find((t) => t.id === tab)?.label} ${m.code}`}
+                token={{ code: m.code, issuer: m.issuer, contract: m.contract }}
+                amount={amount}
+                onAmount={setAmount}
+                balance={available}
+                balanceLabel={balanceLabel}
+                price={price}
+                onMax={available ? () => setAmount(String(Number(available.toFixed(m.decimals)))) : undefined}
+              />
+              {protocol === "xoxno" && actionAccounts.length > 1 && (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO account</Typography>
+                  <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {actionAccounts.map((a) => (
+                      <ButtonBase
+                        key={a.accountId}
+                        onClick={() => setPickedAccount(a.accountId)}
+                        sx={{
+                          height: "2.25rem",
+                          px: "0.875rem",
+                          borderRadius: "999rem",
+                          fontSize: "0.8125rem",
+                          color: account?.accountId === a.accountId ? "sidebar.white" : "common.black",
+                          backgroundColor: account?.accountId === a.accountId ? "sidebar.primary" : "overlay.white08",
+                        }}
+                      >
+                        #{a.accountId}
+                        {a.spokeName ? ` · ${a.spokeName}` : ""}
+                      </ButtonBase>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {tab === "supply" && m.protocol === "blend" && (
+                <ButtonBase
+                  disabled={!m.canCollateral}
+                  onClick={() => setCollateral((c) => !c)}
+                  sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", p: "0.75rem 1rem", borderRadius: "0.875rem", backgroundColor: "overlay.white04", textAlign: "left" }}
+                >
+                  <Box>
+                    <Typography sx={{ fontSize: "0.875rem", color: "common.black" }}>Use as collateral</Typography>
+                    <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
+                      {m.canCollateral ? (collateral ? "Counts toward your borrow limit" : "Earns interest only, can't be liquidated") : "This asset can't be collateral here"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ width: "2.5rem", height: "1.375rem", borderRadius: "999rem", p: "0.1875rem", backgroundColor: collateral ? "primary.main" : "overlay.white20", transition: "background-color 150ms" }}>
+                    <Box sx={{ width: "1rem", height: "1rem", borderRadius: "50%", backgroundColor: "common.white", transform: collateral ? "translateX(1.125rem)" : "none", transition: "transform 150ms" }} />
+                  </Box>
+                </ButtonBase>
+              )}
+              {tab === "supply" && m.protocol === "xoxno" && !account && supplySpokes.length > 1 && (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO spoke (risk profile for your new account)</Typography>
+                  <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {supplySpokes.map((s) => (
+                      <ButtonBase
+                        key={s.spokeId}
+                        onClick={() => setSpoke(s.spokeId)}
+                        sx={{
+                          height: "2.25rem",
+                          px: "0.875rem",
+                          borderRadius: "999rem",
+                          fontSize: "0.8125rem",
+                          color: spokeId === s.spokeId ? "sidebar.white" : "common.black",
+                          backgroundColor: spokeId === s.spokeId ? "sidebar.primary" : "overlay.white08",
+                        }}
+                      >
+                        {s.spokeName} · LTV {(s.ltvBps / 100).toFixed(0)}%
+                      </ButtonBase>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              <DetailRows rows={details} />
+            </>
           )}
-          {tab === "supply" && m.protocol === "blend" && (
-            <ButtonBase
-              disabled={!m.canCollateral}
-              onClick={() => setCollateral((c) => !c)}
-              sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", p: "0.75rem 1rem", borderRadius: "0.875rem", backgroundColor: "overlay.white04", textAlign: "left" }}
-            >
-              <Box>
-                <Typography sx={{ fontSize: "0.875rem", color: "common.black" }}>Use as collateral</Typography>
-                <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
-                  {m.canCollateral ? (collateral ? "Counts toward your borrow limit" : "Earns interest only, can't be liquidated") : "This asset can't be collateral here"}
-                </Typography>
-              </Box>
-              <Box sx={{ width: "2.5rem", height: "1.375rem", borderRadius: "999rem", p: "0.1875rem", backgroundColor: collateral ? "primary.main" : "overlay.white20", transition: "background-color 150ms" }}>
-                <Box sx={{ width: "1rem", height: "1rem", borderRadius: "50%", backgroundColor: "common.white", transform: collateral ? "translateX(1.125rem)" : "none", transition: "transform 150ms" }} />
-              </Box>
-            </ButtonBase>
-          )}
-          {tab === "supply" && m.protocol === "xoxno" && !account && supplySpokes.length > 1 && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>XOXNO spoke (risk profile for your new account)</Typography>
-              <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {supplySpokes.map((s) => (
-                  <ButtonBase
-                    key={s.spokeId}
-                    onClick={() => setSpoke(s.spokeId)}
-                    sx={{
-                      height: "2.25rem",
-                      px: "0.875rem",
-                      borderRadius: "999rem",
-                      fontSize: "0.8125rem",
-                      color: spokeId === s.spokeId ? "sidebar.white" : "common.black",
-                      backgroundColor: spokeId === s.spokeId ? "sidebar.primary" : "overlay.white08",
-                    }}
-                  >
-                    {s.spokeName} · LTV {(s.ltvBps / 100).toFixed(0)}%
-                  </ButtonBase>
-                ))}
-              </Box>
-            </Box>
-          )}
-          <DetailRows rows={details} />
         </ActionCard>
 
         <Box sx={{ borderRadius: "1.25rem", border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`, backgroundColor: "surfaceBg.section", p: "1.25rem", display: "flex", flexDirection: "column", gap: "0.875rem" }}>

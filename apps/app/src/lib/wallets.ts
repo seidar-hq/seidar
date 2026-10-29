@@ -26,7 +26,9 @@ export const WATCH_META: WalletMeta = { id: "watch", name: "Watch-only", logo: "
 export const isStellarAddress = (a: string) => /^G[A-Z2-7]{55}$/.test(a);
 
 export const WALLETS: WalletMeta[] = [
-  { id: "freighter", name: "Freighter", logo: "/assets/wallets/freighter-logo.svg", bg: "#5E44E2" },
+  // Freighter was renamed Varial (Oct 2026). Its extension API is unchanged, so the kit's Freighter
+  // module and the stored "freighter" id still work; only the name and logo shown are new.
+  { id: "freighter", name: "Varial", logo: "/assets/wallets/varial-logo.png", bg: "#1F3CFF", bleed: true },
   { id: "albedo", name: "Albedo", logo: "/assets/wallets/albedo-logo.png", bg: "#FFFFFF" },
   { id: "xbull", name: "xBull", logo: "/assets/wallets/xbull-logo.png", bg: "#202020", bleed: true },
   { id: "lobstr", name: "LOBSTR", logo: "/assets/wallets/lobstr-logo.png", bg: "#51A4BE", bleed: true },
@@ -36,8 +38,8 @@ export const WALLETS: WalletMeta[] = [
 ];
 
 // WalletConnect (Reown) project id. Without it the WalletConnect option is left out of the modal.
-// It is how phones connect: Freighter / LOBSTR mobile pair over WalletConnect, and inside
-// Freighter mobile's own browser the kit connects through it without showing the modal.
+// It is how phones connect: Varial / LOBSTR mobile pair over WalletConnect, and inside
+// Varial mobile's own browser the kit connects through it without showing the modal.
 const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.seidar.xyz";
 
@@ -46,6 +48,31 @@ export const MAINNET_PASSPHRASE = Networks.PUBLIC;
 
 export const walletMeta = (id: WalletKind | null | undefined): WalletMeta | undefined =>
   id === "watch" ? WATCH_META : WALLETS.find((w) => w.id === id);
+
+/** The wallet app on the other end of a WalletConnect session (e.g. Varial or LOBSTR mobile). */
+export type WalletPeer = { name: string; icon?: string };
+
+/** What to show for a linked wallet: over WalletConnect, the wallet app that answered, not WalletConnect itself. */
+export function displayMeta(id: WalletKind | null | undefined, peer?: WalletPeer | null): WalletMeta | undefined {
+  const base = walletMeta(id);
+  if (id !== "wallet_connect" || !peer?.name) return base;
+  // Older Varial mobile builds still call themselves Freighter.
+  const name = peer.name.toLowerCase().replace("freighter", "varial");
+  const known = WALLETS.find((w) => w.id !== "wallet_connect" && name.includes(w.name.toLowerCase()));
+  if (known) return { ...known, id: "wallet_connect" };
+  return peer.icon ? { id: "wallet_connect", name: peer.name, logo: peer.icon, bg: "#FFFFFF", bleed: true } : { ...base!, name: peer.name };
+}
+
+type WcSession = { topic: string; peer?: { metadata?: { name?: string; icons?: string[] } }; namespaces: { stellar?: { accounts: string[] } } };
+
+const peerOf = (s: WcSession | null | undefined): WalletPeer | null => {
+  const m = s?.peer?.metadata;
+  if (!m?.name) return null;
+  const icon = m.icons?.find((u) => /^https:\/\//.test(u));
+  return icon ? { name: m.name, icon } : { name: m.name };
+};
+
+let wcInstance: { getSessions(): Promise<WcSession[]>; lastPeer: WalletPeer | null } | null = null;
 
 /** The WalletConnect module is large (Reown AppKit), so it loads only when the kit first starts. */
 async function walletConnectModule() {
@@ -63,6 +90,7 @@ async function walletConnectModule() {
     // picker at once. Proposals expire after 5 minutes; an older one is replaced on use.
     class PreparedWalletConnect extends WalletConnectModule {
       private next: Promise<Proposal> | null = null;
+      lastPeer: WalletPeer | null = null;
 
       private propose(): Promise<Proposal> {
         return this.signClient
@@ -105,6 +133,7 @@ async function walletConnectModule() {
         closed.catch(() => {});
         try {
           const session = await Promise.race([approval(), closed]);
+          this.lastPeer = peerOf(session as WcSession);
           const accounts = session.namespaces.stellar.accounts.map((a) => a.split(":")[2]);
           wcSessionPaths.value = [...wcSessionPaths.value, ...accounts.map((publicKey) => ({ publicKey, topic: session.topic }))];
           return { address: accounts[0] };
@@ -130,6 +159,7 @@ async function walletConnectModule() {
     // module that isn't ready yet would be listed as "Install"; wait for it (bounded) first.
     for (let i = 0; i < 40 && !(await wc.isAvailable()); i++) await new Promise((r) => setTimeout(r, 200));
     wc.prepare();
+    wcInstance = wc as unknown as typeof wcInstance;
     return [wc];
   } catch {
     return [];
@@ -149,7 +179,12 @@ function kit(): Promise<typeof StellarWalletsKit> {
   starting ??= (async () => {
     // Browser-extension wallets. On a phone there are no extensions, so they only appear when the
     // page is open inside that wallet's own in-app browser (which injects the same API).
-    const injected = [new FreighterModule(), new LobstrModule(), new RabetModule(), new HanaModule()];
+    const varial = Object.assign(new FreighterModule(), {
+      productName: "Varial",
+      productUrl: "https://varialwallet.com",
+      productIcon: `${window.location.origin}/assets/wallets/varial-logo.png`,
+    });
+    const injected = [varial, new LobstrModule(), new RabetModule(), new HanaModule()];
     const phone = isPhone();
     const [wc, present] = await Promise.all([
       walletConnectModule(),
@@ -172,7 +207,7 @@ export function warmWallets(): void {
 }
 
 /** Connect through the kit's auth modal. Null when the user closes it or rejects. */
-export async function kitOpenAuthModal(): Promise<{ address: string; walletId: KitWalletId } | null> {
+export async function kitOpenAuthModal(): Promise<{ address: string; walletId: KitWalletId; peer?: WalletPeer } | null> {
   try {
     const k = await kit();
     const r = await k.authModal();
@@ -184,10 +219,24 @@ export async function kitOpenAuthModal(): Promise<{ address: string; walletId: K
       const hit = WALLETS.find((w) => w.id === pid);
       if (hit) walletId = hit.id as KitWalletId;
     } catch {}
-    return { address, walletId };
+    const peer = walletId === "wallet_connect" ? wcInstance?.lastPeer : null;
+    return peer ? { address, walletId, peer } : { address, walletId };
   } catch {
     return null;
   }
+}
+
+/** The wallet app behind each address with a live WalletConnect session (for wallets linked before peers were saved). */
+export async function kitWalletConnectPeers(): Promise<Record<string, WalletPeer>> {
+  const out: Record<string, WalletPeer> = {};
+  try {
+    await kit();
+    for (const s of (await wcInstance?.getSessions()) ?? []) {
+      const peer = peerOf(s);
+      if (peer) for (const a of s.namespaces.stellar?.accounts ?? []) out[a.split(":")[2]] = peer;
+    }
+  } catch {}
+  return out;
 }
 
 /** Silent address read from a wallet (no prompt). */

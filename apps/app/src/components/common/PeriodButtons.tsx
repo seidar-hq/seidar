@@ -20,9 +20,9 @@ const buttonSx = (theme: Theme, active: boolean) => {
     minHeight: "auto",
     backgroundColor: active ? theme.palette.sidebar.primary : "transparent",
     color: dark ? theme.palette.common.black : active ? theme.palette.common.white : theme.palette.common.black,
-    borderTop: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main1000}`,
-    borderBottom: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main1000}`,
-    boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.exchange}` : "none",
+    borderTop: dark ? "none" : `0.0625rem solid ${theme.palette.border.main1000}`,
+    borderBottom: dark ? "none" : `0.0625rem solid ${theme.palette.border.main1000}`,
+    boxShadow: "none",
     "&:hover": {
       backgroundColor: active ? theme.palette.sidebar.primary : dark ? theme.palette.sidebar.black100 : theme.palette.grey[100],
       boxShadow: "none",

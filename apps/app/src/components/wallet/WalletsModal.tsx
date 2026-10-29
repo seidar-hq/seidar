@@ -89,7 +89,7 @@ export default function WalletsModal({ open, onClose }: { open: boolean; onClose
           const bal = byAddress[w.address];
           return (
             <Row key={w.address} active={active} onClick={() => !active && switchWallet(w.address)}>
-              <WalletAvatar walletId={w.walletId} size="2.5rem" status={active ? "active" : "inactive"} />
+              <WalletAvatar walletId={w.walletId} peer={w.peer} size="2.5rem" status={active ? "active" : "inactive"} />
               <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                 <Typography variant="body3" color="common.black" noWrap>
                   {walletLabel(w)}

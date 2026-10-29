@@ -15,7 +15,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import ConnectWalletButton from "@/components/common/ConnectWalletButton";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { walletMeta } from "@/lib/wallets";
+import { displayMeta } from "@/lib/wallets";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import AccountModal from "./AccountModal";
@@ -48,19 +48,16 @@ export default function HeaderWallet() {
   const [walletsOpen, setWalletsOpen] = useState(false);
   const { byAddress } = useBalances(activeWallet ? [activeWallet.address] : []);
 
-  if (!ready) return <Skeleton variant="rounded" width="10rem" height="2.75rem" sx={{ borderRadius: "999rem" }} />;
+  if (!ready) return <Skeleton variant="rounded" width="4.5rem" height="2.75rem" sx={{ borderRadius: "999rem" }} />;
   if (!activeWallet) return <ConnectWalletButton />;
 
   const bal = byAddress[activeWallet.address];
-  const meta = walletMeta(activeWallet.walletId);
+  const meta = displayMeta(activeWallet.walletId, activeWallet.peer);
 
   return (
     <>
       <WalletPill onClick={(e) => setAnchor(e.currentTarget)} aria-label="Wallet menu">
-        <WalletAvatar walletId={activeWallet.walletId} size="2rem" status="active" />
-        <Typography variant="subtitle1" color="common.black" sx={{ display: { xs: "none", md: "block" } }}>
-          {shortAddress(activeWallet.address)}
-        </Typography>
+        <WalletAvatar walletId={activeWallet.walletId} peer={activeWallet.peer} size="2rem" status="active" />
         <KeyboardArrowDownRoundedIcon
           sx={{
             fontSize: "1.125rem",
@@ -83,7 +80,7 @@ export default function HeaderWallet() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <WalletAvatar walletId={activeWallet.walletId} size="2.5rem" status="active" />
+          <WalletAvatar walletId={activeWallet.walletId} peer={activeWallet.peer} size="2.5rem" status="active" />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
               <Typography variant="subtitle1" color="common.black" noWrap>

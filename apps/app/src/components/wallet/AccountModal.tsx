@@ -83,7 +83,7 @@ export default function AccountModal({
 
       <Tooltip title="All wallets" arrow placement="top">
         <AddressButton onClick={onOpenWallets} aria-label="Show all wallets">
-          <WalletAvatar walletId={activeWallet.walletId} size="1.75rem" status="active" />
+          <WalletAvatar walletId={activeWallet.walletId} peer={activeWallet.peer} size="1.75rem" status="active" />
           <Typography sx={{ fontSize: "1.25rem", fontWeight: 500, color: "#E3E3E3" }}>
             {activeWallet.name || shortAddress(activeWallet.address, 4, 6)}
           </Typography>

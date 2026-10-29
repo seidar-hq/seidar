@@ -103,7 +103,8 @@ export default function PortfolioKpis() {
 
   return (
     <KpiSection>
-      <KpiHeader sx={{ justifyContent: "space-between" }}>
+      {/* Phones only: from sm up the picker lives in the navbar. */}
+      <KpiHeader sx={{ justifyContent: "space-between", display: { xs: "flex", sm: "none" } }}>
         <PortfolioSelect />
       </KpiHeader>
       <Grid size={12} spacing="1rem" container>

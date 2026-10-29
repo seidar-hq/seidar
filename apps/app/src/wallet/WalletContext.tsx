@@ -6,10 +6,13 @@ import {
   WATCH_ENABLED,
   isStellarAddress,
   kitDisconnect,
+  displayMeta,
   kitOpenAuthModal,
+  kitWalletConnectPeers,
   walletMeta,
   warmWallets,
   type WalletKind,
+  type WalletPeer,
 } from "@/lib/wallets";
 import { shortAddress } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
@@ -18,7 +21,8 @@ import { apiFetch } from "@/lib/api";
 // One portfolio is active: the dashboard, earn and history follow its wallets, and one of its
 // wallets is the active signer. Inside the active portfolio the view can narrow to one wallet.
 
-export type LinkedWallet = { address: string; walletId: WalletKind; name: string };
+/** peer: over WalletConnect, the wallet app on the other end (shown instead of the WalletConnect logo). */
+export type LinkedWallet = { address: string; walletId: WalletKind; name: string; peer?: WalletPeer };
 export type Portfolio = { id: string; name: string; wallets: string[] };
 /** View inside the active portfolio: every wallet in it ("all") or one address. */
 export type PortfolioSelection = "all" | string;
@@ -116,7 +120,7 @@ const isLinkedWallet = (w: unknown): w is LinkedWallet =>
 
 const newId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-export const walletLabel = (w: LinkedWallet) => w.name || `${walletMeta(w.walletId)?.name ?? "Wallet"} ${shortAddress(w.address)}`;
+export const walletLabel = (w: LinkedWallet) => w.name || `${displayMeta(w.walletId, w.peer)?.name ?? "Wallet"} ${shortAddress(w.address)}`;
 
 /** Every wallet sits in exactly one portfolio; there is always at least one portfolio. */
 function normalize(portfolios: Portfolio[], wallets: LinkedWallet[]): Portfolio[] {
@@ -159,6 +163,26 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }).catch(() => {});
     }
   }, [wallets]);
+
+  // WalletConnect wallets linked before the wallet app was saved: read it from the live session.
+  const needsPeer = ready && wallets.some((w) => w.walletId === "wallet_connect" && !w.peer);
+  useEffect(() => {
+    if (!needsPeer) return;
+    let off = false;
+    const t = setTimeout(async () => {
+      const peers = await kitWalletConnectPeers();
+      if (off || !Object.keys(peers).length) return;
+      setWallets((prev) => {
+        const next = prev.map((w) => (w.walletId === "wallet_connect" && !w.peer && peers[w.address] ? { ...w, peer: peers[w.address] } : w));
+        save(WALLETS_KEY, next);
+        return next;
+      });
+    }, 2000);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+  }, [needsPeer]);
 
   // Warm the wallet kit (and WalletConnect's client) once the page has settled.
   useEffect(() => {
@@ -286,10 +310,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const home = portfolios.find((p) => p.wallets.includes(r.address));
     if (home) {
       // Already linked: re-activate it where it lives (never move it between portfolios).
-      commit({ wallets: wallets.map((w) => (w.address === r.address ? { ...w, walletId: r.walletId } : w)), activeId: home.id, address: r.address });
+      commit({ wallets: wallets.map((w) => (w.address === r.address ? { ...w, walletId: r.walletId, peer: r.peer } : w)), activeId: home.id, address: r.address });
       return successAlert({ message: home.id === activeId ? "Wallet switched" : `Switched to ${home.name}` });
     }
-    commit({ wallets: [...wallets, { address: r.address, walletId: r.walletId, name: "" }], portfolios: intoActive(r.address), address: r.address });
+    commit({ wallets: [...wallets, { address: r.address, walletId: r.walletId, name: "", ...(r.peer ? { peer: r.peer } : {}) }], portfolios: intoActive(r.address), address: r.address });
     successAlert({ message: "Wallet connected" });
   }, [wallets, portfolios, activeId, commit, intoActive, successAlert]);
 

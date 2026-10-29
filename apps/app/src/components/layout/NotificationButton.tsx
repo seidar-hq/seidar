@@ -114,7 +114,7 @@ export default function NotificationButton() {
           invisible={unread === 0}
           sx={{
             "& .MuiBadge-badge": {
-              backgroundColor: theme.palette.sidebar.purple100,
+              backgroundColor: theme.palette.error.main,
               width: "0.52rem",
               height: "0.52rem",
               borderRadius: "50%",

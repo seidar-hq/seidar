@@ -5,7 +5,8 @@ import Box from "@mui/material/Box";
 import Skeleton from "@mui/material/Skeleton";
 import Typography from "@mui/material/Typography";
 import { alpha, styled, useTheme } from "@mui/material/styles";
-import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import { axisTag, tailSegment, timeDomainWithGap } from "@/components/common/ChartMarker";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
 import TokenLogo from "@/components/common/TokenLogo";
 import { apiJson } from "@/lib/api";
@@ -32,6 +33,8 @@ const PERIODS: Period<Range>[] = [
   { value: "90d", label: "90d" },
   { value: "1y", label: "1y" },
 ];
+
+const Y_AXIS_W = 76;
 
 const ref = (t: SwapToken) => (!t.issuer && t.code === "XLM" ? "native" : t.issuer ? `${t.code}:${t.issuer}` : null);
 
@@ -110,7 +113,7 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
           </Box>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={pts} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={pts} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="pair-grad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={alpha(color, 0.45)} />
@@ -119,6 +122,9 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
               </defs>
               <XAxis
                 dataKey="t"
+                type="number"
+                scale="time"
+                domain={timeDomainWithGap(pts.map((p) => p.t))}
                 tickFormatter={fmtTime}
                 minTickGap={48}
                 tick={{ fill: theme.palette.grey[200], fontSize: 11 }}
@@ -128,12 +134,15 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
               <YAxis
                 orientation="right"
                 domain={["auto", "auto"]}
-                width={70}
+                width={Y_AXIS_W}
                 tickFormatter={(v: number) => formatAmount(v, 5)}
-                tick={{ fill: theme.palette.grey[200], fontSize: 11 }}
+                tick={{ fill: theme.palette.grey[200], fontSize: 11, dx: 4 }}
                 axisLine={false}
                 tickLine={false}
               />
+              {last != null && (
+                <ReferenceLine segment={tailSegment(pts.map((p) => p.t), last)} stroke={color} strokeDasharray="3 3" strokeOpacity={0.8} ifOverflow="extendDomain" label={axisTag(color, formatAmount(last, 5), Y_AXIS_W)} />
+              )}
               <ChartTooltip
                 cursor={{ stroke: theme.palette.overlay.white20 }}
                 content={({ active, payload }) => {
@@ -152,6 +161,7 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
                 }}
               />
               <Area type="monotone" dataKey="px" stroke={color} strokeWidth={2} fill="url(#pair-grad)" isAnimationActive={false} />
+              {last != null && <ReferenceDot x={pts[pts.length - 1].t} y={last} r={4} fill={color} stroke="#FFFFFF" strokeWidth={2} ifOverflow="extendDomain" />}
             </AreaChart>
           </ResponsiveContainer>
         )}

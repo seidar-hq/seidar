@@ -19,7 +19,7 @@ import Tabs from "@/components/common/Tabs";
 import { RemoveWalletDialog, RenameWalletDialog } from "@/components/wallet/WalletDialogs";
 import { CopyButton, WalletAvatar, glassMenuPaperSx } from "@/components/wallet/WalletParts";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { walletMeta } from "@/lib/wallets";
+import { displayMeta } from "@/lib/wallets";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet, type LinkedWallet } from "@/wallet/WalletContext";
 import { MoveWalletDialog } from "./PortfolioDialogs";
@@ -31,11 +31,11 @@ const Card = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{ isAct
     display: "flex",
     flexDirection: "column",
     width: "100%",
-    minHeight: "22rem",
-    padding: "1rem",
+    minHeight: "16rem",
+    padding: "0.875rem",
     borderRadius: "1rem",
     border: `0.0625rem solid ${theme.palette.mode === "dark" ? "transparent" : theme.palette.border.row}`,
-    gap: "1rem",
+    gap: "0.75rem",
     background: isActive ? `linear-gradient(180deg, ${theme.palette.overlay.success10} 0%, transparent 100%), ${inset}` : inset,
   };
 });
@@ -54,8 +54,8 @@ const NamePill = styled(Box)(({ theme }) => ({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  height: "2.25rem",
-  padding: "0 1rem",
+  height: "1.75rem",
+  padding: "0 0.75rem",
   borderRadius: "3.125rem",
   ...pill(theme),
 }));
@@ -64,14 +64,14 @@ const AddressPill = styled(Box)(({ theme }) => ({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.75rem 1.25rem",
+  gap: "0.5rem",
+  padding: "0.5rem 0.875rem",
   marginTop: "auto",
   borderRadius: "3.125rem",
   ...pill(theme),
 }));
 
-const Field = styled(Box)({ display: "flex", flexDirection: "column", gap: "0.25rem" });
+const Field = styled(Box)({ display: "flex", flexDirection: "column", gap: "0.125rem" });
 
 const ActionItem = styled(MenuItem)({
   gap: "0.5rem",
@@ -89,19 +89,19 @@ const AddCard = styled(ButtonBase)(({ theme }) => ({
   alignItems: "center",
   justifyContent: "center",
   width: "100%",
-  minHeight: "22rem",
-  padding: "1rem",
+  minHeight: "16rem",
+  padding: "0.875rem",
   borderRadius: "1rem",
   border: `0.0625rem solid ${theme.palette.mode === "dark" ? "transparent" : theme.palette.border.row}`,
   backgroundColor: theme.palette.surfaceBg.softInset,
-  gap: "1rem",
+  gap: "0.625rem",
   transition: "background-color 150ms ease-in-out",
   "&:hover": { backgroundColor: theme.palette.border.main1000 },
 }));
 
 const AddCircle = styled(Box)(({ theme }) => ({
-  width: "3.75rem",
-  height: "3.75rem",
+  width: "3rem",
+  height: "3rem",
   borderRadius: "50%",
   display: "flex",
   alignItems: "center",
@@ -114,7 +114,7 @@ const Grid = styled(Box)(({ theme }) => ({
   display: "grid",
   gap: "1rem",
   // Fixed-width cards (no stretching across wide screens).
-  gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 17.5rem))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(13rem, 15rem))",
   [theme.breakpoints.down("sm")]: { gridTemplateColumns: "1fr" },
 }));
 
@@ -152,7 +152,7 @@ function WalletCard({
 }) {
   const theme = useTheme();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const meta = walletMeta(wallet.walletId);
+  const meta = displayMeta(wallet.walletId, wallet.peer);
   const close = () => setAnchor(null);
   const actions = [
     { key: "switch", title: "Switch", subtitle: "Make this wallet active.", Icon: SwapHorizIcon, onClick: onSwitch, disabled: active },
@@ -165,7 +165,7 @@ function WalletCard({
     <Card isActive={active}>
       <SpaceRow>
         <NamePill>
-          <Typography variant="body1" color="common.black">
+          <Typography variant="body1" color="common.black" sx={{ fontSize: "0.8125rem" }}>
             {meta?.name ?? "Wallet"}
           </Typography>
         </NamePill>
@@ -173,12 +173,12 @@ function WalletCard({
           <MoreVertIcon fontSize="small" sx={{ color: "primary.main" }} />
         </IconButton>
       </SpaceRow>
-      <WalletAvatar walletId={wallet.walletId} size="3.75rem" status={active ? "active" : "inactive"} />
+      <WalletAvatar walletId={wallet.walletId} peer={wallet.peer} size="2.75rem" status={active ? "active" : "inactive"} />
       <Field>
-        <Typography variant="subtitle1" color="grey.200">
+        <Typography variant="subtitle1" color="grey.200" sx={{ fontSize: "0.75rem" }}>
           Wallet Name
         </Typography>
-        <Typography variant="body2" color="common.black" noWrap>
+        <Typography variant="body2" color="common.black" noWrap sx={{ fontSize: "0.9375rem" }}>
           {wallet.name || meta?.name}
         </Typography>
         <Typography variant="caption" color="grey.200" noWrap>
@@ -186,20 +186,20 @@ function WalletCard({
         </Typography>
       </Field>
       <Field>
-        <Typography variant="subtitle1" color="grey.200">
+        <Typography variant="subtitle1" color="grey.200" sx={{ fontSize: "0.75rem" }}>
           Balance
         </Typography>
-        <Typography variant="h1" color="common.black" noWrap>
+        <Typography variant="h1" color="common.black" noWrap sx={{ fontSize: "1.375rem" }}>
           {loading ? "—" : formatUsd(usd)}
         </Typography>
       </Field>
       <AddressPill>
         <Tooltip placement="top" arrow title={wallet.address}>
-          <Typography variant="subtitle1" color="primary.main">
-            {shortAddress(wallet.address, 6, 6)}
+          <Typography variant="subtitle1" color="primary.main" sx={{ fontSize: "0.8125rem" }}>
+            {shortAddress(wallet.address, 5, 5)}
           </Typography>
         </Tooltip>
-        <CopyButton text={wallet.address} size="1.25rem" />
+        <CopyButton text={wallet.address} size="1.125rem" />
       </AddressPill>
       <Menu
         anchorEl={anchor}
@@ -294,7 +294,7 @@ export default function WalletCards() {
           <AddCircle>
             <AddIcon />
           </AddCircle>
-          <Typography variant="subtitle2" color="common.black" sx={{ fontSize: "1rem" }}>
+          <Typography variant="subtitle2" color="common.black" sx={{ fontSize: "0.9375rem" }}>
             Add New Wallet
           </Typography>
           <Typography variant="caption" color="grey.200">

@@ -19,14 +19,14 @@ import { SearchIcon } from "@/components/icons/HeaderIcons";
 import { shortAddress } from "@/lib/format";
 import type { StatusInfo } from "./lendData";
 
-// Shared building blocks for the Earn pages (lend & borrow, pools, vaults), after Cropr's earn UI.
+// Shared building blocks for the Earn pages (lend & borrow, pools, vaults).
 
 export type ProtocolChip = { id: string; label: string; logo?: string };
 
 /** "All" mark: four primary dots. */
 function AllMark() {
   return (
-    <Box component="svg" viewBox="0 0 24 24" sx={{ width: "1.75rem", height: "1.75rem" }}>
+    <Box component="svg" viewBox="0 0 24 24" sx={{ width: "1.125rem", height: "1.125rem" }}>
       <circle cx="12" cy="5.5" r="4" fill="#5C84FF" />
       <circle cx="5.5" cy="12" r="4" fill="#5C84FF" />
       <circle cx="18.5" cy="12" r="4" fill="#5C84FF" />
@@ -38,31 +38,31 @@ function AllMark() {
 const Chip = styled(ButtonBase, { shouldForwardProp: (p) => p !== "active" })<{ active?: boolean }>(({ theme, active }) => ({
   display: "inline-flex",
   alignItems: "center",
-  gap: "0.75rem",
-  height: "3.75rem",
-  padding: "0 1.375rem 0 1rem",
+  gap: "0.5rem",
+  height: "2.187rem",
+  padding: "0 0.875rem 0 0.5rem",
   borderRadius: "999rem",
   flexShrink: 0,
-  fontSize: "1.0625rem",
+  fontSize: "0.875rem",
   fontWeight: 500,
   color: theme.palette.common.black,
-  backgroundColor: active ? theme.palette.overlay.white08 : theme.palette.overlay.white02,
-  border: `0.0625rem solid ${active ? theme.palette.overlay.white40 : theme.palette.overlay.white08}`,
+  backgroundColor: active ? theme.palette.surfaceBg.pill : theme.palette.surfaceBg.softInset,
+  border: `0.0625rem solid ${active ? theme.palette.overlay.white40 : "transparent"}`,
   transition: "background-color 150ms ease, border-color 150ms ease",
-  "&:hover": { backgroundColor: theme.palette.overlay.white08 },
+  "&:hover": { backgroundColor: theme.palette.surfaceBg.pill },
 }));
 
 /** Protocol filter row: "All" plus one logo chip per venue. */
 export function ProtocolChips({ items, value, onChange }: { items: ProtocolChip[]; value: string; onChange: (id: string) => void }) {
   return (
-    <Box sx={{ display: "flex", gap: "0.75rem", overflowX: "auto", pb: "0.25rem", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+    <Box sx={{ display: "flex", gap: "0.5rem", overflowX: "auto", pb: "0.25rem", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
       <Chip active={value === "all"} onClick={() => onChange("all")}>
         <AllMark />
         All
       </Chip>
       {items.map((p) => (
         <Chip key={p.id} active={value === p.id} onClick={() => onChange(p.id)}>
-          {p.logo && <Box component="img" src={p.logo} alt="" sx={{ width: "1.875rem", height: "1.875rem", borderRadius: "50%", objectFit: "cover" }} />}
+          {p.logo && <Box component="img" src={p.logo} alt="" sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", objectFit: "cover" }} />}
           {p.label}
         </Chip>
       ))}
@@ -345,9 +345,8 @@ export function TopList({ title, items, emptyText, valueLabel, nameLabel }: { ti
     <Box
       sx={{
         borderRadius: "1.25rem",
-        border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
-        backgroundColor: "overlay.white05",
-        boxShadow: (t) => `0 0.25rem 2.5rem 0 ${t.palette.shadow.elevated}`,
+        border: (t) => `0.0625rem solid ${t.palette.border.main1000}`,
+        backgroundColor: "surfaceBg.section",
         padding: "1.25rem",
         display: "flex",
         flexDirection: "column",

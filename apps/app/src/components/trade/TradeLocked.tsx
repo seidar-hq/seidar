@@ -18,9 +18,9 @@ const lockedCard = (theme: Theme) => {
     gap: "1rem",
     padding: "1rem 3.75rem",
     borderRadius: "1.5rem",
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.common.white,
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
-    boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}` : "none",
+    backgroundColor: dark ? theme.palette.surfaceBg.section : theme.palette.common.white,
+    border: `0.0625rem solid ${dark ? theme.palette.border.main1000 : theme.palette.border.main600}`,
+    boxShadow: "none",
     [theme.breakpoints.down("lg")]: { height: "auto", minHeight: "auto", padding: "2.5rem 3.75rem" },
     [theme.breakpoints.down("sm")]: { padding: "2rem 1.25rem" },
   };
@@ -121,9 +121,9 @@ const SpotRoot = styled(Box, { shouldForwardProp: (p) => p !== "bare" })<{ bare?
     ...(bare
       ? { backgroundColor: "transparent", border: "none", boxShadow: "none" }
       : {
-          backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.common.white,
-          border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
-          boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}` : "none",
+          backgroundColor: dark ? theme.palette.surfaceBg.section : theme.palette.common.white,
+          border: `0.0625rem solid ${dark ? theme.palette.border.main1000 : theme.palette.border.main600}`,
+          boxShadow: "none",
         }),
     [theme.breakpoints.down("lg")]: { height: "auto", minHeight: "calc(100dvh - 12rem)", padding: "3rem 3.75rem" },
     [theme.breakpoints.down("sm")]: { padding: "2.5rem 1.25rem" },
@@ -199,8 +199,8 @@ const SquareCard = styled(Box)(({ theme }) => {
     padding: "1rem",
     borderRadius: "1.5rem",
     backgroundColor: dark ? theme.palette.overlay.white05 : theme.palette.common.white,
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
-    boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}` : "none",
+    border: `0.0625rem solid ${dark ? theme.palette.border.main1000 : theme.palette.border.main600}`,
+    boxShadow: "none",
     [theme.breakpoints.down("lg")]: { width: "100%" },
   };
 });

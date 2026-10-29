@@ -14,7 +14,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme, type Theme } from "@mui/material/styles";
 import type { SvgIconComponent } from "@mui/icons-material";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
 import WaterOutlinedIcon from "@mui/icons-material/WaterOutlined";
 import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
@@ -24,11 +24,12 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import HeaderWallet from "@/components/wallet/HeaderWallet";
+import AgentPill from "@/components/agent/AgentPill";
 import { DerivativesDropdownIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
-import { DOCS_URL } from "@/lib/links";
 import { useThemeMode } from "@/theme/ThemeModeContext";
 import HeaderPortfolio from "./HeaderPortfolio";
 import NotificationButton from "./NotificationButton";
+import FeedbackDialog from "./FeedbackDialog";
 import SearchDialog from "./SearchDialog";
 
 const Root = styled(AppBar)(({ theme }) => ({
@@ -38,7 +39,7 @@ const Root = styled(AppBar)(({ theme }) => ({
   width: "100%",
   height: "5.5rem",
   padding: "0 2.375rem",
-  backgroundColor: theme.palette.mode === "dark" ? theme.palette.overlay.white02 : theme.palette.overlay.white15,
+  backgroundColor: theme.palette.mode === "dark" ? theme.palette.surfaceBg.main : theme.palette.overlay.white15,
   backdropFilter: "blur(15px)",
   WebkitBackdropFilter: "blur(15px)",
   backgroundImage: "none",
@@ -88,14 +89,17 @@ const NavItem = styled(ListItemButton, { shouldForwardProp: (p) => p !== "active
     display: "flex",
     alignItems: "center",
     gap: "0.25rem",
-    padding: "0.5rem 0.75rem",
+    // The nav icons carry ~0.25rem of built-in side space, so the right side gets that much more
+    // padding to look even; the caret has its own built-in space and gives some of it back.
+    padding: "0.5rem 1rem 0.5rem 0.75rem",
     borderRadius: "3.125rem",
     whiteSpace: "nowrap",
+    "& > .MuiSvgIcon-root:last-child": { marginRight: "-0.1875rem" },
     backgroundColor: active ? theme.palette.sidebar.primary : "transparent",
     color: active ? theme.palette.sidebar.white : theme.palette.sidebar.subText,
     transition: "none",
     "&:hover": { backgroundColor: active ? theme.palette.sidebar.primary : theme.palette.overlay.info08 },
-    [theme.breakpoints.down("xl")]: { padding: "0.5rem 0.5rem" },
+    [theme.breakpoints.down("xl")]: { padding: "0.5rem 0.75rem 0.5rem 0.5rem" },
   }),
 );
 
@@ -235,6 +239,7 @@ export default function Header() {
   const [tradeAnchor, setTradeAnchor] = useState<HTMLElement | null>(null);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const earnTimer: HoverTimer = useRef(null);
   const tradeTimer: HoverTimer = useRef(null);
@@ -453,13 +458,9 @@ export default function Header() {
               <SearchIcon size="1.25rem" />
             </CircleIconButton>
           </Tooltip>
-          <Tooltip title="Docs" arrow placement="bottom">
-            <CircleIconButton
-              onClick={() => window.open(DOCS_URL, "_blank", "noopener,noreferrer")}
-              aria-label="Docs"
-              sx={{ color: theme.palette.sidebar.heading }}
-            >
-              <DescriptionOutlinedIcon sx={{ fontSize: "1.25rem" }} />
+          <Tooltip title="Feedback" arrow placement="bottom">
+            <CircleIconButton onClick={() => setFeedbackOpen(true)} aria-label="Send feedback" sx={{ color: theme.palette.sidebar.heading }}>
+              <FeedbackOutlinedIcon sx={{ fontSize: "1.25rem" }} />
             </CircleIconButton>
           </Tooltip>
           <NotificationButton />
@@ -467,6 +468,7 @@ export default function Header() {
             <HeaderPortfolio />
           </Box>
           <HeaderWallet />
+          <AgentPill />
         </RightCluster>
 
 
@@ -516,6 +518,7 @@ export default function Header() {
       </Drawer>
 
       <SearchDialog open={searchOpen} handleClose={() => setSearchOpen(false)} />
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </>
   );
 }

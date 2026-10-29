@@ -13,6 +13,7 @@ import PortfolioBalance from "./PortfolioBalance";
 import PortfolioLocked from "./PortfolioLocked";
 import WalletTableLocked from "./WalletTableLocked";
 import SwapWidget from "@/components/swap/SwapWidget";
+import { useAgent } from "@/components/agent/AgentContext";
 
 const PortfolioCard = styled(SectionCard)(({ theme }) => ({ ...fadedBorder(theme), minHeight: "38.5rem" }));
 
@@ -31,6 +32,8 @@ function ConnectedPortfolio() {
 
 export default function Dashboard() {
   const { isConnected } = useWallet();
+  // While the agent is open it sits over the right-hand column (see AppShell), so leave it empty.
+  const { open: agentOpen } = useAgent();
   return (
     <Box sx={{ minHeight: "100vh" }}>
       <Box
@@ -51,10 +54,14 @@ export default function Dashboard() {
             </>
           )}
         </Box>
-        <Box>
-          {isConnected ? <SwapWidget /> : <SwapLockedWidget />}
-          <News />
-        </Box>
+        {agentOpen ? (
+          <Box aria-hidden />
+        ) : (
+          <Box>
+            {isConnected ? <SwapWidget /> : <SwapLockedWidget />}
+            <News />
+          </Box>
+        )}
       </Box>
     </Box>
   );

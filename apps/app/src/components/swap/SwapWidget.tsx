@@ -84,8 +84,8 @@ const Panel = styled(Box)(({ theme }) => {
     width: "100%",
     padding: "1rem",
     borderRadius: "0.75rem",
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.grey[400],
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
+    backgroundColor: dark ? theme.palette.surfaceBg.softInset : theme.palette.grey[400],
+    border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main600}`,
   };
 });
 

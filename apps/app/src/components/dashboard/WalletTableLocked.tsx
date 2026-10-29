@@ -19,18 +19,6 @@ import { useWallet } from "@/wallet/WalletContext";
 
 const Root = styled(PlainCard)({ position: "relative" });
 
-const BottomGlow = styled(Box)(({ theme }) => ({
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: "30%",
-  zIndex: 0,
-  pointerEvents: "none",
-  backgroundImage: `${theme.palette.gradient.walletPromoGlow}, ${theme.palette.gradient.walletPromoGlow}`,
-  filter: "blur(2.5rem)",
-}));
-
 const Content = styled(Box)({ position: "relative", zIndex: 1, width: "100%" });
 
 const HeaderRow = styled(Box)({
@@ -87,7 +75,6 @@ export default function WalletTableLocked() {
 
   return (
     <Root overflow="hidden" padding={2} mt="1rem" width="100%">
-      <BottomGlow />
       <Content>
         <HeaderRow>
           <Box sx={{ pointerEvents: "none", opacity: 0.75 }}>

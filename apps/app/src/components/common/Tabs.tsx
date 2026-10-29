@@ -26,12 +26,12 @@ export const TabsTrack = styled(Box, {
     alignItems: "center",
     gap: "0.375rem",
     padding: "0.375rem",
-    backgroundColor: color || (dark ? theme.palette.overlay.white04 : theme.palette.border.main600),
-    borderTop: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : "transparent"}`,
-    borderBottom: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : "transparent"}`,
+    backgroundColor: color || (dark ? theme.palette.surfaceBg.softInset : theme.palette.border.main600),
+    borderTop: "none",
+    borderBottom: "none",
     borderRadius: "12.5rem",
     width: fullWidth ? "100%" : "fit-content",
-    boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}` : "none",
+    boxShadow: "none",
   };
 });
 

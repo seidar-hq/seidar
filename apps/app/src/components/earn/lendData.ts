@@ -104,11 +104,13 @@ export function marketStatus(status: number | null | undefined): StatusInfo | nu
   return { label: "In setup", tone: "setup", tip: "This pool's admin hasn't opened it yet: no supply or borrowing until it goes active." };
 }
 
-export type LendAction = "supply" | "borrow" | "withdraw" | "repay";
+/** leverage: XOXNO only (one-transaction loop, see leverage.tsx). */
+export type LendAction = "supply" | "borrow" | "withdraw" | "repay" | "leverage";
 
 /** Why an action is unavailable on this market (null when allowed). */
 export function actionBlock(m: Market, a: LendAction): string | null {
   if (!m.contract) return "Market unavailable";
+  if (a === "leverage") return m.protocol === "xoxno" ? (m.canCollateral ? null : "This asset can't be collateral") : "Leverage is available on XOXNO markets";
   const s = m.status;
   if (s != null && s >= 6) return "Pool is in setup";
   if (a === "supply" && s != null && s >= 4) return "Pool is frozen: supplying is paused";
@@ -299,7 +301,7 @@ export const compactUsd = (v: number | null | undefined) => {
   return `$${v.toFixed(2)}`;
 };
 
-/** Link to a market's page (Supply / Borrow / Withdraw / Repay live there). */
+/** Link to a market's page (Supply / Borrow / Withdraw / Repay / Leverage live there). */
 export const marketHref = (m: Pick<Market, "protocol" | "pool" | "contract" | "code">, mode: LendAction = "supply", accountId?: string) =>
   `/earn/lending&borrow/view?protocol=${m.protocol}&pool=${encodeURIComponent(m.pool)}&asset=${encodeURIComponent(m.contract ?? m.code)}&mode=${mode}${
     accountId ? `&account=${encodeURIComponent(accountId)}` : ""

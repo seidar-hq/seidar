@@ -3,6 +3,7 @@ import "./globals.css";
 import ThemeRegistry from "@/theme/ThemeRegistry";
 import AppShell from "@/components/layout/AppShell";
 import { WalletProvider } from "@/wallet/WalletContext";
+import { AgentProvider } from "@/components/agent/AgentContext";
 
 export const metadata: Metadata = {
   title: "Seidar | Stellar DeFi Portfolio and Execution Platform",
@@ -20,7 +21,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <ThemeRegistry>
           <WalletProvider>
-            <AppShell>{children}</AppShell>
+            <AgentProvider>
+              <AppShell>{children}</AppShell>
+            </AgentProvider>
           </WalletProvider>
         </ThemeRegistry>
       </body>

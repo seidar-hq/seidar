@@ -11,7 +11,7 @@ import TokenLogo from "@/components/common/TokenLogo";
 import { formatAmount, formatUsd } from "@/lib/format";
 import type { TokenRef } from "@/lib/tokens";
 
-// Right-column action card on market / vault / pool pages (after Cropr's borrow card):
+// Right-column action card on market / vault / pool pages:
 // action tabs, an amount box with balance + USD, detail rows and one full-width button.
 
 export type ActionTab = { id: string; label: string; blocked?: string | null };

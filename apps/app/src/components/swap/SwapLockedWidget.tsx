@@ -71,8 +71,8 @@ const TokenPanel = styled(Box)(({ theme }) => {
     height: "10.375rem",
     padding: "1rem",
     borderRadius: "0.75rem",
-    backgroundColor: dark ? theme.palette.overlay.white02 : theme.palette.grey[400],
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
+    backgroundColor: dark ? theme.palette.surfaceBg.softInset : theme.palette.grey[400],
+    border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main600}`,
     boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.exchange}` : "none",
   };
 });
@@ -110,10 +110,6 @@ const WidgetRoot = styled(Box)(({ theme }) => ({
   overflow: "hidden",
   borderRadius: "1.5rem",
   backgroundColor: theme.palette.surfaceBg.section,
-  backgroundImage: theme.palette.gradient.walletPromoGlow,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "bottom",
-  backgroundSize: "100% 50%",
   "& > .MuiPaper-root": {
     flex: 1,
     display: "flex",
@@ -169,7 +165,7 @@ const BlurredForm = styled(Box)({
   filter: "blur(3.125rem)",
 });
 
-const PromoOverlay = styled(Box)(({ theme }) => ({
+const PromoOverlay = styled(Box)({
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
@@ -178,8 +174,7 @@ const PromoOverlay = styled(Box)(({ theme }) => ({
   borderRadius: "0 0 1.75rem 1.75rem",
   backdropFilter: "blur(0.5rem)",
   WebkitBackdropFilter: "blur(0.5rem)",
-  backgroundImage: theme.palette.gradient.walletPromoGlow,
-}));
+});
 
 const TokenSelectPill = styled(Box)(({ theme }) => ({
   display: "flex",
@@ -198,7 +193,7 @@ const SwapCircle = styled(Box)(({ theme }) => ({
   width: "3rem",
   height: "3rem",
   borderRadius: "50%",
-  backgroundColor: theme.palette.sidebar.primary,
+  backgroundColor: theme.palette.surfaceBg.softInsetStrong,
 }));
 
 const SlippageLabel = styled(Box)({ display: "flex", alignItems: "center", gap: "0.5rem" });
@@ -288,7 +283,7 @@ export default function SwapLockedWidget() {
                   <Typography variant="subtitle3" color="sidebar.heading">
                     Max Slippage
                   </Typography>
-                  <InfoOutlinedIcon sx={{ fontSize: "1rem", color: "primary.main" }} />
+                  <InfoOutlinedIcon sx={{ fontSize: "1rem", color: "grey.200" }} />
                 </SlippageLabel>
                 <SlippageInput>
                   <Typography variant="subtitle3" color="sidebar.heading">
@@ -296,7 +291,7 @@ export default function SwapLockedWidget() {
                   </Typography>
                 </SlippageInput>
               </SpaceRow>
-              <ExchangeButton variant="solid" color="primary" fullWidth>
+              <ExchangeButton variant="solid" color="primary" fullWidth sx={{ background: "none", backgroundColor: "surfaceBg.softInsetStrong", color: "grey.200", boxShadow: "none" }}>
                 EXCHANGE
               </ExchangeButton>
             </BlurredForm>

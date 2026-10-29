@@ -25,18 +25,6 @@ const Root = styled(SectionCard)(({ theme }) => ({
 
 const BalancePanel = styled(InsetCard)(({ theme }) => ({ ...fadedBorder(theme), zIndex: 1, flex: 1, minHeight: 0 }));
 
-const SectionGlow = styled(Box)(({ theme }) => ({
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: "-2.5rem",
-  height: "34%",
-  zIndex: 0,
-  pointerEvents: "none",
-  filter: "blur(3rem)",
-  backgroundImage: theme.palette.gradient.lockedSectionGlow,
-}));
-
 const Watermark = styled("img")(({ theme }) => ({
   position: "absolute",
   right: "1rem",
@@ -56,18 +44,6 @@ const TopBlock = styled(Box)({
   gap: "0.625rem",
   borderRadius: "0.875rem",
 });
-
-const TopGlow = styled(Box)(({ theme }) => ({
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: "-2.5rem",
-  height: "42%",
-  zIndex: 0,
-  pointerEvents: "none",
-  filter: "blur(3rem)",
-  backgroundImage: theme.palette.gradient.lockedSectionGlow,
-}));
 
 const TopRow = styled(Box)(({ theme }) => ({
   position: "relative",
@@ -123,7 +99,7 @@ const KpiCard = styled(Box, { shouldForwardProp: (p) => p !== "idx" })<{ idx: nu
   height: "8rem",
   padding: "1rem",
   borderRadius: "0.75rem",
-  backgroundImage: theme.palette.gradient.kpiCardLocked,
+  backgroundColor: theme.palette.surfaceBg.softInset,
   border: `0.0625rem solid ${theme.palette.overlay.white08}`,
   boxShadow:
     theme.palette.mode === "dark"
@@ -164,17 +140,16 @@ export default function PortfolioLocked() {
   return (
     <>
       <Root>
-        <SectionGlow />
         <TopBlock>
-          <TopGlow />
           <Typography variant="h6" sx={{ pl: "1.625rem", color: "common.black" }}>
             All Portfolios
           </Typography>
           <TopRow>
             <IntroColumn>
               <Typography variant="subtitle9" color="sidebar.subText">
-                Track balances, allocations, performance, rewards, and AI insights across all your wallets in one
-                place.
+                Track balances, allocations, performance, rewards,
+                <Box component="br" sx={{ display: { xs: "none", md: "block" } }} /> and AI insights across all your wallets in
+                one place.
               </Typography>
               <ButtonsRow>
                 <ConnectPill onClick={openConnectModal}>

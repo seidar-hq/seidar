@@ -111,7 +111,11 @@ function TransactionsContent() {
     <Box sx={{ backgroundColor: "transparent", minHeight: "100vh" }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: "1rem" }}>
         <Typography variant="body4">History</Typography>
-        {isConnected && <PortfolioSelect />}
+        {isConnected && (
+          <Box sx={{ display: { xs: "block", sm: "none" } }}>
+            <PortfolioSelect />
+          </Box>
+        )}
       </Box>
       <Box
         sx={{

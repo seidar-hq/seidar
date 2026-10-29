@@ -34,7 +34,7 @@ export function RemoveWalletDialog({ address, onClose }: { address: string | nul
       {wallet && (
         <>
           <InsetRow>
-            <WalletAvatar walletId={wallet.walletId} size="2.25rem" />
+            <WalletAvatar walletId={wallet.walletId} peer={wallet.peer} size="2.25rem" />
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="body3" color="common.black">
                 {walletLabel(wallet)}

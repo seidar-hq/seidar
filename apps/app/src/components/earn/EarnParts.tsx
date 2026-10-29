@@ -16,14 +16,14 @@ const MainCard = styled(Box)(({ theme }) => ({
 
 const Side = styled(Box)({ display: "flex", flexDirection: "column", gap: "1rem", alignSelf: "start", minWidth: 0 });
 
-/** Earn page layout: tab bar + main content on the left, summary cards on the right. */
-export function EarnGrid({ tabs, main, side }: { tabs: React.ReactNode; main: React.ReactNode; side: React.ReactNode }) {
+/** Earn page layout: tab bar + main content on the left, summary cards on the right (full width without them). */
+export function EarnGrid({ tabs, main, side }: { tabs: React.ReactNode; main: React.ReactNode; side?: React.ReactNode }) {
   return (
     <Box
       sx={{
         display: "grid",
         gap: "1rem",
-        gridTemplateColumns: "minmax(0, 1fr) 28.5625rem",
+        gridTemplateColumns: side ? "minmax(0, 1fr) 28.5625rem" : "minmax(0, 1fr)",
         mt: "0.4rem",
         alignItems: "start",
         "@media (max-width: 75rem)": { gridTemplateColumns: "minmax(0, 1fr)" },
@@ -33,7 +33,7 @@ export function EarnGrid({ tabs, main, side }: { tabs: React.ReactNode; main: Re
         <Box sx={{ mb: "1rem" }}>{tabs}</Box>
         {main}
       </MainCard>
-      <Side>{side}</Side>
+      {side && <Side>{side}</Side>}
     </Box>
   );
 }

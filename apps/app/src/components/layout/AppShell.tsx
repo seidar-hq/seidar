@@ -1,22 +1,21 @@
 "use client";
 
 import { Suspense } from "react";
+import { usePathname } from "next/navigation";
 import Box from "@mui/material/Box";
 import Skeleton from "@mui/material/Skeleton";
 import { styled } from "@mui/material/styles";
 import Footer from "./Footer";
 import Header from "./Header";
+import SmoothScroll from "./SmoothScroll";
 import { useWallet } from "@/wallet/WalletContext";
+import AgentPanel from "@/components/agent/AgentPanel";
+import { AGENT_DOCK_MIN, AGENT_PANEL_WIDTH, useAgent } from "@/components/agent/AgentContext";
 
 const AppRoot = styled(Box)(({ theme }) => ({
   padding: "6.5rem 1rem 1rem 1rem",
   [theme.breakpoints.down("sm")]: { padding: "5.5rem 0.75rem 0.75rem 0.75rem" },
-  backgroundColor: theme.palette.mode === "dark" ? theme.palette.border.iconBg : theme.palette.surfaceBg.main,
-  backgroundImage: theme.palette.mode === "dark" ? "url(/assets/page-bg.svg)" : "none",
-  backgroundRepeat: "no-repeat",
-  backgroundAttachment: "fixed",
-  backgroundPosition: "center center",
-  backgroundSize: "100% 100%",
+  backgroundColor: theme.palette.surfaceBg.main,
 }));
 
 function AppLoading() {
@@ -41,9 +40,23 @@ function AppLoading() {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { ready } = useWallet();
+  const { open } = useAgent();
+  const pathname = usePathname();
+  // The dashboard gives the agent its right-hand column; other pages make room beside their content.
+  const onDashboard = pathname === "/" || pathname.startsWith("/dashboard");
+  const dock = open && !onDashboard;
   return (
     <AppRoot>
-      <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "transparent" }}>
+      <SmoothScroll />
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          minHeight: "100vh",
+          backgroundColor: "transparent",
+          ...(dock && { [`@media (min-width: ${AGENT_DOCK_MIN})`]: { marginRight: `calc(${AGENT_PANEL_WIDTH} + 1rem)` } }),
+        }}
+      >
         <Suspense fallback={null}>
           <Header />
         </Suspense>
@@ -52,6 +65,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Box>
         <Footer />
       </Box>
+      {open && (
+        <Box
+          data-lenis-prevent
+          sx={{
+            position: "fixed",
+            zIndex: 1000,
+            top: "6.5rem",
+            right: "1rem",
+            bottom: "1rem",
+            width: AGENT_PANEL_WIDTH,
+            [`@media (max-width: ${AGENT_DOCK_MIN})`]: { top: "5.5rem", left: "0.75rem", right: "0.75rem", bottom: "0.75rem", width: "auto" },
+          }}
+        >
+          <AgentPanel />
+        </Box>
+      )}
     </AppRoot>
   );
 }

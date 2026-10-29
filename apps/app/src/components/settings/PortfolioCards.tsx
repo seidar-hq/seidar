@@ -22,7 +22,7 @@ export const CardGrid = styled(Box)(({ theme }) => ({
   display: "grid",
   gap: "1rem",
   // Fixed-width cards (no stretching across wide screens).
-  gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 17.5rem))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(13rem, 15rem))",
   [theme.breakpoints.down("sm")]: { gridTemplateColumns: "1fr" },
 }));
 
@@ -40,10 +40,10 @@ export const CountChip = styled(Box)(({ theme }) => ({
 const Card = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{ isActive?: boolean }>(({ theme, isActive }) => ({
   display: "flex",
   flexDirection: "column",
-  gap: "1rem",
-  minHeight: "22.75rem",
-  padding: "1.125rem",
-  borderRadius: "1.25rem",
+  gap: "0.75rem",
+  minHeight: "17rem",
+  padding: "0.875rem",
+  borderRadius: "1rem",
   backgroundColor: theme.palette.surfaceBg.softInset,
   border: `0.0625rem solid ${isActive ? theme.palette.primary.main : "transparent"}`,
   boxShadow: isActive ? `0 0 0 0.0625rem ${theme.palette.overlay.primary12}` : "none",
@@ -52,10 +52,10 @@ const Card = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{ isAct
 const StatusPill = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{ isActive?: boolean }>(({ theme, isActive }) => ({
   display: "inline-flex",
   alignItems: "center",
-  height: "1.75rem",
-  padding: "0 1.125rem",
+  height: "1.5rem",
+  padding: "0 0.75rem",
   borderRadius: "999rem",
-  fontSize: "0.8125rem",
+  fontSize: "0.75rem",
   color: isActive ? theme.palette.green.main : theme.palette.common.black,
   backgroundColor: isActive ? theme.palette.overlay.success10 : theme.palette.overlay.white10,
 }));
@@ -63,9 +63,9 @@ const StatusPill = styled(Box, { shouldForwardProp: (p) => p !== "isActive" })<{
 const Inset = styled(Box)(({ theme }) => ({
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  borderRadius: "0.875rem",
+  borderRadius: "0.75rem",
   backgroundColor: theme.palette.overlay.white04,
-  padding: "0.875rem 0.75rem",
+  padding: "0.625rem 0.625rem",
   "& > div + div": { borderLeft: `0.0625rem solid ${theme.palette.overlay.white08}`, paddingLeft: "0.75rem" },
 }));
 
@@ -74,17 +74,17 @@ const AddCard = styled(ButtonBase)(({ theme }) => ({
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: "1.25rem",
-  minHeight: "22.75rem",
-  borderRadius: "1.25rem",
+  gap: "0.875rem",
+  minHeight: "17rem",
+  borderRadius: "1rem",
   backgroundColor: theme.palette.surfaceBg.softInset,
   transition: "background-color 150ms ease-in-out",
   "&:hover": { backgroundColor: theme.palette.border.main1000 },
 }));
 
 export const AddCircle = styled(Box)(({ theme }) => ({
-  width: "4rem",
-  height: "4rem",
+  width: "3rem",
+  height: "3rem",
   borderRadius: "50%",
   display: "flex",
   alignItems: "center",
@@ -100,7 +100,7 @@ function WalletStack({ wallets }: { wallets: LinkedWallet[] }) {
     <Box sx={{ display: "flex" }}>
       {wallets.slice(0, 3).map((w, i) => (
         <Box key={w.address} sx={{ ml: i ? "-0.4rem" : 0 }}>
-          <WalletAvatar walletId={w.walletId} size="1.375rem" />
+          <WalletAvatar walletId={w.walletId} peer={w.peer} size="1.125rem" />
         </Box>
       ))}
     </Box>
@@ -139,30 +139,30 @@ function PortfolioCard({
           <MoreVertIcon fontSize="small" sx={{ color: active ? "common.black" : "primary.main" }} />
         </IconButton>
       </Box>
-      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem", minWidth: 0 }}>
-        <Typography variant="body2" color="common.black" noWrap sx={{ fontSize: "1.125rem" }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: 0 }}>
+        <Typography variant="body2" color="common.black" noWrap sx={{ fontSize: "0.9375rem" }}>
           {portfolio.name}
         </Typography>
-        <Typography variant="h1" color="common.black" noWrap sx={{ fontSize: "1.75rem" }}>
+        <Typography variant="h1" color="common.black" noWrap sx={{ fontSize: "1.375rem" }}>
           {loading ? "—" : formatUsd(total)}
         </Typography>
       </Box>
-      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-        <Box sx={{ height: "0.375rem", borderRadius: "999rem", backgroundColor: "overlay.white10", overflow: "hidden" }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+        <Box sx={{ height: "0.3rem", borderRadius: "999rem", backgroundColor: "overlay.white10", overflow: "hidden" }}>
           <Box sx={{ width: `${pct}%`, height: "100%", borderRadius: "999rem", backgroundColor: "primary.main", transition: "width 300ms ease" }} />
         </Box>
         <Box sx={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-          <Typography variant="subtitle1" color="grey.200" noWrap>
+          <Typography variant="subtitle1" color="grey.200" noWrap sx={{ fontSize: "0.75rem" }}>
             {formatUsdCompact(utilised)} utilised
           </Typography>
-          <Typography variant="subtitle1" color="grey.200" noWrap>
+          <Typography variant="subtitle1" color="grey.200" noWrap sx={{ fontSize: "0.75rem" }}>
             {pct.toFixed(0)}% of {formatUsdCompact(gross)}
           </Typography>
         </Box>
       </Box>
       <Inset>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-          <Typography variant="subtitle1" color="grey.200">
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+          <Typography variant="subtitle1" color="grey.200" sx={{ fontSize: "0.75rem" }}>
             Wallets
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -172,8 +172,8 @@ function PortfolioCard({
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-          <Typography variant="subtitle1" color="grey.200">
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+          <Typography variant="subtitle1" color="grey.200" sx={{ fontSize: "0.75rem" }}>
             Positions
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -188,9 +188,9 @@ function PortfolioCard({
         onClick={() => !active && setActivePortfolio(portfolio.id)}
         sx={{
           mt: "auto",
-          height: "2.75rem",
+          height: "2.25rem",
           borderRadius: "999rem",
-          fontSize: "0.8125rem",
+          fontSize: "0.75rem",
           fontWeight: 600,
           textTransform: "uppercase",
           color: "common.white",
@@ -265,7 +265,7 @@ export default function PortfolioCards() {
           <AddCircle>
             <AddIcon />
           </AddCircle>
-          <Typography variant="subtitle2" color="common.black" sx={{ fontSize: "1rem" }}>
+          <Typography variant="subtitle2" color="common.black" sx={{ fontSize: "0.9375rem" }}>
             Add Portfolio
           </Typography>
         </AddCard>

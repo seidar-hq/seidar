@@ -85,8 +85,8 @@ const PoolCard = styled(Box)(({ theme }) => {
     flexDirection: "column",
     overflow: "hidden",
     borderRadius: "1.25rem",
-    border: `0.0625rem solid ${dark ? theme.palette.overlay.white08 : theme.palette.border.main600}`,
-    boxShadow: dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.elevated}` : "none",
+    backgroundColor: theme.palette.surfaceBg.section,
+    border: `0.0625rem solid ${dark ? theme.palette.border.main1000 : theme.palette.border.main600}`,
   };
 });
 

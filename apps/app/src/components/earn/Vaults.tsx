@@ -10,7 +10,7 @@ import { formatAmount, formatUsd } from "@/lib/format";
 import { usePortfolio, useTokenCatalogue, type VaultRow } from "@/portfolio/usePortfolio";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 import { EarnGrid } from "./EarnParts";
-import { LabeledSwitch, ProtocolChips, ProtocolSection, RowAction, SearchBox, TopList } from "./EarnUI";
+import { LabeledSwitch, ProtocolChips, RowAction, SearchBox, TopList } from "./EarnUI";
 import { compactUsd } from "./lendData";
 import { VAULT_PROTOCOLS, apyText, useVaultList, vaultHref, vaultProtocol, withdrawalText, type VaultListRow } from "./vaultData";
 
@@ -29,6 +29,16 @@ function VaultCell({ code, issuer, contract, title, sub }: { code: string; issue
         <Typography sx={{ fontSize: "1rem", color: "common.black", maxWidth: "14rem", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</Typography>
         <Typography sx={{ fontSize: "0.75rem", color: "grey.200", textTransform: "uppercase" }}>{sub}</Typography>
       </Box>
+    </Box>
+  );
+}
+
+function ProtocolCell({ id }: { id: string }) {
+  const meta = vaultProtocol(id);
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      {meta.logo && <Box component="img" src={meta.logo} alt="" sx={{ width: "1.5rem", height: "1.5rem", borderRadius: "50%", objectFit: "cover" }} />}
+      <Typography sx={{ fontSize: "0.9375rem", color: "common.black", whiteSpace: "nowrap" }}>{meta.name}</Typography>
     </Box>
   );
 }
@@ -58,6 +68,7 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       cell: (r) => <VaultCell code={r.assetCode} issuer={issuer(r.asset)} contract={r.asset} title={r.name} sub={r.curator && r.curator !== vaultProtocol(r.protocol).name ? r.curator : r.assetCode} />,
       sortValue: (r) => r.name,
     },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} />, sortValue: (r) => vaultProtocol(r.protocol).name },
     { id: "tvl", header: "TVL", cell: (r) => <Num>{compactUsd(r.tvlUsd)}</Num>, sortValue: (r) => r.tvlUsd },
     {
       id: "apy",
@@ -85,11 +96,12 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
             code={u?.code ?? "?"}
             issuer={u?.issuer}
             title={v.name}
-            sub={`${vaultProtocol(v.protocol).name}${multi ? ` · ${walletLabel(portfolioWallets.find((w) => w.address === v.wallet)!)}` : ""}`}
+            sub={multi ? walletLabel(portfolioWallets.find((w) => w.address === v.wallet)!) : (u?.code ?? "")}
           />
         );
       },
     },
+    { id: "protocol", header: "Protocol", cell: (v) => <ProtocolCell id={v.protocol} />, sortValue: (v) => vaultProtocol(v.protocol).name },
     {
       id: "amount",
       header: "Deposited",
@@ -107,12 +119,18 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
     { id: "action", header: "Action", align: "center", cell: (v) => <RowAction label="Withdraw" onClick={() => open(v.vault, "withdraw")} /> },
   ];
 
-  const section = (id: string) => {
-    const meta = vaultProtocol(id);
-    const list = rows.filter((r) => r.protocol === id && (!query || `${r.name} ${r.assetCode} ${r.curator ?? ""}`.toLowerCase().includes(query)) && (!hideSmall || r.tvlUsd >= MIN_TVL));
-    const mine = portfolio.vaults.filter((v) => v.protocol === id && (!query || v.name.toLowerCase().includes(query)));
-    return (
-      <ProtocolSection key={id} name={meta.name} logo={meta.logo}>
+  // One list across every venue; the chips narrow it to a protocol and the Protocol column says which.
+  const inProto = (id: string) => proto === "all" || proto === id;
+  const list = rows.filter((r) => inProto(r.protocol) && (!query || `${r.name} ${r.assetCode} ${r.curator ?? ""}`.toLowerCase().includes(query)) && (!hideSmall || r.tvlUsd >= MIN_TVL));
+  const mine = portfolio.vaults.filter((v) => inProto(v.protocol) && (!query || v.name.toLowerCase().includes(query)));
+
+  const main = (
+    <>
+      <ProtocolChips items={PROTOCOL_IDS.map((id) => ({ id, label: VAULT_PROTOCOLS[id].name, logo: VAULT_PROTOCOLS[id].logo }))} value={proto} onChange={setProto} />
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mt: "1.25rem", mb: "0.75rem" }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search vault or asset" />
+      </Box>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         {mine.length > 0 && (
           <DataTable
             variant="inset"
@@ -135,24 +153,14 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
           emptyMinHeight="12rem"
           getRowId={(r) => r.address}
           onRowClick={(r) => open(r.address)}
-          pageSize={10}
+          pageSize={15}
           defaultSort={{ id: "tvl", dir: "desc" }}
         />
-      </ProtocolSection>
-    );
-  };
-
-  const top = useMemo(() => [...rows].filter((r) => r.tvlUsd >= 25_000 && r.apyPct != null && !r.paused).sort((a, b) => (b.apyPct ?? 0) - (a.apyPct ?? 0)).slice(0, 7), [rows]);
-
-  const main = (
-    <>
-      <ProtocolChips items={PROTOCOL_IDS.map((id) => ({ id, label: VAULT_PROTOCOLS[id].name, logo: VAULT_PROTOCOLS[id].logo }))} value={proto} onChange={setProto} />
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mt: "1.25rem", mb: "0.25rem" }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search vault or asset" />
       </Box>
-      {PROTOCOL_IDS.filter((id) => proto === "all" || proto === id).map(section)}
     </>
   );
+
+  const top = useMemo(() => [...rows].filter((r) => r.tvlUsd >= 25_000 && r.apyPct != null && !r.paused).sort((a, b) => (b.apyPct ?? 0) - (a.apyPct ?? 0)).slice(0, 7), [rows]);
 
   const side = (
     <TopList

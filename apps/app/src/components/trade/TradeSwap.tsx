@@ -78,7 +78,7 @@ export default function TradeSwap() {
   return (
     <>
       <Tabs tabs={TABS} activeTab={active} setActiveTab={setActive} />
-      <Box sx={{ mt: "1rem", backgroundColor: "overlay.white02" }}>{active === "perps" ? <Perps /> : <SwapTab />}</Box>
+      <Box sx={{ mt: "1rem" }}>{active === "perps" ? <Perps /> : <SwapTab />}</Box>
     </>
   );
 }

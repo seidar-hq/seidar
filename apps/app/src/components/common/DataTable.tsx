@@ -338,7 +338,7 @@ export default function DataTable<Row>({
                       cursor: onRowClick ? "pointer" : "default",
                       transition: "background-color 120ms ease",
                       "& td": { border: "none", borderBottom: line },
-                      "&.MuiTableRow-hover:hover": { backgroundColor: theme.palette.overlay.white04 },
+                      "&.MuiTableRow-hover:hover": { backgroundColor: theme.palette.surfaceBg.softInset },
                       "&:last-of-type td": inset ? { borderBottom: "none" } : {},
                     }}
                   >
@@ -372,8 +372,8 @@ export default function DataTable<Row>({
         ...(empty && !inset && !emptyMinHeight ? { minHeight: { xs: "18rem", md: "30rem" } } : {}),
         ...(inset
           ? {
-              backgroundColor: theme.palette.overlay.white04,
-              border: `0.0625rem solid ${theme.palette.overlay.white08}`,
+              backgroundColor: theme.palette.surfaceBg.section,
+              border: `0.0625rem solid ${theme.palette.border.main1000}`,
               borderRadius: "1.25rem",
               padding: "1.25rem",
             }

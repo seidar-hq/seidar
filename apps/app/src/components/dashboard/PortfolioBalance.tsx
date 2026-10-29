@@ -23,11 +23,14 @@ import {
   LabelList,
   Pie,
   PieChart,
+  ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { axisTag, tailSegment, timeDomainWithGap } from "@/components/common/ChartMarker";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
 import { InsetCard, SectionHeaderLeft, SectionHeaderRow, VerticalRule } from "@/components/common/SectionCard";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
@@ -177,6 +180,8 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
     ...(show.positions ? [{ label: "Positions", color: positionsColor }] : []),
   ];
   const dot = (color: string) => ({ r: 9, fill: color, stroke: "#FFFFFF", strokeWidth: 3 });
+  const lastPoint = series[series.length - 1];
+  const Y_AXIS_W = 62;
 
   let body: React.ReactNode;
   if (busy) body = <Skeleton variant="rectangular" animation="wave" sx={{ height: "18rem", borderRadius: "0.5rem" }} />;
@@ -185,7 +190,7 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
     body = (
       <ChartBox sx={{ overflow: "visible" }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
+          <AreaChart data={series} margin={{ top: 12, right: 0, bottom: 0, left: 12 }}>
             <defs>
               <linearGradient id="tl-assets" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={alpha(assetsColor, 0.35)} />
@@ -201,7 +206,7 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
               dataKey="time"
               type="number"
               scale="time"
-              domain={["dataMin", "dataMax"]}
+              domain={timeDomainWithGap(series.map((p) => p.time))}
               ticks={axisTicks(series.map((p) => p.time), range)}
               tickFormatter={(t) => axisLabel(Number(t), range)}
               tick={{ fill: theme.palette.grey[200], fontSize: 12 }}
@@ -210,13 +215,20 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
               minTickGap={36}
             />
             <YAxis
+              orientation="right"
               tickFormatter={(v) => compactUsd(Number(v))}
               tick={{ fill: theme.palette.grey[200], fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              width={62}
+              width={Y_AXIS_W}
               domain={[(min: number) => Math.max(0, min * 0.98), (max: number) => max * 1.02]}
             />
+            {show.assets && lastPoint && (
+              <ReferenceLine segment={tailSegment(series.map((p) => p.time), lastPoint.assets)} stroke={assetsColor} strokeDasharray="3 3" strokeOpacity={0.8} ifOverflow="extendDomain" label={axisTag(assetsColor, compactUsd(lastPoint.assets), Y_AXIS_W)} />
+            )}
+            {show.positions && lastPoint && (
+              <ReferenceLine segment={tailSegment(series.map((p) => p.time), lastPoint.positions)} stroke={positionsColor} strokeDasharray="3 3" strokeOpacity={0.8} ifOverflow="extendDomain" label={axisTag(positionsColor, compactUsd(lastPoint.positions), Y_AXIS_W)} />
+            )}
             <ChartTooltip content={<TimelineTooltip />} cursor={{ stroke: theme.palette.common.black, strokeDasharray: "4 4", strokeOpacity: 0.6 }} />
             {show.assets && (
               <Area type="linear" dataKey="assets" stroke={assetsColor} strokeWidth={2} fill="url(#tl-assets)" isAnimationActive={false} activeDot={dot(assetsColor)} />
@@ -224,6 +236,8 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
             {show.positions && (
               <Area type="linear" dataKey="positions" stroke={positionsColor} strokeWidth={2} fill="url(#tl-positions)" isAnimationActive={false} activeDot={dot(positionsColor)} />
             )}
+            {show.assets && lastPoint && <ReferenceDot x={lastPoint.time} y={lastPoint.assets} r={4} fill={assetsColor} stroke="#FFFFFF" strokeWidth={2} ifOverflow="extendDomain" />}
+            {show.positions && lastPoint && <ReferenceDot x={lastPoint.time} y={lastPoint.positions} r={4} fill={positionsColor} stroke="#FFFFFF" strokeWidth={2} ifOverflow="extendDomain" />}
           </AreaChart>
         </ResponsiveContainer>
       </ChartBox>

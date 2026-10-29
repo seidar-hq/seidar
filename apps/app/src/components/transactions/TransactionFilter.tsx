@@ -84,9 +84,9 @@ export const OptionRow = styled(Box, { shouldForwardProp: (p) => p !== "selected
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: selected ? theme.palette.surfaceBg.pill : "transparent",
-    borderTop: `0.0625rem solid ${selected ? theme.palette.border.main700 : "transparent"}`,
-    borderBottom: `0.0625rem solid ${selected ? theme.palette.border.main700 : "transparent"}`,
-    boxShadow: selected && theme.palette.mode === "dark" ? `0 0.25rem 2.5rem ${theme.palette.shadow.exchange}` : "none",
+    borderTop: "none",
+    borderBottom: "none",
+    boxShadow: "none",
   }),
 );
 
