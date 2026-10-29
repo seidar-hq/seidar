@@ -170,6 +170,49 @@ async function walletConnectModule() {
   }
 }
 
+/**
+ * MetaMask's Stellar adapter first asks the extension for its id (a provider-state message through
+ * its content script) and then waits on it with no timeout. When MetaMask doesn't answer (locked
+ * and asleep, mid-update, or a version before 13.54 without Stellar), the connect click just hung.
+ * Ask the same question first, briefly, and fail with a message instead.
+ */
+const MM_NOT_READY =
+  "MetaMask didn't respond. Open MetaMask and unlock it, make sure it's version 13.54 or later (Stellar support), then try again.";
+function metamaskResponds(ms = 5000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const ask = () =>
+      window.postMessage(
+        { target: "metamask-contentscript", data: { name: "metamask-provider", data: { method: "metamask_getProviderState" } } },
+        location.origin,
+      );
+    const onMessage = (e: MessageEvent) => {
+      const m = e.data as { target?: string; data?: { name?: string; data?: { method?: string; result?: { extensionId?: string } } } } | null;
+      if (e.origin !== location.origin || m?.target !== "metamask-inpage" || m.data?.name !== "metamask-provider") return;
+      if (m.data.data?.method === "METAMASK_EXTENSION_CONNECT_CAN_RETRY") return ask();
+      if (m.data.data?.result) done(true);
+    };
+    const timer = setTimeout(() => done(false), ms);
+    function done(ok: boolean) {
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      resolve(ok);
+    }
+    window.addEventListener("message", onMessage);
+    ask();
+  });
+}
+
+class CheckedMetaMask extends MetaMaskModule {
+  override async getAddress(params?: Parameters<MetaMaskModule["getAddress"]>[0]) {
+    if (!(await metamaskResponds())) throw { code: -3, message: MM_NOT_READY };
+    return super.getAddress(params);
+  }
+  override async signTransaction(xdr: string, opts?: Parameters<MetaMaskModule["signTransaction"]>[1]) {
+    if (!(await metamaskResponds())) throw new Error(MM_NOT_READY);
+    return super.signTransaction(xdr, opts);
+  }
+}
+
 const isPhone = () =>
   /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && window.matchMedia("(pointer: coarse)").matches;
 
@@ -188,7 +231,7 @@ function kit(): Promise<typeof StellarWalletsKit> {
       productUrl: "https://varialwallet.com",
       productIcon: `${window.location.origin}/assets/wallets/varial-logo.png`,
     });
-    const injected = [varial, new MetaMaskModule(), new LobstrModule(), new RabetModule(), new HanaModule()];
+    const injected = [varial, new CheckedMetaMask(), new LobstrModule(), new RabetModule(), new HanaModule()];
     const phone = isPhone();
     const [wc, present] = await Promise.all([
       walletConnectModule(),
@@ -210,8 +253,8 @@ export function warmWallets(): void {
   void kit().catch(() => {});
 }
 
-/** Connect through the kit's auth modal. Null when the user closes it or rejects. */
-export async function kitOpenAuthModal(): Promise<{ address: string; walletId: KitWalletId; peer?: WalletPeer } | null> {
+/** Connect through the kit's auth modal. Null when the user closes it; `error` when the wallet failed. */
+export async function kitOpenAuthModal(): Promise<{ address: string; walletId: KitWalletId; peer?: WalletPeer } | { error: string } | null> {
   try {
     const k = await kit();
     const r = await k.authModal();
@@ -225,8 +268,11 @@ export async function kitOpenAuthModal(): Promise<{ address: string; walletId: K
     } catch {}
     const peer = walletId === "wallet_connect" ? wcInstance?.lastPeer : null;
     return peer ? { address, walletId, peer } : { address, walletId };
-  } catch {
-    return null;
+  } catch (e) {
+    // Closing the modal is code -1; anything else is the wallet failing, which the user should see.
+    const err = e as { code?: unknown; message?: unknown } | null;
+    if (err?.code === -1 || /closed the modal|rejected|declined|cancel/i.test(String(err?.message ?? ""))) return null;
+    return { error: typeof err?.message === "string" && err.message ? err.message : "The wallet couldn't connect. Try again." };
   }
 }
 

@@ -307,6 +307,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const openConnectModal = useCallback(async () => {
     const r = await kitOpenAuthModal();
     if (!r) return;
+    if ("error" in r) return errorAlert({ message: r.error });
     const home = portfolios.find((p) => p.wallets.includes(r.address));
     if (home) {
       // Already linked: re-activate it where it lives (never move it between portfolios).
@@ -315,7 +316,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     commit({ wallets: [...wallets, { address: r.address, walletId: r.walletId, name: "", ...(r.peer ? { peer: r.peer } : {}) }], portfolios: intoActive(r.address), address: r.address });
     successAlert({ message: "Wallet connected" });
-  }, [wallets, portfolios, activeId, commit, intoActive, successAlert]);
+  }, [wallets, portfolios, activeId, commit, intoActive, successAlert, errorAlert]);
 
   const watchAddress = useCallback(
     (target: string, name = "Test wallet") => {

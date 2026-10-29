@@ -69,6 +69,8 @@ export default function PortfolioKpis() {
   const totalsLoading = p.assetsLoading || p.positionsLoading;
   // Updating after a transaction: shimmer until the new totals land (no jump from the old figure).
   const totalsBusy = p.assetsRefreshing || p.positionsRefreshing;
+  // 24h performance moves with the holdings, so it shimmers with them too.
+  const perfBusy = (changesLoading && !base) || totalsBusy;
   const utilisation = t.assetsUsd + t.utilisedUsd > 0 ? (t.utilisedUsd / (t.assetsUsd + t.utilisedUsd)) * 100 : 0;
 
   const kpis: Kpi[] = [
@@ -81,10 +83,10 @@ export default function PortfolioKpis() {
     {
       heading: "Performance %",
       infoTooltip: "How the value of everything you hold moved in the last 24 hours.",
-      value: changesLoading && !base ? sk : pct(perf),
-      chip: changesLoading && !base ? undefined : { label: pct(perf), positive: perf >= 0 },
+      value: perfBusy ? sk : pct(perf),
+      chip: perfBusy ? undefined : { label: pct(perf), positive: perf >= 0 },
       subtext: "Change 24h",
-      subValue: changesLoading && !base ? skSmall : signedUsd(delta),
+      subValue: perfBusy ? skSmall : signedUsd(delta),
       subTone: delta > 0 ? "positive" : delta < 0 ? "negative" : undefined,
     },
     {
@@ -97,9 +99,9 @@ export default function PortfolioKpis() {
     {
       heading: "Total Rewards",
       infoTooltip: "Unclaimed rewards: Blend BLND emissions and Aquarius LP rewards.",
-      value: p.positionsLoading && !t.rewardsUsd ? sk : formatUsd(t.rewardsUsd),
+      value: (p.positionsLoading && !t.rewardsUsd) || p.positionsRefreshing ? sk : formatUsd(t.rewardsUsd),
       subtext: "Claimable BLND",
-      subValue: p.lendingLoading ? skSmall : formatAmount(t.claimableBlnd, 2),
+      subValue: p.lendingLoading || p.lendingRefreshing ? skSmall : formatAmount(t.claimableBlnd, 2),
     },
   ];
 
