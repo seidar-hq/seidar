@@ -2,10 +2,13 @@
 //   CACHE  KV namespace  -> @seidar/cache, second tier (durable, shared by every location)
 //   Cache API            -> @seidar/cache, first tier (free and unlimited, per location)
 //   DB     D1 database   -> db.ts (replaces Postgres)
+//   FEEDBACK_EMAIL       -> feedback.ts, Email Routing send binding (to the FEEDBACK_TO secret)
 // A cron trigger (wrangler.toml) runs the warmers once a minute; Node's setInterval loops
 // (server.ts) never run here.
 import "./worker-compat.js";
+import { EmailMessage } from "cloudflare:email";
 import { drainBackground, setCacheDriver } from "@seidar/cache";
+import { setFeedbackMailer } from "./feedback.js";
 import app, { runWarmersOnce } from "./index.js";
 import { useD1, type D1Like } from "./db.js";
 
@@ -13,7 +16,7 @@ type Kv = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
 };
-type Env = { CACHE?: Kv; DB?: D1Like };
+type Env = { CACHE?: Kv; DB?: D1Like; FEEDBACK_EMAIL?: { send(m: EmailMessage): Promise<void> } };
 type Ctx = { waitUntil(p: Promise<unknown>): void; passThroughOnException?(): void };
 type EdgeCache = { match(k: string): Promise<Response | undefined>; put(k: string, r: Response): Promise<void> };
 
@@ -56,6 +59,8 @@ function bind(env: Env): void {
     },
   });
   if (env.DB) useD1(env.DB);
+  const mail = env.FEEDBACK_EMAIL;
+  if (mail) setFeedbackMailer((from, to, raw) => mail.send(new EmailMessage(from, to, raw)));
 }
 
 export default {

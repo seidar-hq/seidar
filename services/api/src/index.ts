@@ -41,6 +41,7 @@ import { getHistory } from "./history.js";
 import { submitFeedback } from "./feedback.js";
 import { createNote, listNotes, markNotes } from "./notifications.js";
 import { getPortfolioHistory, sampleWallet } from "./portfolio.js";
+import { agentChat } from "./agent.js";
 
 const ORIGINS = (process.env.CORS_ORIGINS ?? "*")
   .split(",")
@@ -454,6 +455,13 @@ app.get("/lending/borrow-capacity", async (c) => {
   }
 });
 
+// XOXNO leverage in one transaction (flash-borrow, swap, supply as collateral).
+app.post("/lending/xoxno/multiply", async (c) => {
+  const { buildXoxnoMultiply } = await import("./lending.js");
+  const r = await buildXoxnoMultiply(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
+
 app.post("/lending/migrate/blend-xoxno", async (c) => {
   const r = await buildBlendToXoxno(await c.req.json().catch(() => null));
   return c.json(r.body, r.status as 200);
@@ -572,8 +580,10 @@ app.get("/lending/xoxno/markets", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
-// In-app feedback inbox (text + data-URL attachments, server-stored).
+// In-app feedback (text + up to 4 images), emailed to the team. A few per IP per 10 minutes.
 app.post("/feedback", async (c) => {
+  const ip = c.req.header("cf-connecting-ip")?.trim() || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  if (!rateLimit(`feedback:${ip}`, 5, 10 * 60_000).ok) return c.json({ ok: false, error: "You've sent a lot of feedback just now. Try again in a few minutes." }, 429);
   const r = await submitFeedback(await c.req.json().catch(() => ({})));
   return c.json(r.body, r.status as 200);
 });
@@ -727,6 +737,20 @@ app.get("/balances/stream", (c) => {
     fallback: `/api/balances?address=${address}`,
     note: "SSE pushes XLM+trustline changes; pool/vault legs stay warmer-fed.",
   });
+});
+
+// Seidar Agent (Claude): read-only chat over this API's own data. Each call costs model tokens,
+// so it has its own, tighter per-IP limit on top of the global one.
+const RL_AGENT_LIMIT = Number(process.env.API_RL_AGENT_LIMIT) || 12;
+app.post("/agent/chat", async (c) => {
+  const ip = c.req.header("cf-connecting-ip")?.trim() || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  if (!rateLimit(`agent:${ip}`, RL_AGENT_LIMIT, RL_WINDOW).ok) return c.json({ ok: false, error: "Too many agent messages. Wait a minute and try again." }, 429);
+  const body = await c.req.json().catch(() => ({}));
+  const r = await agentChat(body, async (path, init) => {
+    const res = await app.request(path, { ...init, headers: { ...(init?.headers as Record<string, string>), "cf-connecting-ip": "agent" } });
+    return res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  });
+  return c.json(r.body, r.status as 200);
 });
 
 export default app;

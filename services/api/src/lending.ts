@@ -344,3 +344,109 @@ export async function xoxnoMarkets() {
     return { status: 200, body: { ok: false, error: errMsg(e) } };
   }
 }
+
+// ---------- XOXNO leverage (multiply) ----------
+
+const XOXNO_SWAP_URL = "https://stellar-swap.xoxno.com";
+/** Same floor as the leverage figures on the pools page (pools.ts): health = ltv x collateral / debt. */
+export const LEVERAGE_MIN_HEALTH = 1.3;
+
+/**
+ * One-transaction leverage on XOXNO (controller `multiply`): flash-borrow `debtAmount` of the debt
+ * asset, swap it into the collateral asset through XOXNO's aggregator route, and supply that plus
+ * the wallet's own `deposit` as collateral, in a new account on `spokeId`. Nothing executes unless
+ * every step succeeds; the route's minimum out (slippage) is enforced on-chain.
+ *
+ *   POST /lending/xoxno/multiply { from, signer?, spokeId, collateral, debt, deposit, debtAmount, slippageBps }
+ */
+export async function buildXoxnoMultiply(body: {
+  from?: string;
+  signer?: string;
+  spokeId?: number;
+  collateral?: string;
+  debt?: string;
+  deposit?: string;
+  debtAmount?: string;
+  slippageBps?: number;
+} | null): Promise<{ status: number; body: (Built & { quote: { amountOut: string; amountOutMin: string; priceImpact: number | null }; health: number }) | Fail }> {
+  try {
+    const from = String(body?.from ?? "");
+    const signer = body?.signer ? String(body.signer) : undefined;
+    if (!(isAccount(from) || (isContract(from) && signer && isAccount(signer)))) return fail("from (wallet or smart account + signer) required");
+    const collateral = String(body?.collateral ?? "");
+    const debt = String(body?.debt ?? "");
+    const deposit = String(body?.deposit ?? "");
+    const debtAmount = String(body?.debtAmount ?? "");
+    const spokeId = Number(body?.spokeId);
+    const slippageBps = Number(body?.slippageBps ?? 50);
+    if (!isContract(collateral) || !isContract(debt) || collateral === debt) return fail("collateral and debt must be two different token contracts");
+    if (!validAmount(deposit) || deposit === "max" || !validAmount(debtAmount) || debtAmount === "max") return fail("deposit and debtAmount must be base-unit amounts");
+    if (!(Number.isInteger(spokeId) && spokeId > 0)) return fail("spokeId required");
+    if (!(slippageBps >= 1 && slippageBps <= 500)) return fail("slippage must be between 0.01% and 5%");
+
+    // Check the pair against XOXNO's live market list: collateral on this spoke, debt borrowable on it.
+    const { createStellarLendingReadClient } = await import("@xoxno/sdk-js/stellar-lending/read");
+    const assets = (await createStellarLendingReadClient({ baseUrl: "https://api.xoxno.com" }).assets()) as unknown as {
+      sac: string;
+      symbol: string;
+      decimals: number;
+      hubId: number;
+      priceUsd?: number;
+      spokes: { spokeId: number; ltvBps: number; canBorrow: boolean; canBeCollateral?: boolean; canOpenAccount?: boolean }[];
+    }[];
+    const c = assets.find((a) => a.sac === collateral && a.spokes.some((s) => s.spokeId === spokeId));
+    const d = assets.find((a) => a.sac === debt && a.spokes.some((s) => s.spokeId === spokeId));
+    const cs = c?.spokes.find((s) => s.spokeId === spokeId);
+    const ds = d?.spokes.find((s) => s.spokeId === spokeId);
+    if (!c || !cs || cs.canBeCollateral === false || !(cs.ltvBps > 0)) return fail("This asset can't be collateral on that XOXNO spoke.");
+    if (cs.canOpenAccount === false) return fail("That XOXNO spoke isn't opening new accounts right now.");
+    if (!d || !ds?.canBorrow) return fail(`${d?.symbol ?? "That asset"} can't be borrowed on this XOXNO spoke.`);
+    if (!(c.priceUsd! > 0) || !(d.priceUsd! > 0)) return fail("XOXNO has no price for one of these assets right now. Try again shortly.");
+
+    const lend = await import("@xoxno/sdk-js/stellar-lending");
+    const quote = await lend.getStellarAggregatorQuote(
+      { from: debt, to: collateral, amountIn: debtAmount, slippage: slippageBps / 10_000, platform: "aggregator" } as never,
+      { baseUrl: XOXNO_SWAP_URL },
+    );
+    const q = quote as unknown as { amountOut?: string; amountOutMin?: string; priceImpact?: number; routeXdr?: string };
+    if (!q.routeXdr || !q.amountOutMin) return fail("No swap route between these assets right now. Try a smaller amount.");
+    const steps = lend.mapQuoteResponseToStrategySwap(quote as never);
+
+    // Health right after opening, at the route's minimum output (the worst case the chain accepts).
+    const units = (v: string, dec: number) => Number(v) / 10 ** dec;
+    const collUsd = (units(deposit, c.decimals) + units(q.amountOutMin, c.decimals)) * c.priceUsd!;
+    const debtUsd = units(debtAmount, d.decimals) * d.priceUsd!;
+    const health = ((cs.ltvBps / 10_000) * collUsd) / debtUsd;
+    if (!(health >= LEVERAGE_MIN_HEALTH))
+      return fail(`That leverage would open at health ${health.toFixed(2)}; Seidar keeps leveraged positions at ${LEVERAGE_MIN_HEALTH} or above. Lower the leverage.`);
+
+    const sdk = await import("@stellar/stellar-sdk");
+    const opts = { network: "mainnet" as const, caller: isContract(from) ? signer! : from, sourceSequence: "0", controllerAddress: XOXNO_CONTROLLER };
+    const built = lend.buildStellarMultiplyTx(opts as never, {
+      accountNonce: "0",
+      spokeId,
+      collateral: { hubId: c.hubId, asset: collateral },
+      debtToFlashLoan: debtAmount,
+      debt: { hubId: d.hubId, asset: debt },
+      mode: 1,
+      steps,
+      initialPayment: { hubId: c.hubId, asset: collateral, amount: deposit },
+    });
+    const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
+    const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
+    const { xdr } = await invokeAs(from, signer, opXdr);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        xdr,
+        label: `Leverage ${c.symbol} with ${d.symbol}`,
+        next: null,
+        quote: { amountOut: q.amountOut ?? q.amountOutMin, amountOutMin: q.amountOutMin, priceImpact: q.priceImpact ?? null },
+        health,
+      },
+    };
+  } catch (e) {
+    return fail(friendly("xoxno", errMsg(e)));
+  }
+}

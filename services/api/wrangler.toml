@@ -6,6 +6,7 @@
 #   cron           warmers once a minute (Node's setInterval loops live in src/server.ts only)
 #
 # Secrets (never in this file): wrangler secret put SOROSWAP_API_KEY | DEFINDEX_API_KEY | RPC_URL | ANALYTICS_ADMIN_TOKEN
+#   | FEEDBACK_TO (the verified Email Routing destination that hello@seidar.xyz forwards to)
 # Runs on the Workers Free plan, but heavy routes (positions, vault catalogue, Zenex) exceed its
 # 10 ms CPU / 50 subrequest limits; Workers Paid ($5/mo) lifts both with no config change.
 
@@ -23,6 +24,10 @@ crons = ["* * * * *"]
 [[kv_namespaces]]
 binding = "CACHE"
 id = "2c50734670de4eabb24814e5d2623946"
+
+# In-app feedback mail. Email Routing only delivers to verified destination addresses.
+[[send_email]]
+name = "FEEDBACK_EMAIL"
 
 [[d1_databases]]
 binding = "DB"
