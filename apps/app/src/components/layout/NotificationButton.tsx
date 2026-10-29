@@ -40,7 +40,8 @@ const ago = (iso: string) => {
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 };
 
-/** Header bell: per-wallet notifications from the API (Postgres), unread dot, mark-all-read on open. */
+/** Header bell: per-wallet unread notifications from the API, a red dot while any are waiting, and
+ *  "Mark all as read", which clears the list. */
 export default function NotificationButton() {
   const theme = useTheme();
   const anchor = useRef<HTMLButtonElement | null>(null);
@@ -73,19 +74,21 @@ export default function NotificationButton() {
     };
   }, [address, load]);
 
+  // The API lists unread notes only, so everything in the list is new until cleared.
   const unread = notes.filter((n) => !n.read).length;
 
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next && unread > 0 && address) {
-      void apiFetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ wallet: address, all: true }),
-      }).catch(() => null);
-    }
-    if (!next) setNotes((ns) => ns.map((n) => ({ ...n, read: true })));
+  const toggle = () => setOpen((o) => !o);
+
+  const markAllRead = () => {
+    if (!address || notes.length === 0) return;
+    setNotes([]);
+    void apiFetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ wallet: address, all: true }),
+    })
+      .catch(() => null)
+      .finally(() => void load());
   };
 
   if (!address) return null;
@@ -159,17 +162,27 @@ export default function NotificationButton() {
                       borderBottom: `0.0625rem solid ${theme.palette.overlay.white08}`,
                     }}
                   >
-                    <Typography sx={{ fontWeight: 600, fontSize: "0.9375rem", color: "common.black" }}>Notifications</Typography>
-                    {unread > 0 && (
-                      <Box sx={{ backgroundColor: "overlay.primary12", borderRadius: "999px", px: "0.5rem", py: "0.125rem" }}>
-                        <Typography sx={{ fontSize: "0.6875rem", fontWeight: 600, color: "primary.main" }}>{unread} new</Typography>
-                      </Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.9375rem", color: "common.black" }}>Notifications</Typography>
+                      {unread > 0 && (
+                        <Box sx={{ backgroundColor: "overlay.primary12", borderRadius: "999px", px: "0.5rem", py: "0.125rem" }}>
+                          <Typography sx={{ fontSize: "0.6875rem", fontWeight: 600, color: "primary.main" }}>{unread} new</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    {notes.length > 0 && (
+                      <ButtonBase
+                        onClick={markAllRead}
+                        sx={{ borderRadius: "0.5rem", px: "0.375rem", py: "0.25rem", "&:hover": { backgroundColor: "overlay.white04" } }}
+                      >
+                        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "primary.main" }}>Mark all as read</Typography>
+                      </ButtonBase>
                     )}
                   </Box>
                   <Box sx={{ p: "0.5rem", maxHeight: "24rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                     {notes.length === 0 ? (
                       <Typography variant="subtitle3" sx={{ color: "grey.200", p: "1rem", textAlign: "center" }}>
-                        No notifications yet.
+                        You're all caught up.
                       </Typography>
                     ) : (
                       notes.map((n) => (

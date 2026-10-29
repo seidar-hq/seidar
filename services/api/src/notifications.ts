@@ -10,13 +10,14 @@ function toNote(r: DbNote) {
   return { id: r.id, text: r.text, at: r.created_at, read: Boolean(r.read) };
 }
 
+/** Unread notes only: "Mark all as read" clears the bell's list (read rows stay, so the welcome isn't re-sent). */
 export async function listNotes(wallet: string) {
   if (!isWallet(wallet)) return { status: 400, body: { error: "invalid wallet" } };
   try {
     await ensureSchema();
     const { rows } = await getPool().query<DbNote>(
-      "SELECT id, wallet, text, created_at, read FROM notifications WHERE wallet = $1 ORDER BY id DESC LIMIT 30",
-      [wallet],
+      "SELECT id, wallet, text, created_at, read FROM notifications WHERE wallet = $1 AND read = $2 ORDER BY id DESC LIMIT 30",
+      [wallet, false],
     );
     return { status: 200, body: { ok: true, notes: rows.map(toNote) } };
   } catch (e) {
@@ -31,11 +32,18 @@ export async function createNote(body: Record<string, unknown>) {
     await ensureSchema();
     const pool = getPool();
     if (body.welcome) {
-      const existing = await pool.query(
-        "SELECT id FROM notifications WHERE wallet = $1 AND text LIKE 'Welcome to Seidar%' LIMIT 1",
+      const existing = await pool.query<{ id: number }>(
+        "SELECT id FROM notifications WHERE wallet = $1 AND text LIKE 'Welcome to Seidar%' ORDER BY id ASC LIMIT 50",
         [wallet],
       );
-      if (existing.rowCount && existing.rowCount > 0) return { status: 200, body: { ok: true, created: false } };
+      // rows, not rowCount: on D1 a SELECT's rowCount is the number of rows *changed* (always 0).
+      if (existing.rows.length > 0) {
+        // Before that fix every connect added another welcome: keep the first, mark the copies read.
+        const extra = existing.rows.slice(1).map((r) => Number(r.id));
+        if (extra.length)
+          await pool.query(`UPDATE notifications SET read = $2 WHERE wallet = $1 AND id IN (${inList(extra.length, 3)})`, [wallet, true, ...extra]);
+        return { status: 200, body: { ok: true, created: false } };
+      }
       const { rows } = await pool.query<DbNote>(
         "INSERT INTO notifications (wallet, text) VALUES ($1, $2) RETURNING id, wallet, text, created_at, read",
         [
