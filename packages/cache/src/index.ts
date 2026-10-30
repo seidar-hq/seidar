@@ -38,8 +38,72 @@ export const KEYS = {
 type Entry = { at: number; value: unknown };
 
 const mem = new Map<string, Entry>();
-// Single-flight: concurrent misses for the same key share one loader promise.
-const inflight = new Map<string, Promise<unknown>>();
+
+/* Single-flight: concurrent misses for the same key share one loader promise.
+   On Cloudflare Workers a loader belongs to the request that started it: when that request ends
+   (client gone, or its waitUntil cut off 30 s after the response) the runtime cancels its I/O and
+   the promise never settles. Anyone still awaiting it would hang until their own client gave up
+   (observed 2026-10-30: /prices, /zenex/account and /balances stuck for 30-60 s, the app showing
+   0.00). So a flight expires: joiners wait at most until it is `flightMaxMs` old, then the key is
+   free for a new loader. */
+type Flight = { p: Promise<unknown>; at: number };
+const inflight = new Map<string, Flight>();
+let flightMaxMs = 5 * 60_000;
+
+/** How long a shared loader may run before it is presumed dead (the Worker sets ~25 s). */
+export function setFlightMaxMs(ms: number): void {
+  flightMaxMs = ms;
+}
+
+class FlightExpired extends Error {}
+
+/** The live flight for `key`, dropping one that has outlived `flightMaxMs`. */
+function liveFlight(key: string): Flight | undefined {
+  const f = inflight.get(key);
+  if (f && Date.now() - f.at >= flightMaxMs) {
+    inflight.delete(key);
+    return undefined;
+  }
+  return f;
+}
+
+function startFlight<T>(key: string, p: Promise<T>): Promise<T> {
+  const f: Flight = { p, at: Date.now() };
+  inflight.set(key, f);
+  void p
+    .finally(() => {
+      if (inflight.get(key) === f) inflight.delete(key);
+    })
+    .catch(() => {});
+  return p;
+}
+
+/** Await another caller's flight, but never past its expiry (rejects with FlightExpired). */
+function joinFlight<T>(f: Flight): Promise<T> {
+  const left = f.at + flightMaxMs - Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new FlightExpired("flight expired")), Math.max(0, left));
+  });
+  return Promise.race([f.p as Promise<T>, expiry]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Single-flight `load` under `key` (shared with withCache's flights namespace only if the caller
+ * uses the same key). Joins a live flight; one past its expiry is replaced by a fresh load.
+ */
+export async function singleFlight<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const f = liveFlight(key);
+  if (f) {
+    try {
+      return await joinFlight<T>(f);
+    } catch (e) {
+      if (!(e instanceof FlightExpired)) throw e;
+      if (inflight.get(key) === f) inflight.delete(key);
+    }
+  }
+  return startFlight(key, load());
+}
 
 let redis: {
   get(key: string): Promise<string | null>;
@@ -126,10 +190,13 @@ export function setCacheDriver(
 }
 
 /* Background refreshes (stale-while-revalidate) outlive the request that started them. Node keeps
-   them running on its own; a Worker must hand them to ctx.waitUntil, so they're tracked here. */
-const pending = new Set<Promise<unknown>>();
+   them running on its own; a Worker must hand them to ctx.waitUntil, so they're tracked here,
+   numbered so each request drains only the work started since it began (not another request's
+   refresh, nor one the runtime already cancelled, which would never settle). */
+const pending = new Map<Promise<unknown>, number>();
+let bgSeq = 0;
 function track<T>(p: Promise<T>): Promise<T> {
-  pending.add(p);
+  pending.set(p, ++bgSeq);
   void p.finally(() => pending.delete(p)).catch(() => {});
   return p;
 }
@@ -138,9 +205,14 @@ export function runInBackground(p: Promise<unknown>): void {
   void track(p.catch(() => {}));
 }
 
-/** Settles once every background refresh started so far has finished. */
-export function drainBackground(): Promise<unknown> {
-  return Promise.allSettled([...pending]);
+/** A marker for drainBackground: background work started after this call. */
+export function backgroundMark(): number {
+  return bgSeq;
+}
+
+/** Settles once every background refresh started after `since` (default: all) has finished. */
+export function drainBackground(since = 0): Promise<unknown> {
+  return Promise.allSettled([...pending].filter(([, n]) => n > since).map(([p]) => p));
 }
 
 /* Key scope: the API registers a resolver (its network context), so one
@@ -234,15 +306,12 @@ export async function withCache<T>(
   if (fresh) return { value: fresh.value, cached: true, stale: false };
 
   if (opts.swr && entry) {
-    // Serve stale now, refresh in background (single-flight).
-    if (!inflight.has(flight)) {
+    // Serve stale now, refresh in background (single-flight; a dead flight is replaced).
+    if (!liveFlight(flight)) {
       const p = loader()
         .then((v) => cacheSet(key, v, ttlMs, SWR_RETAIN_MS).then(() => v))
-        .catch(() => null)
-        .finally(() => {
-          inflight.delete(flight);
-        });
-      inflight.set(flight, track(p));
+        .catch(() => null);
+      startFlight(flight, track(p));
     }
     return {
       value: (entry as { value: T }).value,
@@ -251,28 +320,12 @@ export async function withCache<T>(
     };
   }
 
-  const ongoing = inflight.get(flight) as Promise<T> | undefined;
-  if (ongoing) {
-    try {
-      const v = await ongoing;
-      return { value: v, cached: true, stale: false };
-    } catch {
-      return {
-        value: (entry as { value: T } | null)?.value ?? null,
-        cached: !!entry,
-        stale: true,
-      };
-    }
-  }
-
-  const p = (async () => {
-    const v = await loader();
-    await cacheSet(key, v, ttlMs, opts.swr ? SWR_RETAIN_MS : ttlMs);
-    return v;
-  })();
-  inflight.set(flight, p);
   try {
-    const v = await p;
+    const v = await singleFlight(flight, async () => {
+      const v = await loader();
+      await cacheSet(key, v, ttlMs, opts.swr ? SWR_RETAIN_MS : ttlMs);
+      return v;
+    });
     return { value: v, cached: !!entry, stale: false };
   } catch {
     return {
@@ -280,8 +333,6 @@ export async function withCache<T>(
       cached: !!entry,
       stale: true,
     };
-  } finally {
-    inflight.delete(flight);
   }
 }
 

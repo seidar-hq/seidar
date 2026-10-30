@@ -69,8 +69,9 @@ export default function PortfolioKpis() {
   const totalsLoading = p.assetsLoading || p.positionsLoading;
   // Updating after a transaction: shimmer until the new totals land (no jump from the old figure).
   const totalsBusy = p.assetsRefreshing || p.positionsRefreshing;
-  // 24h performance moves with the holdings, so it shimmers with them too.
-  const perfBusy = (changesLoading && !base) || totalsBusy;
+  // 24h performance moves with the holdings, so it shimmers with them too: while they first load
+  // there is nothing to price yet, which would otherwise read as a flat +0.00%.
+  const perfBusy = ((totalsLoading || changesLoading) && !base) || totalsBusy;
   const utilisation = t.assetsUsd + t.utilisedUsd > 0 ? (t.utilisedUsd / (t.assetsUsd + t.utilisedUsd)) * 100 : 0;
 
   const kpis: Kpi[] = [

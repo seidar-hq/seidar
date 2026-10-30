@@ -6,6 +6,10 @@ import {
   withCache,
   rateLimit,
   KEYS,
+  setFlightMaxMs,
+  runInBackground,
+  backgroundMark,
+  drainBackground,
 } from "../src/index.js";
 
 describe("cache", () => {
@@ -39,6 +43,31 @@ describe("cache", () => {
     });
     assert.equal(out.value, "good");
     assert.equal(out.stale, true);
+  });
+
+  // A Worker cancels the I/O of a finished request, so a loader it started may never settle.
+  // Later callers must not wait on it forever (2026-10-30: the app sat on 0.00 for minutes).
+  it("replaces a shared loader that never settles", async () => {
+    setFlightMaxMs(50);
+    try {
+      const key = `t:dead:${Date.now()}`;
+      void withCache(key, 60_000, () => new Promise<never>(() => {}));
+      const t0 = Date.now();
+      const out = await withCache(key, 60_000, async () => "fresh");
+      assert.equal(out.value, "fresh");
+      assert.ok(Date.now() - t0 < 1_000);
+    } finally {
+      setFlightMaxMs(5 * 60_000);
+    }
+  });
+
+  it("drains only background work started after the mark", async () => {
+    runInBackground(new Promise<never>(() => {}));
+    const mark = backgroundMark();
+    let ran = false;
+    runInBackground(new Promise<void>((r) => setTimeout(() => ((ran = true), r()), 10)));
+    await drainBackground(mark);
+    assert.equal(ran, true);
   });
 
   it("rate-limits over the window", () => {

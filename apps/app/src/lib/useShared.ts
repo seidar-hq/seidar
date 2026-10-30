@@ -9,7 +9,38 @@ import { useEffect, useState } from "react";
 // are expected to change, so the UI shows its loading shimmer on those numbers until a refresh
 // returns something different (or settleShared gives up once the last post-tx refresh is done).
 
-type Entry = { at: number; value: unknown; error: boolean; pending?: string };
+type Entry = { at: number; value: unknown; error: boolean; pending?: string; fails?: number };
+
+/* A key that has never loaded and fails (loaders resolve to null on any API failure) is retried
+   soon, 2 s, 4 s, 8 s… up to 30 s, instead of at its next interval, and reads as still loading for
+   the first few tries: a failed read must not render as "nothing there" (0.00, empty tables). */
+const RETRY_MS = [2_000, 4_000, 8_000, 15_000, 30_000];
+const SILENT_FAILS = 4;
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleRetry(key: string, n: number) {
+  if (retryTimers.has(key)) return;
+  const wait = RETRY_MS[Math.min(n, RETRY_MS.length) - 1];
+  retryTimers.set(
+    key,
+    setTimeout(() => {
+      retryTimers.delete(key);
+      const e = store.get(key);
+      // Marked stale: any mounted reader refetches it on its next pass (see useSharedMany).
+      if (e?.error && e.value == null) {
+        store.set(key, { ...e, at: STALE });
+        notify();
+      }
+    }, wait),
+  );
+}
+
+/** Record a failed load of `key` that has no good value to keep. */
+function failed(key: string, prev: Entry | undefined) {
+  const fails = (prev?.fails ?? 0) + 1;
+  store.set(key, { at: Date.now(), value: null, error: true, pending: prev?.pending, fails });
+  scheduleRetry(key, fails);
+}
 
 /** Cheap identity of a value, to tell when a post-transaction refresh brought new data. */
 const sig = (v: unknown) => {
@@ -78,6 +109,10 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
         store.set(key, { ...hit, at: Date.now(), pending: prev?.pending });
         return hit.value as T;
       }
+      if (value == null) {
+        failed(key, prev);
+        return value;
+      }
       // Still pending while the indexers haven't caught up with the transaction (same data back).
       const pending = prev?.pending != null && sig(value) === prev.pending ? prev.pending : undefined;
       store.set(key, { at: Date.now(), value, error: false, pending });
@@ -87,7 +122,8 @@ export function loadShared<T>(key: string, loader: () => Promise<T>, ttl: number
     .catch((e) => {
       // Keep a good copy on screen; it is retried at the next interval, not on every render.
       const prev = store.get(key);
-      store.set(key, hit ? { ...hit, at: Date.now(), pending: prev?.pending } : { at: Date.now(), value: null, error: true });
+      if (hit?.value != null) store.set(key, { ...hit, at: Date.now(), pending: prev?.pending });
+      else failed(key, prev);
       throw e;
     })
     .finally(() => {
@@ -178,7 +214,10 @@ export function useSharedMany<T>(
     const e = store.get(k);
     values[k] = (e?.value as T) ?? null;
     if (!e) loading = true;
-    else if (e.error) errors.push(k);
+    else if (e.error) {
+      errors.push(k);
+      if (e.value == null && (e.fails ?? 0) < SILENT_FAILS) loading = true;
+    }
     if (e?.pending != null) refreshing = true;
   }
   return { values, loading, refreshing, errors };

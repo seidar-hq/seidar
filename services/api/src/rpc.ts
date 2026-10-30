@@ -42,23 +42,52 @@ export function rpcUrl(): string {
   return rpcUrls()[0];
 }
 
+/* Concurrency gate (public RPCs answer 429 to bursts). It is shared by every request in the
+   process, and on Workers a cancelled request never reaches its `finally`, so a slot could leak
+   for good and, six leaks later, every RPC call would queue forever. Slots therefore expire, and
+   no caller waits more than a few seconds for one: past that it goes ahead (endpoint rotation
+   handles any 429). */
 const MAX_INFLIGHT = Math.max(1, Number(process.env.RPC_MAX_INFLIGHT) || 6);
-let inflight = 0;
+const SLOT_MAX_MS = 45_000;
+const WAIT_MAX_MS = 4_000;
+const slots = new Map<number, number>();
+let slotSeq = 0;
 const waiters: (() => void)[] = [];
 
-async function acquire(): Promise<void> {
-  if (inflight < MAX_INFLIGHT) {
-    inflight++;
-    return;
+async function acquire(): Promise<number> {
+  const now = Date.now();
+  for (const [id, at] of slots) if (now - at > SLOT_MAX_MS) slots.delete(id);
+  if (slots.size >= MAX_INFLIGHT) {
+    await new Promise<void>((resolve) => {
+      const wake = () => {
+        clearTimeout(timer);
+        const i = waiters.indexOf(wake);
+        if (i >= 0) waiters.splice(i, 1);
+        resolve();
+      };
+      const timer = setTimeout(wake, WAIT_MAX_MS);
+      waiters.push(wake);
+    });
   }
-  await new Promise<void>((r) => waiters.push(r));
-  inflight++;
+  const id = ++slotSeq;
+  slots.set(id, Date.now());
+  return id;
 }
 
-function release(): void {
-  inflight--;
-  const next = waiters.shift();
-  if (next) next();
+function release(id: number): void {
+  slots.delete(id);
+  waiters[0]?.();
+}
+
+/** One RPC attempt may take this long before the next endpoint is tried (a stalled call). */
+const ATTEMPT_MAX_MS = 20_000;
+
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`RPC timeout after ${ms} ms`)), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
 export function retryable(e: unknown): boolean {
@@ -88,14 +117,14 @@ async function serverFor(url: string): Promise<Server> {
  * Non-transient errors (contract traps, bad args) throw immediately.
  */
 export async function withRpc<T>(fn: (server: Server, url: string) => Promise<T>): Promise<T> {
-  await acquire();
+  const slot = await acquire();
   try {
     let lastErr: unknown = null;
     const urls = rpcUrls();
     for (let attempt = 0; attempt < Math.max(3, urls.length); attempt++) {
       const url = urls[attempt % urls.length];
       try {
-        return await fn(await serverFor(url), url);
+        return await withDeadline(fn(await serverFor(url), url), ATTEMPT_MAX_MS);
       } catch (e) {
         lastErr = e;
         if (!retryable(e)) throw e;
@@ -106,7 +135,7 @@ export async function withRpc<T>(fn: (server: Server, url: string) => Promise<T>
     }
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   } finally {
-    release();
+    release(slot);
   }
 }
 

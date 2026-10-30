@@ -4,7 +4,7 @@
 // SOROSWAP_API_KEY stays server-side (services/api env, never the browser).
 
 import { recordSubmitted, type TxMeta } from "./analytics.js";
-import { cacheGetEntry, cacheSet } from "@seidar/cache";
+import { cacheGetEntry, cacheSet, singleFlight } from "@seidar/cache";
 import { isTestnet, networkPassphrase, TESTNET } from "./net.js";
 import { sorobanView } from "./rpc.js";
 import { tokenMetas } from "./token-meta.js";
@@ -22,7 +22,6 @@ const RPC_URL = process.env.RPC_URL?.trim() || "https://mainnet.sorobanrpc.com";
 /** Identical quotes are shared for a few seconds: tabs and retries must not
  *  spend the aggregator's shared API-key budget. */
 const QUOTE_TTL_MS = 5_000;
-const quoteFlights = new Map<string, Promise<unknown>>();
 /** When Soroswap itself answers 429, stop calling it for a few seconds. */
 const SORO_COOLDOWN_MS = 5_000;
 let soroCooldownUntil = 0;
@@ -211,13 +210,7 @@ export async function quoteSwap(body: {
       await cacheSet(quoteKey, quote, QUOTE_TTL_MS).catch(() => {});
       return quote;
     };
-    const pending = quoteFlights.get(quoteKey);
-    const quote = await (pending ??
-      (() => {
-        const p = load().finally(() => quoteFlights.delete(quoteKey));
-        quoteFlights.set(quoteKey, p);
-        return p;
-      })());
+    const quote = await singleFlight(`flight:${quoteKey}`, load);
     return { status: 200, body: { ok: true, quote } };
   } catch (e) {
     const status = (e as { status?: number })?.status;

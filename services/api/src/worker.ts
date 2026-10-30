@@ -7,7 +7,7 @@
 // (server.ts) never run here.
 import "./worker-compat.js";
 import { EmailMessage } from "cloudflare:email";
-import { drainBackground, setCacheDriver } from "@seidar/cache";
+import { backgroundMark, drainBackground, setCacheDriver, setFlightMaxMs } from "@seidar/cache";
 import { setFeedbackMailer } from "./feedback.js";
 import app, { runWarmersOnce } from "./index.js";
 import { useD1, type D1Like } from "./db.js";
@@ -37,6 +37,9 @@ let bound = false;
 function bind(env: Env): void {
   if (bound) return;
   bound = true;
+  // A request's work is cancelled 30 s after its response at the latest (waitUntil's limit), so a
+  // shared loader older than that is dead; joiners stop waiting for it a little before.
+  setFlightMaxMs(25_000);
   const kv = env.CACHE;
   setCacheDriver({
     async get(k) {
@@ -66,12 +69,14 @@ function bind(env: Env): void {
 export default {
   async fetch(req: Request, env: Env, ctx: Ctx): Promise<Response> {
     bind(env);
+    const mark = backgroundMark();
     const res = await app.fetch(req, env as never, ctx as never);
-    ctx.waitUntil(drainBackground());
+    ctx.waitUntil(drainBackground(mark));
     return res;
   },
   async scheduled(ev: { scheduledTime: number }, env: Env, ctx: Ctx): Promise<void> {
     bind(env);
-    ctx.waitUntil(runWarmersOnce(new Date(ev.scheduledTime)).then(() => drainBackground()));
+    const mark = backgroundMark();
+    ctx.waitUntil(runWarmersOnce(new Date(ev.scheduledTime)).then(() => drainBackground(mark)));
   },
 };

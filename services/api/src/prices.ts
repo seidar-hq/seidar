@@ -8,7 +8,7 @@
 //   Forex (base USD): CBKGPWGKSKZF52CFHMTRR23TBWTPMRDIYZ4O2P5VS65BMHYH4DXMCJZC
 // Testnet mirrors live in contracts/configs/networks.json (reflector_testnet).
 
-import { cacheGet, cacheGetEntry, cacheSet, KEYS, TTL_MS } from "@seidar/cache";
+import { cacheGet, cacheGetEntry, cacheSet, KEYS, runInBackground, TTL_MS } from "@seidar/cache";
 import { sorobanView as sharedView } from "./rpc.js";
 
 
@@ -351,7 +351,10 @@ export interface PriceResult {
 /** Full cascade per code: pinned → Reflector → SDEX(AQUA) → Coinbase → CG. */
 /** Spot prices stay servable this long; past their TTL they refresh in the background. */
 const SPOT_RETAIN_MS = 6 * 3600_000;
-const refreshing = new Set<string>();
+/** Codes with a background refresh running, and when it started. */
+const refreshing = new Map<string, number>();
+const REFRESH_MAX_MS = 30_000;
+const isRefreshing = (c: string) => Date.now() - (refreshing.get(c) ?? 0) < REFRESH_MAX_MS;
 
 export async function livePrices(
   codes: string[],
@@ -381,14 +384,19 @@ export async function livePrices(
     if (e && e.value != null && e.value > 0 && Date.now() - e.at < SPOT_RETAIN_MS) {
       prices[c] = e.value;
       sources[c] = "cache";
-      if (Date.now() - e.at > TTL_MS.pricesSpot && !refreshing.has(c)) stale.push(c);
+      if (Date.now() - e.at > TTL_MS.pricesSpot && !isRefreshing(c)) stale.push(c);
     } else uncached.push(c);
   }
   if (stale.length) {
-    stale.forEach((c) => refreshing.add(c));
-    void livePrices(stale, { refresh: true })
-      .catch(() => null)
-      .finally(() => stale.forEach((c) => refreshing.delete(c)));
+    // Tracked so a Worker keeps it alive after the response; if the runtime still cuts it off,
+    // the promise never settles, so a refresh mark expires on its own instead of blocking forever.
+    const at = Date.now();
+    stale.forEach((c) => refreshing.set(c, at));
+    runInBackground(
+      livePrices(stale, { refresh: true }).finally(() =>
+        stale.forEach((c) => refreshing.get(c) === at && refreshing.delete(c)),
+      ),
+    );
   }
 
   // 3. Reflector (majors). Batched, one cheap simulate per asset.

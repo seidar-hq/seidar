@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { cacheGet, rateLimit } from "@seidar/cache";
+import { cacheGet, rateLimit, runInBackground } from "@seidar/cache";
 import { livePrices } from "./prices.js";
 import { getPoolData, getPoolsAll } from "./pools.js";
 import { getDexPools, type DexProtocol } from "./dex.js";
@@ -233,9 +233,7 @@ app.get("/positions", async (c) => {
     // Piggyback equity snapshot: fire-and-forget, never delays the response.
     if (data && typeof data === "object" && "ok" in data && data.ok) {
       const d = data as { totalSupplied?: unknown; totalBorrowed?: unknown };
-      void sampleWallet(address, Number(d.totalSupplied ?? 0), Number(d.totalBorrowed ?? 0)).catch(
-        () => {},
-      );
+      runInBackground(sampleWallet(address, Number(d.totalSupplied ?? 0), Number(d.totalBorrowed ?? 0)));
     }
     return c.json(data);
   } catch (e) {
@@ -303,14 +301,21 @@ app.get("/vaults/detail", async (c) => {
    within a deadline with an empty "warming" result instead of holding the browser connection;
    the scan keeps running, so its caches are warm for the next poll. One scan per address.
    A finished scan is only kept for a caller that was told "warming" (its next poll collects it);
-   otherwise it is dropped at once, so the refreshes after a transaction read the new state. */
-type Scan = { job: Promise<{ status: number; body: unknown }>; done: boolean; owed: boolean };
+   otherwise it is dropped at once, so the refreshes after a transaction read the new state.
+   On Workers the scan runs on the starting request's waitUntil, which ends 30 s after that
+   response; a cancelled scan never settles, so one older than SCAN_MAX_MS is replaced. */
+type Scan = { job: Promise<{ status: number; body: unknown }>; done: boolean; owed: boolean; at: number };
 const scans = new Map<string, Scan>();
+const SCAN_MAX_MS = 50_000;
 async function boundedScan(key: string, run: () => Promise<{ status: number; body: unknown }>, ms = 25_000) {
   let scan = scans.get(key);
-  if (scan?.done) scans.delete(key); // a warming caller collecting its result; the next read rescans
+  if (scan?.done || (scan && Date.now() - scan.at > SCAN_MAX_MS)) {
+    scans.delete(key); // a warming caller collecting its result (or a dead scan); the next read rescans
+    if (!scan.done) scan = undefined;
+  }
   if (!scan) {
-    const s: Scan = { job: run(), done: false, owed: false };
+    const s: Scan = { job: run(), done: false, owed: false, at: Date.now() };
+    runInBackground(s.job);
     s.job.finally(() => {
       s.done = true;
       if (!s.owed) scans.get(key) === s && scans.delete(key);

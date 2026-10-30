@@ -66,17 +66,27 @@ function pgModule(): typeof import("pg") {
   return req.createRequire(import.meta.url)("pg") as typeof import("pg");
 }
 
-// Memoized: DDL runs once per process (re-attempted only after a failure).
-let schemaReady: Promise<void> | null = null;
+// Memoized: DDL runs once per process (re-attempted after a failure). On Workers the request that
+// started it can be cancelled mid-way, leaving the promise pending for good and every query behind
+// it hanging, so an attempt that hasn't finished within SCHEMA_MAX_MS is started afresh.
+let schemaReady: { p: Promise<void>; at: number; done: boolean } | null = null;
+const SCHEMA_MAX_MS = 15_000;
 
 export function ensureSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = runSchema().catch((e) => {
-      schemaReady = null;
-      throw e;
-    });
+  if (!schemaReady || (!schemaReady.done && Date.now() - schemaReady.at > SCHEMA_MAX_MS)) {
+    const attempt: { p: Promise<void>; at: number; done: boolean } = { p: Promise.resolve(), at: Date.now(), done: false };
+    attempt.p = runSchema().then(
+      () => {
+        attempt.done = true;
+      },
+      (e) => {
+        if (schemaReady === attempt) schemaReady = null;
+        throw e;
+      },
+    );
+    schemaReady = attempt;
   }
-  return schemaReady;
+  return schemaReady.p;
 }
 
 async function runSchema(): Promise<void> {

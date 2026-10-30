@@ -26,14 +26,36 @@ const listeners = new Set<() => void>();
 
 const EMPTY: WalletBalances = { tokens: [], usd: 0, loading: true, error: false };
 
+/* A load that fails with nothing good to show is retried soon (2 s, 4 s, 8 s… up to 30 s) rather
+   than at the next 60 s refresh, and for the first few tries the figures keep their loading
+   shimmer: a failed read must never show as an empty wallet worth 0.00. */
+const RETRY_MS = [2_000, 4_000, 8_000, 15_000, 30_000];
+const SILENT_FAILS = 4;
+const fails = new Map<string, number>();
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleRetry(address: string, n: number) {
+  if (retryTimers.has(address)) return;
+  const wait = RETRY_MS[Math.min(n, RETRY_MS.length) - 1];
+  retryTimers.set(
+    address,
+    setTimeout(() => {
+      retryTimers.delete(address);
+      if (listeners.size) void load(address, true);
+    }, wait),
+  );
+}
+
 async function fetchWallet(address: string): Promise<WalletBalances> {
   const b = await apiJson<{ ok?: boolean; balances?: RawBalance[] }>(`/api/balances?address=${address}`);
   if (!b?.ok || !Array.isArray(b.balances)) return { tokens: [], usd: 0, loading: false, error: true };
   const rows = b.balances.map((r) => ({ ...r, amount: Number(r.balance) || 0 }));
   const codes = [...new Set(rows.filter((r) => r.listed !== false).map((r) => r.code))];
   const p = codes.length
-    ? await apiJson<{ prices?: Record<string, number | null> }>(`/api/prices?codes=${encodeURIComponent(codes.join(","))}`)
+    ? await apiJson<{ ok?: boolean; prices?: Record<string, number | null> }>(`/api/prices?codes=${encodeURIComponent(codes.join(","))}`)
     : null;
+  // Holdings without their prices would add up to a wrong total: retried like a failed read.
+  const unpriced = codes.length > 0 && !p?.prices;
   // The price feed misses some listed assets (e.g. BLND): use the last Horizon market price instead.
   const fallback: Record<string, number> = {};
   await Promise.all(
@@ -55,7 +77,7 @@ async function fetchWallet(address: string): Promise<WalletBalances> {
       return { code: r.code, issuer: r.issuer, amount: r.amount, price, usd: price ? price * r.amount : 0, listed };
     })
     .sort((a, b) => b.usd - a.usd || b.amount - a.amount);
-  return { tokens, usd: tokens.reduce((s, t) => s + t.usd, 0), loading: false, error: false };
+  return { tokens, usd: tokens.reduce((s, t) => s + t.usd, 0), loading: false, error: unpriced };
 }
 
 function load(address: string, force = false): Promise<WalletBalances> {
@@ -71,6 +93,16 @@ function load(address: string, force = false): Promise<WalletBalances> {
         cache.set(address, { ...hit, at: Date.now(), pending: prev?.pending });
         return hit.data;
       }
+      if (data.error) {
+        // Nothing good to fall back on: keep loading for a few quick retries, then show what we have.
+        const n = (fails.get(address) ?? 0) + 1;
+        fails.set(address, n);
+        scheduleRetry(address, n);
+        const shown = { ...data, loading: n < SILENT_FAILS };
+        cache.set(address, { at: Date.now(), data: shown, pending: prev?.pending });
+        return shown;
+      }
+      fails.delete(address);
       const pending = prev?.pending != null && tokenSig(data) === prev.pending ? prev.pending : undefined;
       cache.set(address, { at: Date.now(), data, pending });
       return data;

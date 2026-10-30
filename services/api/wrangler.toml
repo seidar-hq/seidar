@@ -7,8 +7,8 @@
 #
 # Secrets (never in this file): wrangler secret put SOROSWAP_API_KEY | DEFINDEX_API_KEY | RPC_URL | ANALYTICS_ADMIN_TOKEN
 #   | FEEDBACK_TO (the verified Email Routing destination that hello@seidar.xyz forwards to)
-# Runs on the Workers Free plan, but heavy routes (positions, vault catalogue, Zenex) exceed its
-# 10 ms CPU / 50 subrequest limits; Workers Paid ($5/mo) lifts both with no config change.
+# On Workers Paid since 2026-10-29 (the Free plan's 10 ms CPU / 50 subrequest limits broke heavy routes:
+# positions, vault catalogue, Zenex). Paid lifts both with no config change.
 
 name = "seidar-api"
 main = "src/worker.ts"

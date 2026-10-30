@@ -29,15 +29,18 @@ export async function apiJson<T>(input: string, init?: RequestInit, timeoutMs = 
   }
 }
 
-/** Like apiJson, but re-polls while the API answers `{ warming: true }` (a scan still running). */
+/**
+ * Like apiJson, but re-polls while the API answers `{ warming: true }` (a scan still running).
+ * A scan that is still warming after every try resolves to null (not loaded yet), never to its
+ * empty placeholder, which would read as "no positions".
+ */
 export async function apiJsonWarm<T>(input: string, tries = 12, waitMs = 6_000): Promise<T | null> {
-  let r: T | null = null;
   for (let i = 0; i < tries; i++) {
-    r = await apiJson<T>(input);
+    const r = await apiJson<T>(input);
     if (!(r as { warming?: boolean } | null)?.warming) return r;
     await new Promise((res) => setTimeout(res, waitMs));
   }
-  return r;
+  return null;
 }
 
 // Reads retry a dropped connection (API restart, flaky network); HTTP errors are returned as is.

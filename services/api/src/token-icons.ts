@@ -9,6 +9,7 @@
 // in the background, a few at a time, so a request never waits on hundreds
 // of lookups.
 
+import { runInBackground } from "@seidar/cache";
 import { ensureSchema, getPool, inList } from "./db.js";
 import { getDexPools, DEX_PROTOCOLS } from "./dex.js";
 
@@ -64,11 +65,13 @@ async function schema() {
   schemaReady = true;
 }
 
-let filling = false;
+/** When the running fill started (0: none). Expires: a cancelled Worker request never resets it. */
+let filling = 0;
+const FILL_MAX_MS = 60_000;
 /** Look up icons for contracts not checked recently (background, 2 at a time). */
 async function fill(contracts: string[]) {
-  if (filling || !contracts.length) return;
-  filling = true;
+  if (Date.now() - filling < FILL_MAX_MS || !contracts.length) return;
+  const started = (filling = Date.now());
   try {
     const list = await soroswapIcons();
     let i = 0;
@@ -93,7 +96,7 @@ async function fill(contracts: string[]) {
     };
     await Promise.all([worker(), worker()]);
   } finally {
-    filling = false;
+    if (filling === started) filling = 0;
   }
 }
 
@@ -131,7 +134,7 @@ export async function dexTokenIcons() {
       const k = known.get(c);
       return !k?.checked_at || (!k.icon && Date.now() - new Date(k.checked_at).getTime() > RECHECK_MS);
     });
-    void fill(stale);
+    runInBackground(fill(stale));
     const codeCount = new Map<string, number>();
     for (const code of tokens.values()) codeCount.set(code, (codeCount.get(code) ?? 0) + 1);
     const byCode: Record<string, string> = {};

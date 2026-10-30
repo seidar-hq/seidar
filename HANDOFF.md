@@ -1,4 +1,4 @@
-# Seidar — handoff (updated 2026-10-30)
+# Seidar — handoff (updated 2026-10-30, second session)
 
 Read this whole file before touching code. It explains what Seidar is, where it came from, how
 the repo and production are laid out, what was built and verified, the rules the owner holds
@@ -93,6 +93,8 @@ history; backend separated from the frontend like real_seidar.
 apps/
   app/    Next.js 15 static export (MUI 7, Recharts, lightweight-charts, Stellar Wallets Kit). Port 3001.
   web/    Next.js 15 static export marketing site (MUI 7, framer-motion). Port 3003 (3000 is taken by WSL).
+  analytics/ Next.js static export for analytics.seidar.xyz (public aggregate stats + admin adjustments;
+          reads `/analytics/summary`, `/analytics/admin/adjustments` on the API; dev port 3014).
   docs/   Docusaurus 3.10.2. Content in docs/, sidebars.ts, src/css/custom.css.
 packages/
   cache/          @seidar/cache — read-through cache, single-flight, SWR; Redis / in-memory / pluggable driver.
@@ -155,7 +157,8 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   `/blend/build`, `/dex/pools|positions|position|pool/history|pool/trades|cl/*|aqua/pool|liquidity/build`,
   `/vaults[/detail|/positions|/build|/snapshots|/watches]`, `/swap/quote|build|send|tokens`, `/tx/send`,
   `/bridge/routes|quote|deposit|submit`, `/zenex/market|candles|trades|account|build`,
-  `/activity`, `/history`, `/notifications`, `/tokens/icons`, `/token/logo`, `/icon`, `/fees`, `/feedback`.
+  `/activity`, `/history`, `/notifications`, `/tokens/icons`, `/token/logo`, `/icon`, `/fees`, `/feedback`,
+  `/analytics/summary|ping|admin/adjustments`, `/agent/chat`.
 - Notable modules: `rpc.ts`, `prices.ts` (SWR spot prices, 6h retain), `price-chart.ts`,
   `positions.ts`, `pools.ts`, `lend-markets.ts`, `lending.ts` (`XOXNO_ERRORS` map), `blend.ts`
   (`buildBlendClaim`), `dex*.ts`, `sushi-cl.ts`, `aqua-cl.ts`, `pool-activity.ts`, `vaults.ts`
@@ -177,7 +180,35 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   changes or every 10 min; fast-changing keys `prices:spot:`, `zenex:*` ticks, `dextrades:` never
   go to KV), binds D1, and runs `runWarmersOnce` on the minute cron (prices; charts every 2 min;
   DEX pools incl. Aquarius every 5 min; vaults / Blend / XOXNO / lend markets every 5 min).
-- Tests: `npm test --workspace @seidar/api` → **22/22 pass** (as of this handoff).
+- Tests: `npm test --workspace @seidar/api` → **35/35 pass**; `npm test --workspace @seidar/cache` → **7/7** (as of this handoff).
+
+### ⚠️ Workers runtime rule: never share a pending promise across requests without an expiry
+On Workers a promise belongs to the request that started it. When that request ends (client gone, or
+its `waitUntil` cut off **30 s** after the response) the runtime cancels its I/O and the promise
+**never settles**. Any other request awaiting it hangs until its own client gives up, and a module-level
+flag/slot/memo set by it is never reset. This caused the 2026-10-30 incident (§7). Every shared
+promise or "in progress" marker therefore carries a timestamp and expires:
+- `@seidar/cache` single-flight (`withCache`, exported `singleFlight`): flights expire after
+  `setFlightMaxMs` (Worker: 25 s; Node default 5 min); joiners stop waiting then and load themselves.
+- `drainBackground(mark)`: each request/cron drains only background work started after its
+  `backgroundMark()`, never another request's (possibly dead) work.
+- `rpc.ts` gate: slots expire after 45 s, nobody waits more than 4 s for a slot, each RPC attempt
+  has a 20 s deadline (then the next endpoint).
+- `boundedScan` (positions / vault positions): the scan runs on `runInBackground`; a scan older than
+  50 s is replaced. `db.ts` `ensureSchema` retries an attempt still pending after 15 s.
+  `prices.ts` refresh marks and `token-icons.ts` `fill` expire too.
+- Background work after a response must go through `runInBackground` (a bare `void p` is cancelled).
+New code with a module-level `Map<string, Promise>`, a boolean "busy" flag or a memoised promise must follow this.
+
+### Reading production logs
+Wrangler's OAuth token has no observability scope (only live `wrangler tail`). Stored Worker logs
+(Observability, `[observability] enabled`) are read through the dashboard: open
+`dash.cloudflare.com/<account>/workers/services/view/seidar-api/production/observability/events` in the
+interceptor browser and POST `/api/v4/accounts/<account>/workers/observability/telemetry/query` from the
+page with `eval --main` (the dashboard's own fetch adds the auth headers; adding `x-atok` /
+`x-cross-site-security` yourself gets a WAF 403). Filter keys: `$metadata.service`, `$metadata.level`,
+`$workers.event.response.status`, `$workers.eventType`. Note `wallTimeMs` includes `waitUntil` time.
+Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
 
 ---
 
@@ -193,14 +224,15 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 
 - Worker secrets (set via `wrangler secret bulk`, values live only in `services/api/.env.local` /
   `.dev.vars`): `SOROSWAP_API_KEY`, `DEFINDEX_API_KEY`, `RPC_URL`.
-- Worker vars: `CORS_ORIGINS=https://app.seidar.xyz,https://seidar-app.pages.dev`, rate limits.
+- Worker vars: `CORS_ORIGINS` = app.seidar.xyz, seidar-app.pages.dev, analytics.seidar.xyz,
+  seidar-analytics.pages.dev, http://localhost:3014; rate limits (`API_RL_LIMIT` 120/min/IP, quotes 600).
 - Feedback (`POST /feedback`, header Feedback button): emailed through the `FEEDBACK_EMAIL` send_email
   binding to `FEEDBACK_TO = feedback@seidar.xyz` (wrangler.toml `[vars]`; the binding only allows that
   address). Email Routing rule `feedback@seidar.xyz` -> owner's Gmail was created 2026-10-29, next to the
   existing `hello@seidar.xyz` rule (**leave hello@ alone, it works**). Sending to a routed (non-verified)
   address needs Email Sending (beta) for seidar.xyz: **onboarded 2026-10-29** (it added `cf-bounce`
   MX/SPF/DKIM + `_dmarc` "v=DMARC1; p=reject;"; root MX/SPF untouched). A live `POST /feedback` returned
-  `{"ok":true}`; the owner has not yet confirmed the mail arrived. Up to 4 images, 2 MB in total.
+  `{"ok":true}`; **the owner confirmed delivery (2026-10-30).** Up to 4 images, 2 MB in total.
 - Leverage (`POST /lending/xoxno/multiply`, Lend & Borrow → Leverage tab on XOXNO markets): XOXNO controller
   `multiply` with an aggregator route from `stellar-swap.xoxno.com`; new account per position, health floor 1.3.
 - Blend leverage, one transaction: `contracts/` (seidar-leverage + its receiver; see contracts/README.md).
@@ -278,17 +310,28 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
 
 ## 7. What has been built (commit trail, newest first)
 
+Session of 2026-10-30 (second): **incident fix — dashboard sat on 0.00 after loading, data appeared
+1–2 min later.** Production logs showed cheap routes (`/prices` CPU 1 ms) taking 24–45 s and
+`/zenex/account` killed as "code had hung": requests awaited single-flight loaders / RPC slots / scans
+owned by earlier requests the runtime had cancelled (see the Workers rule in §4). Fixed in
+`@seidar/cache`, `rpc.ts`, `index.ts` (`boundedScan`), `db.ts`, `prices.ts`, `swap.ts`, `token-icons.ts`,
+`worker.ts`. App side: a failed first load no longer renders as 0.00 / empty — `useBalances` and
+`useShared` keep the shimmer and retry at 2/4/8/15/30 s (after 4 failures they show what they have and
+keep retrying); `apiJsonWarm` returns null (not the empty placeholder) if a scan is still warming;
+balances whose prices failed count as a failed load. Performance % KPI now shimmers while holdings load
+(it used to show +0.00% at once). Local workerd burst after the fix: cheap routes 0.03–1.7 s warm, no hangs.
+
 Session of 2026-10-29/30 (all pushed, app + API deployed):
 - `a5e3ec1` / `08f1b0f` / `954329f` `components/layout/SmoothScroll.tsx`: Lenis `syncTouch` glide on touch,
   own fading scroll-indicator thumb on `(pointer: coarse)` (the glide hides the phone's scrollbar), and
   pull-to-refresh handed back to the browser (`virtualScroll` returns false for a downward pull at the top).
-  **None of this has been checked on a real phone yet.**
+  **Owner confirmed on a real phone (2026-10-30): glide and pull-to-refresh work.**
 - `8dcd10d` / `3ded734` / `82288e1` **MetaMask** wallet (`MetaMaskModule` from the kit, `@metamask/connect-stellar`
   0.3.0; logo `public/assets/wallets/metamask-logo.svg`). `CheckedMetaMask` in `lib/wallets.ts` first pings the
   extension (`metamaskResponds`, 12 s: MetaMask's MV3 service worker sleeps and its own detection waits 10 s)
   and fails with `MM_NOT_READY` instead of hanging; `kitOpenAuthModal` returns `{error}` shown via `errorAlert`.
   Earlier hangs were MetaMask's own background being asleep/stuck (even `eth_chainId` got no answer).
-  Owner has not yet confirmed a MetaMask connect after `8dcd10d`. MetaMask Mobile over WalletConnect
+  **Owner confirmed MetaMask connects (2026-10-30).** MetaMask Mobile over WalletConnect
   waits on MetaMask PR #31635.
 - `7fc51c8` **loading shimmer** after a transaction: `refreshAfterTx(address, kind)` in `lib/tx.ts` marks what
   that tx kind changes (`CHANGES` map: lending, claim, vault, liquidity, perps; balances always) as pending in
@@ -372,16 +415,18 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
    and check-host.net reaches `188.114.96.2:443` fine from 6 countries. Advice given: phone Private DNS
    `one.one.one.one` (Android) / 1.1.1.1 app (iPhone), or another network. Non-Enterprise plans can't pin
    edge IPs; other users on that ISP may hit it. Offered to draft an ISP report — owner hasn't named the ISP.
-3. **Workers Paid is active (2026-10-29).** Re-test `/positions`, `/vaults`,
-   `/dex/pools?protocol=soroswap|sushi|aqua` on `api.seidar.xyz` to confirm the Free-plan gaps are gone.
-4. Unverified on a phone: shimmer, scroll indicator, glide, pull-to-refresh. Unconfirmed by owner: feedback
-   email delivery, MetaMask connect.
+3. **Workers Paid is active (2026-10-29).** Free-plan gap re-test: see the 2026-10-30 results in the
+   next bullet (update them when re-run).
+4. Owner-confirmed 2026-10-30: phone glide + pull-to-refresh, feedback email delivery, MetaMask connect,
+   perps chart drawing, some production transaction flows. Still unconfirmed: the shimmer on a phone,
+   the scroll indicator, and that the 0.00-on-open incident fix (§7) holds in daily use.
 5. Agent backend needs the `ANTHROPIC_API_KEY` Worker secret. Stellar Wallets Kit stays on 2.7.1 (2.8.0 only
    adds a Varial module; not adopted).
-6. **Production transaction flows are unverified** (swap/lend/perps/vault/bridge builds on
-   `api.seidar.xyz`). They make few subrequests and should work on Free; verify with a real wallet.
-7. **Perps chart**: Lightweight Charts + Zenex candles is wired and data loads, but nobody has
-   watched it draw in a visible tab yet. Check `/trade-swap/perps`.
+6. Production transaction flows: the owner has run some successfully (2026-10-30); which ones exactly
+   wasn't listed. Bridge and perps flows are the least exercised.
+7. Perps chart: confirmed drawing by the owner (2026-10-30).
+7b. Soroswap / Phoenix indexers answer 429 to `[dex-activity]` reads at times (seen in logs 2026-10-30);
+   LP positions still load (activity is best-effort), but watch it.
 8. **Asset page** (`/asset`, `components/asset/*`) — parked by the owner ("keep it for later").
 9. **Templar vaults** were in the original brief but are **not integrated**: Merkl's Templar
    opportunities use `0x…` addresses, not Stellar contracts — confirm Templar has Stellar vaults first.
