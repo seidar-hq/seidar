@@ -113,3 +113,29 @@ export async function encodeRoutes(raw: RawTrade): Promise<Xdr.ScVal> {
   if (routes.length === 0) throw new Error("quote has no routes");
   return sdk.xdr.ScVal.scvVec(routes);
 }
+
+/**
+ * The seidar-leverage SwapCall (contracts/iface) for an aggregator swap made by the leverage
+ * receiver: swap_exact_in(receiver, tokenIn, amount, tokenOut, minOut, routes, None), with exactly
+ * one pre-authorized pull of `amount` of tokenIn to the aggregator.
+ */
+export async function encodeAggregatorSwapCall(o: {
+  receiver: string;
+  tokenIn: string;
+  amount: bigint;
+  tokenOut: string;
+  minOut: bigint;
+  raw: RawTrade;
+}): Promise<Xdr.ScVal> {
+  const sdk = await import("@stellar/stellar-sdk");
+  const a = (x: string) => sdk.Address.fromString(x).toScVal();
+  const i128 = (v: bigint) => sdk.nativeToScVal(v, { type: "i128" });
+  const agg = aggregator();
+  const args = [a(o.receiver), a(o.tokenIn), i128(o.amount), a(o.tokenOut), i128(o.minOut), await encodeRoutes(o.raw), sdk.xdr.ScVal.scvVoid()];
+  return struct(sdk, {
+    contract: a(agg),
+    function: sdk.xdr.ScVal.scvSymbol("swap_exact_in"),
+    args: sdk.xdr.ScVal.scvVec(args),
+    pulls: sdk.xdr.ScVal.scvVec([struct(sdk, { to: a(agg), amount: i128(o.amount) })]),
+  });
+}

@@ -7,7 +7,7 @@
 
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contractclient, contracttype, token, vec, Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    contractclient, contracttype, token, vec, Address, BytesN, Env, IntoVal, Map, Symbol, Val, Vec,
 };
 
 /// Blend v2 RequestType values (pool/src/pool/actions.rs).
@@ -236,11 +236,23 @@ pub fn aggregator_swap(
     out_token.balance(&me) - before
 }
 
-/// Oracle price of `asset` (oracle decimals), None when missing or stale.
+/// Keep a contract's instance and code alive while it is used: extend their TTL to the network
+/// maximum whenever less than half of it is left (the maximum is read from the network, so a
+/// future change of that setting can't make this panic).
+pub fn keep_alive(e: &Env) {
+    let max = e.storage().max_ttl();
+    e.storage().instance().extend_ttl(max / 2, max);
+}
+
+/// Blend v2's own price rule (pool/src/pool/pool.rs load_price): a print over a day old, or not
+/// positive, is invalid. Using the same rule means this contract never refuses a position Blend accepts.
+pub const BLEND_MAX_PRICE_AGE: u64 = 24 * 60 * 60;
+
+/// Oracle price of `asset` (oracle decimals), None when missing, not positive or older than
+/// `max_age` (checked exactly like Blend: `timestamp + max_age < now` is stale).
 pub fn price(e: &Env, oracle: &Address, asset: &Address, max_age: u64) -> Option<i128> {
     let p = OracleClient::new(e, oracle).lastprice(&Asset::Stellar(asset.clone()))?;
-    let now = e.ledger().timestamp();
-    if p.price <= 0 || p.timestamp > now || now - p.timestamp > max_age {
+    if p.price <= 0 || p.timestamp.saturating_add(max_age) < e.ledger().timestamp() {
         return None;
     }
     Some(p.price)
@@ -293,19 +305,42 @@ pub fn health_factor(e: &Env, pool: &Address, account: &Address, max_age: u64) -
     Some(coll_base.checked_mul(SCALAR_7)? / liab_base)
 }
 
+/// One transfer of the swapped-out token (the flashed debt asset) the swap may pull from the
+/// receiver: `debt.transfer(receiver, to, amount)`. Nothing else is authorized.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pull {
+    pub to: Address,
+    pub amount: i128,
+}
+
+/// The swap, as a plain contract call the receiver makes: `contract.function(args…)`, e.g. the
+/// Soroswap aggregator's `swap_exact_in(receiver, debt, amount, collateral, min_out, routes, None)`.
+/// Kept generic so the contract never depends on one DEX's interface or address: a new
+/// aggregator, a router or another venue works without redeploying. It is safe because the
+/// receiver only pre-authorizes `pulls` (at most the flashed amount, never more), measures what
+/// it actually received by balance, reverts below `min_out`, and returns any unspent input.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwapCall {
+    pub contract: Address,
+    pub function: Symbol,
+    pub args: Vec<Val>,
+    pub pulls: Vec<Pull>,
+}
+
 /// One staged leverage swap, set by seidar-leverage and run by
 /// seidar-leverage-receiver inside Blend's `exec_op` callback: swap the
-/// flashed `amount` of `debt` into `collateral` along `routes` (at least
+/// flashed `amount` of `debt` into `collateral` with `swap` (at least
 /// `min_out`) and send all of it to `user`.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Staged {
     pub user: Address,
-    pub aggregator: Address,
     pub debt: Address,
     pub amount: i128,
     pub collateral: Address,
-    pub routes: Vec<Route>,
+    pub swap: SwapCall,
     pub min_out: i128,
 }
 

@@ -463,6 +463,18 @@ export function blendLeverageContract(): string | null {
   return isContract(c) && !isTestnet() ? c : null;
 }
 
+/** The leverage contract's receiver (deployed by its constructor; never changes). */
+const receivers = new Map<string, string>();
+async function leverageReceiver(contract: string): Promise<string> {
+  const hit = receivers.get(contract);
+  if (hit) return hit;
+  const { sorobanView } = await import("./rpc.js");
+  const r = String(await sorobanView(contract, "receiver", []));
+  if (!isContract(r)) throw new Error("Leverage contract has no receiver");
+  receivers.set(contract, r);
+  return r;
+}
+
 /** The contract's own floor (7 decimals) sits a hair under the API's so oracle rounding can't flip a sized trade. */
 const ONE_STEP_MIN_HF = 12_900_000n;
 
@@ -485,7 +497,7 @@ async function buildOneStep(
 ): Promise<Built> {
   const sdk = await import("@stellar/stellar-sdk");
   const { quoteSwap } = await import("./swap.js");
-  const { encodeRoutes } = await import("./swap-route.js");
+  const { encodeAggregatorSwapCall } = await import("./swap-route.js");
   const { borrowCapacity } = await import("./blend-position.js");
   const { withRpc } = await import("./rpc.js");
   // A route the contract can execute itself (Soroswap / Aqua legs on the aggregator).
@@ -498,7 +510,15 @@ async function buildOneStep(
   const cap = await borrowCapacity(o.pool, o.from, o.debt, LEVERAGE_MIN_HEALTH, { asset: o.coll, amount: supply });
   if (o.target > cap)
     throw new Error(`At this swap price the position would open below health ${LEVERAGE_MIN_HEALTH}. Lower the leverage or the amount.`);
-  const routes = await encodeRoutes(quote.rawTrade as never);
+  // The receiver makes the swap; the contract takes it as a generic call (no DEX baked in).
+  const swap = await encodeAggregatorSwapCall({
+    receiver: await leverageReceiver(contract),
+    tokenIn: o.debt,
+    amount: o.target,
+    tokenOut: o.coll,
+    minOut,
+    raw: quote.rawTrade as never,
+  });
   const latest = await withRpc((s) => s.getLatestLedger());
   const a = (x: string) => sdk.Address.fromString(x).toScVal();
   const i128 = (v: bigint) => sdk.nativeToScVal(v, { type: "i128" });
@@ -510,7 +530,7 @@ async function buildOneStep(
     i128(o.deposit),
     a(o.debt),
     i128(o.target),
-    routes,
+    swap,
     i128(minOut),
     i128(ONE_STEP_MIN_HF),
     sdk.nativeToScVal(BigInt(Math.floor(Date.now() / 1000) + 300), { type: "u64" }),

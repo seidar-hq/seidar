@@ -6,7 +6,7 @@
 extern crate std;
 
 use base64::Engine;
-use seidar_leverage_iface::{health_factor, price, BlendPoolClient, Hop, Route, Staged, SCALAR_12, SCALAR_7};
+use seidar_leverage_iface::{health_factor, price, BlendPoolClient, Hop, Pull, Route, Staged, SwapCall, SCALAR_12, SCALAR_7};
 use soroban_ledger_snapshot::LedgerSnapshot;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -123,7 +123,7 @@ fn setup() -> Setup {
     e.cost_estimate().budget().reset_unlimited();
     e.mock_all_auths();
     let receiver_hash: BytesN<32> = e.deployer().upload_contract_wasm(RECEIVER_WASM);
-    let leverage = e.register(LEVERAGE_WASM, (receiver_hash, f.aggregator.clone()));
+    let leverage = e.register(LEVERAGE_WASM, (receiver_hash,));
     let receiver: Address = e.invoke_contract(&leverage, &Symbol::new(e, "receiver"), Vec::new(e));
     let user = Address::generate(e);
     token::Client::new(e, &f.xlm).transfer(&f.whale, &user, &50_000_0000000);
@@ -142,10 +142,22 @@ struct Open {
     deposit: i128,
     debt: Address,
     borrow: i128,
-    routes: Vec<Route>,
+    swap: SwapCall,
     min_out: i128,
     min_hf: i128,
     deadline: u64,
+}
+
+/// The Soroswap aggregator swap as the receiver makes it: swap_exact_in(receiver, debt, amount,
+/// collateral, min_out, routes, None), pulling exactly `amount` of debt (what the app builds).
+fn aggregator_call(s: &Setup, debt: &Address, amount: i128, collateral: &Address, min_out: i128, routes: Vec<Route>) -> SwapCall {
+    let e = &s.f.e;
+    SwapCall {
+        contract: s.f.aggregator.clone(),
+        function: Symbol::new(e, "swap_exact_in"),
+        args: (s.receiver.clone(), debt.clone(), amount, collateral.clone(), min_out, routes, Option::<Val>::None).into_val(e),
+        pulls: Vec::from_array(e, [Pull { to: s.f.aggregator.clone(), amount }]),
+    }
 }
 
 impl Open {
@@ -153,13 +165,14 @@ impl Open {
     fn new(s: &Setup, via: Via, collateral: &Address, debt: &Address, deposit: i128, lev10: i128, slip_bps: i128) -> Open {
         let borrow = oracle_convert(s, collateral, debt, deposit) * (lev10 - 10) / 10;
         let fair = oracle_convert(s, debt, collateral, borrow);
+        let min_out = fair * (10_000 - slip_bps) / 10_000;
         Open {
             collateral: collateral.clone(),
             deposit,
             debt: debt.clone(),
             borrow,
-            routes: route(&s.f, via, debt, collateral, borrow),
-            min_out: fair * (10_000 - slip_bps) / 10_000,
+            swap: aggregator_call(s, debt, borrow, collateral, min_out, route(&s.f, via, debt, collateral, borrow)),
+            min_out,
             min_hf: 11_000_000,
             deadline: s.f.e.ledger().timestamp() + 300,
         }
@@ -175,7 +188,7 @@ fn try_open(s: &Setup, o: &Open) -> Result<i128, soroban_sdk::Error> {
         o.deposit,
         o.debt.clone(),
         o.borrow,
-        o.routes.clone(),
+        o.swap.clone(),
         o.min_out,
         o.min_hf,
         o.deadline,
@@ -388,7 +401,7 @@ fn refuses_bad_args() {
         |o| o.deposit = -1,
         |o| o.min_hf = SCALAR_7 - 1,
         |o| o.debt = o.collateral.clone(),
-        |o| o.routes = Vec::new(o.routes.env()),
+        |o| o.swap.pulls = Vec::new(o.swap.pulls.env()),
     ];
     for f in cases {
         let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
@@ -417,11 +430,10 @@ fn only_the_leverage_contract_can_stage() {
     e.set_auths(&[]);
     let op = Staged {
         user: s.user.clone(),
-        aggregator: s.f.aggregator.clone(),
         debt: s.f.usdc.clone(),
         amount: 1,
         collateral: s.f.xlm.clone(),
-        routes: Vec::new(e),
+        swap: aggregator_call(&s, &s.f.usdc, 1, &s.f.xlm, 1, Vec::new(e)),
         min_out: 1,
     };
     let r = e.try_invoke_contract::<(), soroban_sdk::Error>(&s.receiver, &Symbol::new(e, "stage"), (op,).into_val(e));
@@ -475,8 +487,59 @@ fn constructor_pins_its_own_receiver() {
     let e = &s.f.e;
     let back: Address = e.invoke_contract(&s.receiver, &Symbol::new(e, "leverage"), Vec::new(e));
     assert_eq!(back, s.leverage);
-    let agg: Address = e.invoke_contract(&s.leverage, &Symbol::new(e, "aggregator"), Vec::new(e));
-    assert_eq!(agg, s.f.aggregator);
     // Silence unused-import lint for Ledger in some cfgs.
     let _ = e.ledger().sequence();
+}
+
+// ---------- generic swap call ----------
+
+#[test]
+fn unspent_swap_input_goes_back_to_the_user() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    // Swap only 90% of the loan: the other 10% of USDC must land in the wallet, not the receiver.
+    let part = o.borrow * 9 / 10;
+    o.min_out = o.min_out * 9 / 10;
+    o.swap = aggregator_call(&s, &usdc, part, &xlm, o.min_out, route(&s.f, Via::SoroswapPair, &usdc, &xlm, part));
+    try_open(&s, &o).expect("open");
+    assert_eq!(bal(&s, &usdc), o.borrow - part, "unspent USDC returned to the user");
+    for c in [&s.leverage, &s.receiver] {
+        assert_eq!(token::Client::new(&s.f.e, &usdc).balance(c), 0);
+        assert_eq!(token::Client::new(&s.f.e, &xlm).balance(c), 0);
+    }
+}
+
+#[test]
+fn swap_cannot_pull_more_than_the_loan() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    // Stray USDC sitting in the receiver must stay out of reach of a swap call (auths are mocked,
+    // so the SAC admin mint just works here).
+    token::StellarAssetClient::new(e, &usdc).mint(&s.receiver, &100_0000000);
+    let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    o.swap.pulls = Vec::from_array(e, [Pull { to: s.f.aggregator.clone(), amount: o.borrow + 1 }]);
+    assert_eq!(code(try_open(&s, &o).expect_err("over-pull")), 2);
+    o.swap.pulls = Vec::from_array(e, [Pull { to: s.f.aggregator.clone(), amount: 0 }]);
+    assert_eq!(code(try_open(&s, &o).expect_err("zero pull")), 2);
+    assert_eq!(debt_of(&s, &usdc), 0);
+    assert_eq!(token::Client::new(e, &usdc).balance(&s.receiver), 100_0000000, "stray funds untouched");
+}
+
+#[test]
+fn a_swap_that_pays_nothing_is_refused() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    // A call that returns without swapping (a token balance read): nothing received -> revert.
+    o.swap = SwapCall {
+        contract: usdc.clone(),
+        function: Symbol::new(e, "balance"),
+        args: (s.receiver.clone(),).into_val(e),
+        pulls: Vec::from_array(e, [Pull { to: s.f.aggregator.clone(), amount: o.borrow }]),
+    };
+    assert_eq!(code(try_open(&s, &o).expect_err("no output")), 3);
+    assert_eq!(debt_of(&s, &usdc), 0);
 }

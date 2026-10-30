@@ -6,8 +6,9 @@
 //     DEPLOYER_SECRET=S... node contracts/scripts/deploy.mjs mainnet
 //
 // Steps: upload the receiver WASM, upload the leverage WASM, create the leverage contract with
-// (receiver wasm hash, Soroswap aggregator). Prints the fee of every step and the contract
-// address to set as BLEND_LEVERAGE_CONTRACT on the API.
+// (receiver wasm hash). Prints the fee of every step and the contract address to set as
+// BLEND_LEVERAGE_CONTRACT on the API. An upload whose code is already on chain is skipped, so a
+// failed later step can be re-run without paying for the uploads again.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -23,13 +24,10 @@ const cfg = {
   mainnet: {
     rpc: process.env.RPC_URL || "https://soroban-rpc.mainnet.stellar.gateway.fm",
     passphrase: sdk.Networks.PUBLIC,
-    aggregator: "CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4",
   },
   testnet: {
     rpc: "https://soroban-testnet.stellar.org",
     passphrase: sdk.Networks.TESTNET,
-    // Any contract works for a cost run; this is the testnet XLM SAC.
-    aggregator: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   },
 }[NET];
 
@@ -69,18 +67,31 @@ async function run(label, op) {
   return res;
 }
 
+const hash = (w) => sdk.hash(w);
+/** True when this WASM's code entry is already on chain (uploaded by an earlier run). */
+async function onChain(wasm) {
+  const key = sdk.xdr.LedgerKey.contractCode(new sdk.xdr.LedgerKeyContractCode({ hash: hash(wasm) }));
+  const r = await server.getLedgerEntries(key);
+  return (r.entries ?? []).length > 0;
+}
+async function upload(label, wasm) {
+  if (await onChain(wasm)) return console.log(`  = ${label}: already on chain, skipped`);
+  await run(label, sdk.Operation.uploadContractWasm({ wasm }));
+}
+
 const recvWasm = fs.readFileSync(path.join(wasmDir, "seidar_leverage_receiver.wasm"));
 const levWasm = fs.readFileSync(path.join(wasmDir, "seidar_leverage.wasm"));
-await run(`upload receiver (${recvWasm.length} B)`, sdk.Operation.uploadContractWasm({ wasm: recvWasm }));
-await run(`upload leverage (${levWasm.length} B)`, sdk.Operation.uploadContractWasm({ wasm: levWasm }));
-const hash = (w) => sdk.hash(w);
+console.log(`receiver wasm ${hash(recvWasm).toString("hex")}
+leverage wasm ${hash(levWasm).toString("hex")}`);
+await upload(`upload receiver (${recvWasm.length} B)`, recvWasm);
+await upload(`upload leverage (${levWasm.length} B)`, levWasm);
 const created = await run(
   "create leverage (deploys its receiver)",
   sdk.Operation.createCustomContract({
     address: sdk.Address.fromString(kp.publicKey()),
     wasmHash: hash(levWasm),
     salt: Buffer.alloc(32, 0),
-    constructorArgs: [sdk.xdr.ScVal.scvBytes(hash(recvWasm)), sdk.Address.fromString(cfg.aggregator).toScVal()],
+    constructorArgs: [sdk.xdr.ScVal.scvBytes(hash(recvWasm))],
   }),
 );
 const contract = sdk.Address.fromScVal(created.returnValue).toString();
