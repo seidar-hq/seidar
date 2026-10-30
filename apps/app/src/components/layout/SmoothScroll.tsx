@@ -6,7 +6,8 @@ import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 
 // Gliding page scroll for wheel, trackpad and touch (syncTouch: a swipe eases out like the wheel
-// instead of the phone's own fling). Nested scroll areas (tables, the agent chat) scroll natively,
+// instead of the phone's own fling; pulling down at the top still refreshes the page). Nested
+// scroll areas (tables, the agent chat) scroll natively,
 // and anything inside a MUI dialog, menu or popover is left alone so their scroll locks keep working.
 const OVERLAY = ".MuiModal-root, .MuiPopover-root, .MuiPopper-root, .MuiDialog-root, [data-lenis-prevent]";
 
@@ -20,7 +21,22 @@ export default function SmoothScroll() {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Pull-to-refresh: a swipe that starts pulling down at the very top belongs to the browser for
+    // the whole gesture (returning false leaves the event unhandled, so it isn't prevented).
+    let native = false;
+    const handOff = ({ deltaY, event }: { deltaY: number; event: Event }) => {
+      if (!event.type.startsWith("touch")) return true;
+      if (event.type === "touchstart") {
+        native = false;
+        return true;
+      }
+      if (event.type === "touchmove" && !native && deltaY < 0 && (lenis.current?.animatedScroll ?? window.scrollY) <= 0) native = true;
+      const handled = !native;
+      if (event.type === "touchend") native = false;
+      return handled;
+    };
     const l = new Lenis({
+      virtualScroll: handOff,
       autoRaf: true,
       lerp: 0.085,
       wheelMultiplier: 1,
