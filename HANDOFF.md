@@ -487,3 +487,39 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 - UI changed → look at it in the browser (interceptor), not just the typecheck.
 - `git status --short` clean of anything secret; root `package.json` has no `packageManager` line.
 - Deploys: see the table in §5; after deploying, curl the live host and read the result.
+
+---
+
+## 11. In progress (2026-10-30, stopped at usage limit): one-step close + deep audit, BEFORE the mainnet deploy
+
+**Do not fund/deploy the leverage contract until this is done**: the close function must ship in the
+same (only) deploy. Deployer `GDZHOPYA…ISB6W` (contracts/.env.local) was NOT funded yet.
+
+Blend v2 facts verified from source (blend-contracts-v2 main, pool/src/pool/actions.rs, submit.rs):
+- Repay above the debt: spender pays the full request amount, the pool refunds the excess (same tx).
+- WithdrawCollateral above the balance is capped at the balance (`to_burn = cur_b_tokens`).
+- `handle_transfer_with_allowance` NETS spender and pool transfers per asset (one transfer_from or
+  one transfer per token), using `transfer_from` (needs allowance) for what the user owes.
+- flash_loan records the flash borrow (pool + reserve must allow Borrow: fails on on-ice/frozen
+  pools or a borrow-disabled reserve), validates health, transfers, calls exec_op(from, asset,
+  amount, 0), then settles requests.
+- RequestType: 0 Supply, 1 Withdraw, 2 SupplyCollateral, 3 WithdrawCollateral, 4 Borrow, 5 Repay.
+
+Planned `close` design (same leverage contract): flash-borrow X of the COLLATERAL asset; the
+receiver swaps it (generic SwapCall) into ≥ min_out of the debt asset and sends it to the user;
+requests = [Repay(debt, repay_amount), WithdrawCollateral(collateral, withdraw_amount),
+Repay(collateral, X)]. Because Blend nets per asset, the user receives withdraw − X collateral and
+never needs to hold X. Approve the pool for the debt token (repay) and collateral (if net owed);
+reset allowances to 0 after. Full close: compute withdraw from positions on-chain; partial close:
+check min_hf on what remains. Rename receiver Staged fields to asset_in/asset_out (used both ways).
+Only active pools (flash = borrow); on-ice/frozen pools keep the manual repay/withdraw flow.
+
+Audit items found so far to fix in the same change:
+- After flash_loan, assert the staged op was consumed (a fake `pool` that never calls exec_op
+  would leave a stale op in the receiver's temporary storage).
+- keep_alive extends instance+code TTL to the network max: measure that rent on mainnet; it may add
+  a noticeable fee to a user's tx. Prefer a modest extension (e.g. to 30 days when < 14 days left).
+- Re-run deploy-cost.mjs (new WASM sizes) and a testnet deploy before funding.
+
+App: leverage tab must also appear on on-ice/frozen Blend pools, disabled with the same
+"unavailable" message the Borrow tab shows there.
