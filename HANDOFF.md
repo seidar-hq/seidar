@@ -1,4 +1,4 @@
-# Seidar — handoff (2026-10-26)
+# Seidar — handoff (updated 2026-10-30)
 
 Read this whole file before touching code. It explains what Seidar is, where it came from, how
 the repo and production are laid out, what was built and verified, the rules the owner holds
@@ -198,9 +198,9 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   binding to `FEEDBACK_TO = feedback@seidar.xyz` (wrangler.toml `[vars]`; the binding only allows that
   address). Email Routing rule `feedback@seidar.xyz` -> owner's Gmail was created 2026-10-29, next to the
   existing `hello@seidar.xyz` rule (**leave hello@ alone, it works**). Sending to a routed (non-verified)
-  address needs **Email Sending (beta) onboarded for seidar.xyz** (Workers Paid): dashboard -> Email Service
-  -> Email Sending -> Onboard Domain. It adds `cf-bounce` MX/SPF/DKIM + `_dmarc` (no root MX change). Up to 4
-  images, 2 MB in total.
+  address needs Email Sending (beta) for seidar.xyz: **onboarded 2026-10-29** (it added `cf-bounce`
+  MX/SPF/DKIM + `_dmarc` "v=DMARC1; p=reject;"; root MX/SPF untouched). A live `POST /feedback` returned
+  `{"ok":true}`; the owner has not yet confirmed the mail arrived. Up to 4 images, 2 MB in total.
 - Leverage (`POST /lending/xoxno/multiply`, Lend & Borrow → Leverage tab on XOXNO markets): XOXNO controller
   `multiply` with an aggregator route from `stellar-swap.xoxno.com`; new account per position, health floor 1.3.
 - Blend leverage, one transaction: `contracts/` (seidar-leverage + its receiver; see contracts/README.md).
@@ -278,6 +278,29 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
 
 ## 7. What has been built (commit trail, newest first)
 
+Session of 2026-10-29/30 (all pushed, app + API deployed):
+- `a5e3ec1` / `08f1b0f` / `954329f` `components/layout/SmoothScroll.tsx`: Lenis `syncTouch` glide on touch,
+  own fading scroll-indicator thumb on `(pointer: coarse)` (the glide hides the phone's scrollbar), and
+  pull-to-refresh handed back to the browser (`virtualScroll` returns false for a downward pull at the top).
+  **None of this has been checked on a real phone yet.**
+- `8dcd10d` / `3ded734` / `82288e1` **MetaMask** wallet (`MetaMaskModule` from the kit, `@metamask/connect-stellar`
+  0.3.0; logo `public/assets/wallets/metamask-logo.svg`). `CheckedMetaMask` in `lib/wallets.ts` first pings the
+  extension (`metamaskResponds`, 12 s: MetaMask's MV3 service worker sleeps and its own detection waits 10 s)
+  and fails with `MM_NOT_READY` instead of hanging; `kitOpenAuthModal` returns `{error}` shown via `errorAlert`.
+  Earlier hangs were MetaMask's own background being asleep/stuck (even `eth_chainId` got no answer).
+  Owner has not yet confirmed a MetaMask connect after `8dcd10d`. MetaMask Mobile over WalletConnect
+  waits on MetaMask PR #31635.
+- `7fc51c8` **loading shimmer** after a transaction: `refreshAfterTx(address, kind)` in `lib/tx.ts` marks what
+  that tx kind changes (`CHANGES` map: lending, claim, vault, liquidity, perps; balances always) as pending in
+  `useShared` / `useBalances`; everything settles after `SETTLE_MS` (22 s). `components/common/Shimmer.tsx`,
+  `AmountBox balanceLoading`, applied across vault/lend/pool/portfolio/swap views; KPIs shimmer too.
+- `6201996` / `502ff72` **no more flashing**: `invalidateSharedMany` marks entries stale (`at` = 0) instead of
+  deleting them; a failed refresh keeps the last good data (`useBalances`, `useActivity`, `usePriceChanges`).
+- `2db61cf` / `842c287` notifications: on D1 a SELECT's `rowCount` is rows *changed* (always 0) — use
+  `rows.length` (this caused duplicate welcome notes). `listNotes` returns unread only; the panel has an
+  "N new" pill and "Mark all as read".
+- `922771b` contracts/ (Blend one-tx leverage, see §5) and `8ff84b8` Blend leverage loop.
+
 - `ed41853` worker compat: strip unsupported fetch cache modes; Aquarius warmed by cron.
 - `66da776` Cache API first tier, KV only on change; Suspense around URL-driven Earn pages.
 - `6bc6806` **API runs on Cloudflare Workers** (D1 portable SQL, KV driver, cron warmers, waitUntil).
@@ -338,25 +361,38 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
 
 ## 9. Where we left off / next steps
 
-1. **Workers plan decision (owner).** On Free the gaps in §5 remain. If the owner upgrades, re-test
-   `/positions`, `/vaults`, `/dex/pools?protocol=soroswap|sushi|aqua` on `api.seidar.xyz`; no code
-   or config change needed.
-2. **Production transaction flows are unverified** (swap/lend/perps/vault/bridge builds on
+1. **Blend leverage contract on mainnet (owner).** The owner runs, in their *own* terminal (not via the
+   `!` prefix, keeps the secret out of the chat): `DEPLOYER_SECRET=S... node contracts/scripts/deploy.mjs mainnet`
+   (~26.2 XLM). Then add `BLEND_LEVERAGE_CONTRACT = "C..."` to `services/api/wrangler.toml` `[vars]`, deploy
+   the API, and simulate `POST /lending/blend/leverage` (expect one tx; the app shows "Transactions: 1").
+   Contract is unaudited and has never had a real signed run.
+2. **Phone `ERR_CONNECTION_REFUSED` on app.seidar.xyz (owner's ISP, not our config).** Some resolvers (Google
+   DNS) sometimes answer `188.114.96.2` / `188.114.97.2`; from the owner's network those two Cloudflare edge
+   IPs refuse every site (Discord too), while `104.21.78.103` / `172.67.220.56` and even `188.114.96.3` work,
+   and check-host.net reaches `188.114.96.2:443` fine from 6 countries. Advice given: phone Private DNS
+   `one.one.one.one` (Android) / 1.1.1.1 app (iPhone), or another network. Non-Enterprise plans can't pin
+   edge IPs; other users on that ISP may hit it. Offered to draft an ISP report — owner hasn't named the ISP.
+3. **Workers Paid is active (2026-10-29).** Re-test `/positions`, `/vaults`,
+   `/dex/pools?protocol=soroswap|sushi|aqua` on `api.seidar.xyz` to confirm the Free-plan gaps are gone.
+4. Unverified on a phone: shimmer, scroll indicator, glide, pull-to-refresh. Unconfirmed by owner: feedback
+   email delivery, MetaMask connect.
+5. Agent backend needs the `ANTHROPIC_API_KEY` Worker secret. Stellar Wallets Kit stays on 2.7.1 (2.8.0 only
+   adds a Varial module; not adopted).
+6. **Production transaction flows are unverified** (swap/lend/perps/vault/bridge builds on
    `api.seidar.xyz`). They make few subrequests and should work on Free; verify with a real wallet.
-3. **Perps chart**: Lightweight Charts + Zenex candles is wired and data loads, but nobody has
+7. **Perps chart**: Lightweight Charts + Zenex candles is wired and data loads, but nobody has
    watched it draw in a visible tab yet. Check `/trade-swap/perps`.
-4. **Asset page** (`/asset`, `components/asset/*`) — parked by the owner ("keep it for later").
-5. **Templar vaults** were in the original brief but are **not integrated**: Merkl's Templar
+8. **Asset page** (`/asset`, `components/asset/*`) — parked by the owner ("keep it for later").
+9. **Templar vaults** were in the original brief but are **not integrated**: Merkl's Templar
    opportunities use `0x…` addresses, not Stellar contracts — confirm Templar has Stellar vaults first.
    Untangled is listed as "pending registry (address unpublished)".
-6. Small known leftovers:
+10. Small known leftovers:
    - Dashboard locked illustration (`public/assets/tokenTableLocked.png`) still has an "AI Insights"
      column header (Seidar has no AI Insights). Remove if the owner wants.
-   - `/feedback` writes files to disk — fine on Node, fails on Workers; the app doesn't call it.
    - `auth.ts` is dead code (not imported).
    - Vault snapshots use an in-memory hourly guard, so on Workers several isolates may each write one.
    - D1 starts empty: price history / 24h change from our own snapshots fill in over a day.
-7. Docs (`apps/docs`) are accurate as of `c7faeb6`; update them with any product change
+11. Docs (`apps/docs`) are accurate as of `c7faeb6`; update them with any product change
    (strict link checks will catch broken references).
 
 ---
