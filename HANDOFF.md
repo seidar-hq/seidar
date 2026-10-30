@@ -276,8 +276,10 @@ Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
 - **Home is dev-only (feature flag, owner's call 2026-10-30):** `NEXT_PUBLIC_ENABLE_HOME=1` lives in
   `apps/app/.env.development` only, so `next dev` shows Home at `/` and production builds don't (`/` = Portfolio,
   no Home in the nav or search; `lib/features.ts` `HOME_ENABLED`). Its docs page is `draft: true` and unlinked.
-  The API's `/market/*` routes ship but the cron warms them only with `MARKET_WARM=1`. **To release Home:** add
-  `NEXT_PUBLIC_ENABLE_HOME=1` to `.env.production`, set `MARKET_WARM = "1"` in wrangler.toml `[vars]`, drop the
+  The API's `/market/*` routes ship but the cron warms them only with `MARKET_WARM=1`. `.env.production` sets it to `0` on purpose: a defined value lets the bundler drop Home and the
+  asset page (`app/page.tsx`, `app/asset/page.tsx` import them dynamically behind the inline check), so
+  production ships none of their code and `/asset` redirects to `/`. **To release Home:** set
+  `NEXT_PUBLIC_ENABLE_HOME=1` in `.env.production`, set `MARKET_WARM = "1"` in wrangler.toml `[vars]`, drop the
   docs `draft`, re-link it (sidebars.ts, footer, index.md, getting-started.md). Everything else (incl. Dashboard →
   Portfolio) ships normally.
 - Leverage deployer: `contracts/.env.local` (git-ignored) holds a mainnet keypair generated 2026-10-30 for
