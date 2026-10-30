@@ -6,7 +6,6 @@ import ButtonBase from "@mui/material/ButtonBase";
 import Slider from "@mui/material/Slider";
 import Typography from "@mui/material/Typography";
 import TokenLogo from "@/components/common/TokenLogo";
-import { formatAmount, formatUsd } from "@/lib/format";
 import { apiJson } from "@/lib/api";
 import { useShared } from "@/lib/useShared";
 import { toBase } from "@/lib/tx";
@@ -144,16 +143,19 @@ export function useLeverage(m: Market | undefined, markets: Market[], walletBal:
 
   const details: DetailRow[] = [];
   if (m && spoke && debt) {
-    details.push({ label: "Position", value: depositUsd != null && n > 0 ? `≈ ${formatAmount(n * L, 4)} ${m.code} (${formatUsd(depositUsd * L)})` : "—" });
-    details.push({ label: "Borrowed", value: debtAmount != null && n > 0 ? `${formatAmount(debtAmount, 4)} ${debt.code}` : "—" });
-    details.push({ label: "Health (est.)", value: health != null ? health.toFixed(2) : "—", color: health != null && health < 1.5 ? "orange.main" : "green.main" });
-    details.push({ label: "Net APY (est.)", value: netApy != null ? pct(netApy) : "—", color: netApy != null && netApy < 0 ? "error.main" : "green.main" });
+    // Position, borrow, health and net APY show as "after" values on the My Position card.
     details.push({ label: blend ? "Effective LTV" : "Max LTV", value: pct(ltv * 100, 0) });
     details.push({ label: "Swap slippage", value: pct(SLIPPAGE_BPS / 100, 1) });
     if (blend) details.push({ label: "Transactions", value: oneStep ? "1" : rounds ? `about ${rounds * 2 + 1}` : "—" });
   }
 
-  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, path, blend, oneStep, details, available: spokes.length > 0 };
+  // The finished trade at oracle prices (null until an amount is entered).
+  const preview =
+    m && spoke && debt && n > 0 && depositUsd != null && debtUsd != null && debtAmount != null
+      ? { added: n * L, addedUsd: depositUsd * L, debtAmount, debtUsd, health, netApy }
+      : null;
+
+  return { spokes, spoke, setSpokeId, debt, setDebtKey, amount, setAmount, lev: L, setLev, maxLev, blocker, body, path, blend, oneStep, details, preview, available: spokes.length > 0 };
 }
 
 const Chip = ({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) => (

@@ -222,6 +222,9 @@ export type BlendPoolInfo = {
   suppliedUsd: number;
   borrowedUsd: number;
   netApy: number | null;
+  /** Health inputs: collateral x c_factor and debt / l_factor, in USD (absent from older API builds). */
+  effCollateralUsd?: number;
+  effDebtUsd?: number;
 };
 
 type PositionsResp = {

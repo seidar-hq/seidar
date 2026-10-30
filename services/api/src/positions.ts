@@ -99,7 +99,7 @@ export async function getPositions(address: string, only?: PositionProtocol) {
   /** Unclaimed BLND emissions across pools (claimable via pool.claim). */
   let claimableBlnd = 0;
   /** Per Blend pool (pools are isolated): emissions, health and remaining borrow capacity in USD. */
-  const byPool: Record<string, { claimableBlnd: number; healthFactor: number | null; borrowCapacityUsd: number; suppliedUsd: number; borrowedUsd: number; netApy: number | null }> = {};
+  const byPool: Record<string, { claimableBlnd: number; healthFactor: number | null; borrowCapacityUsd: number; suppliedUsd: number; borrowedUsd: number; netApy: number | null; effCollateralUsd: number; effDebtUsd: number }> = {};
   let xoxnoSupplied = 0;
   let xoxnoBorrowed = 0;
   let xoxnoEffColl = 0;
@@ -172,6 +172,10 @@ export async function getPositions(address: string, only?: PositionProtocol) {
           suppliedUsd: est.totalSupplied,
           borrowedUsd: est.totalBorrowed,
           netApy: Number.isFinite(est.netApy) ? est.netApy : null,
+          // Health inputs (collateral x c_factor, debt / l_factor), so the app can preview the
+          // health after an action.
+          effCollateralUsd: est.totalEffectiveCollateral,
+          effDebtUsd: est.totalEffectiveLiabilities,
         };
       }
       if (est.totalSupplied > 0.01 || est.totalBorrowed > 0.01) {

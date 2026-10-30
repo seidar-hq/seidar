@@ -34,12 +34,36 @@ const Layout = styled(Box)({
 
 const Main = styled(PlainCard)({ display: "flex", flexDirection: "column", gap: "1.75rem", padding: "1.5rem", minWidth: 0 });
 
-const Figure = ({ label, value, sub, color }: { label: string; value: React.ReactNode; sub?: React.ReactNode; color?: string }) => (
+/** A position figure; `after` is what it becomes once the action entered in the form goes through. */
+const Figure = ({
+  label,
+  value,
+  sub,
+  color,
+  after,
+  afterColor,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  color?: string;
+  after?: React.ReactNode;
+  /** Defaults to the brand color; red when the result would be unsafe. */
+  afterColor?: string;
+}) => (
   <Box sx={{ display: "flex", flexDirection: "column", gap: "0.375rem", minWidth: 0 }}>
     <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>{label}</Typography>
     <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: color ?? "common.black" }} noWrap>
       {value}
     </Typography>
+    {after != null && (
+      <Typography sx={{ fontSize: "1rem", fontWeight: 600, color: afterColor ?? "primary.main", display: "flex", alignItems: "center", gap: "0.25rem" }} noWrap>
+        <Box component="span" aria-label="after">
+          →
+        </Box>
+        {after}
+      </Typography>
+    )}
     {sub != null && <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>{sub}</Typography>}
   </Box>
 );
@@ -356,7 +380,6 @@ export default function LendMarket() {
     (closeShort ? `This ${m.code} alone can't cover that much ${closeDebt?.code}: close a smaller part, or from your other collateral` : null);
   const closeDetails: DetailRow[] = closeDebt
     ? [
-        { label: "Repay", value: `${formatAmount(closeRepay, 4)} ${closeDebt.code}` },
         { label: `${m.code} sold to repay (at most)`, value: `≈ ${formatAmount(closeSold, 4)} ${m.code}` },
         { label: `${m.code} back to your wallet`, value: `≈ ${formatAmount(closeBack, 4)} ${m.code}`, color: "green.main" },
         { label: "Swap slippage", value: pct(SLIPPAGE_BPS / 100, 1) },
@@ -380,12 +403,62 @@ export default function LendMarket() {
     }
   };
 
+  // "After" values for the My Position card: the position once the action in the form goes through,
+  // at oracle prices. Blend health = collateral x c_factor / (debt / l_factor), per pool.
+  const opening = tab === "leverage" && !closing && lv.preview != null;
+  const levDebt = closing ? closeDebt : tab === "leverage" ? lv.debt : null;
+  const debtLegs = levDebt ? positions.legs.filter((l) => l.protocol === protocol && l.pool === pool && l.contract === levDebt.contract) : [];
+  const debtHeld = debtLegs.reduce((s, l) => s + l.borrowed, 0);
+  const debtHeldUsd = debtLegs.reduce((s, l) => s + l.borrowedUsd, 0);
+  const levDebtMarket = levDebt ? markets.find((x) => x.protocol === protocol && x.pool === pool && x.contract === levDebt.contract) : undefined;
+  const collateralHeld = Math.max(0, supplied - lent);
+  const preview = (() => {
+    if (!me || posLoading) return null;
+    const p = price ?? m.priceUsd ?? 0;
+    if (tab === "supply" && n > 0) return { supply: supplied + n, coll: protocol === "xoxno" || (collateral && m.canCollateral) ? n * p : 0, debt: 0 };
+    if (tab === "withdraw" && n > 0) return { supply: Math.max(0, supplied - n), coll: -Math.min(n, collateralHeld) * p, debt: 0 };
+    if (tab === "borrow" && n > 0) return { borrowed: borrowed + n, coll: 0, debt: n * p };
+    if (tab === "repay" && n > 0) return { borrowed: Math.max(0, borrowed - n), coll: 0, debt: -Math.min(n, borrowed) * p };
+    if (opening && lv.preview) return { supply: supplied + lv.preview.added, coll: lv.preview.addedUsd, debt: lv.preview.debtUsd, debtAfter: debtHeld + lv.preview.debtAmount };
+    if (closing && closeDebt && !closeShort) {
+      const full = closeFrac >= 1;
+      return {
+        supply: full ? lent : supplied - collateralHeld * closeFrac,
+        coll: -collateralHeld * closeFrac * unitUsd,
+        debt: -closeRepayUsd,
+        debtAfter: full ? 0 : Math.max(0, debtHeld - closeRepay),
+      };
+    }
+    return null;
+  })();
+  // Health after: Blend from the pool's effective collateral and debt (older API builds: derived
+  // from health and capacity); XOXNO only for leverage, which opens a fresh account.
+  const healthAfter = (() => {
+    if (!preview) return undefined;
+    if (protocol === "xoxno") return opening ? (lv.preview?.health ?? undefined) : undefined;
+    const h = poolInfo?.healthFactor ?? null;
+    const capUsd = poolInfo?.borrowCapacityUsd ?? 0;
+    let C = poolInfo?.effCollateralUsd;
+    let D = poolInfo?.effDebtUsd;
+    if (C == null || D == null) {
+      if (!poolInfo) [C, D] = [0, 0];
+      else if (h == null) [C, D] = [capUsd, 0];
+      else if (h > 1) [C, D] = [(h * capUsd) / (h - 1), capUsd / (h - 1)];
+      else return undefined;
+    }
+    const cF = (m.ltvPct ?? 0) / 100;
+    const lF = (tab === "leverage" ? levDebtMarket?.lFactor : m.lFactor) ?? null;
+    if (!lF) return undefined;
+    const c = C + preview.coll * cF;
+    const d = D + preview.debt / lF;
+    return d > 1e-6 ? c / d : null;
+  })();
+  const showDebt = tab === "leverage" && levDebt != null;
+
   const details: DetailRow[] = [];
   if (tab === "supply" || tab === "withdraw") details.push({ label: "Supply APY", value: pct(m.supplyApy), color: "green.main" });
   if (tab === "borrow" || tab === "repay") details.push({ label: "Borrow APY", value: pct(m.borrowApy), color: "green.main" });
   if (m.ltvPct != null) details.push({ label: "Collateral factor", value: pct(m.ltvPct, 0) });
-  if (health != null || posLoading)
-    details.push({ label: "Health factor", value: <Shimmer on={posLoading} width="2.5rem">{health?.toFixed(2)}</Shimmer>, color: posLoading ? undefined : healthColor(health) });
   if (poolInfo && tab === "borrow") details.push({ label: "Borrow capacity", value: <Shimmer on={posLoading} width="4rem">{formatUsd(poolInfo.borrowCapacityUsd)}</Shimmer> });
   if (m.protocol === "xoxno" && account)
     details.push({ label: "XOXNO account", value: `#${account.accountId}${account.spokeName ? ` · ${account.spokeName}` : ""}` });
@@ -427,19 +500,41 @@ export default function LendMarket() {
             <Figure
               label="My Supply"
               value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(supplied, 4)} ${m.code}`}</Shimmer>}
+              after={preview?.supply != null ? `${opening ? "≈ " : ""}${formatAmount(preview.supply, 4)} ${m.code}` : undefined}
               sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{price != null ? formatUsd(supplied * price) : formatUsd(suppliedUsd)}</Shimmer>}
             />
-            <Figure
-              label="Borrowed"
-              value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(borrowed, 4)} ${m.code}`}</Shimmer>}
-              sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(borrowedUsd)}</Shimmer>}
-            />
+            {showDebt && levDebt ? (
+              <Figure
+                label={`Borrowed ${levDebt.code}`}
+                value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(debtHeld, 4)} ${levDebt.code}`}</Shimmer>}
+                after={preview?.debtAfter != null ? `${formatAmount(preview.debtAfter, 4)} ${levDebt.code}` : undefined}
+                sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(debtHeldUsd)}</Shimmer>}
+              />
+            ) : (
+              <Figure
+                label="Borrowed"
+                value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(borrowed, 4)} ${m.code}`}</Shimmer>}
+                after={preview?.borrowed != null ? `${formatAmount(preview.borrowed, 4)} ${m.code}` : undefined}
+                sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(borrowedUsd)}</Shimmer>}
+              />
+            )}
             <Figure
               label="Health Factor"
               value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{health == null ? "—" : health.toFixed(2)}</Shimmer>}
               color={posLoading ? undefined : healthColor(health)}
-              sub={protocol === "blend" ? "This pool" : "XOXNO account"}
+              after={healthAfter === undefined ? undefined : healthAfter == null ? "No debt" : `${opening ? "≈ " : ""}${healthAfter.toFixed(2)}`}
+              afterColor={healthAfter != null && healthAfter < 1.1 ? "error.main" : undefined}
+              sub={protocol === "blend" ? "This pool" : opening ? "New XOXNO account" : "XOXNO account"}
             />
+            {opening && lv.preview && (
+              <Figure
+                label="Net APY (est.)"
+                value="—"
+                after={lv.preview.netApy != null ? pct(lv.preview.netApy) : "—"}
+                afterColor={lv.preview.netApy != null && lv.preview.netApy < 0 ? "error.main" : undefined}
+                sub="On the leveraged amount"
+              />
+            )}
             <Figure
               label="Collateral"
               value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"}</Shimmer>}
