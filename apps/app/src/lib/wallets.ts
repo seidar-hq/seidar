@@ -174,11 +174,13 @@ async function walletConnectModule() {
  * MetaMask's Stellar adapter first asks the extension for its id (a provider-state message through
  * its content script) and then waits on it with no timeout. When MetaMask doesn't answer (locked
  * and asleep, mid-update, or a version before 13.54 without Stellar), the connect click just hung.
- * Ask the same question first, briefly, and fail with a message instead.
+ * Ask the same question first and fail with a message instead. Chrome puts extension backgrounds to
+ * sleep and waking MetaMask's takes a few seconds, so allow as long as MetaMask's own detection (10 s)
+ * plus a margin; it answers "can retry" while waking, which re-asks.
  */
 const MM_NOT_READY =
   "MetaMask didn't respond. Open MetaMask and unlock it, make sure it's version 13.54 or later (Stellar support), then try again.";
-function metamaskResponds(ms = 5000): Promise<boolean> {
+function metamaskResponds(ms = 12_000): Promise<boolean> {
   return new Promise((resolve) => {
     const ask = () =>
       window.postMessage(
