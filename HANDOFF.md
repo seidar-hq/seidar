@@ -490,36 +490,22 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 ---
 
-## 11. In progress (2026-10-30, stopped at usage limit): one-step close + deep audit, BEFORE the mainnet deploy
+## 11. Blend leverage contract: ready to deploy (2026-10-30)
 
-**Do not fund/deploy the leverage contract until this is done**: the close function must ship in the
-same (only) deploy. Deployer `GDZHOPYA…ISB6W` (contracts/.env.local) was NOT funded yet.
-
-Blend v2 facts verified from source (blend-contracts-v2 main, pool/src/pool/actions.rs, submit.rs):
-- Repay above the debt: spender pays the full request amount, the pool refunds the excess (same tx).
-- WithdrawCollateral above the balance is capped at the balance (`to_burn = cur_b_tokens`).
-- `handle_transfer_with_allowance` NETS spender and pool transfers per asset (one transfer_from or
-  one transfer per token), using `transfer_from` (needs allowance) for what the user owes.
-- flash_loan records the flash borrow (pool + reserve must allow Borrow: fails on on-ice/frozen
-  pools or a borrow-disabled reserve), validates health, transfers, calls exec_op(from, asset,
-  amount, 0), then settles requests.
-- RequestType: 0 Supply, 1 Withdraw, 2 SupplyCollateral, 3 WithdrawCollateral, 4 Borrow, 5 Repay.
-
-Planned `close` design (same leverage contract): flash-borrow X of the COLLATERAL asset; the
-receiver swaps it (generic SwapCall) into ≥ min_out of the debt asset and sends it to the user;
-requests = [Repay(debt, repay_amount), WithdrawCollateral(collateral, withdraw_amount),
-Repay(collateral, X)]. Because Blend nets per asset, the user receives withdraw − X collateral and
-never needs to hold X. Approve the pool for the debt token (repay) and collateral (if net owed);
-reset allowances to 0 after. Full close: compute withdraw from positions on-chain; partial close:
-check min_hf on what remains. Rename receiver Staged fields to asset_in/asset_out (used both ways).
-Only active pools (flash = borrow); on-ice/frozen pools keep the manual repay/withdraw flow.
-
-Audit items found so far to fix in the same change:
-- After flash_loan, assert the staged op was consumed (a fake `pool` that never calls exec_op
-  would leave a stale op in the receiver's temporary storage).
-- keep_alive extends instance+code TTL to the network max: measure that rent on mainnet; it may add
-  a noticeable fee to a user's tx. Prefer a modest extension (e.g. to 30 days when < 14 days left).
-- Re-run deploy-cost.mjs (new WASM sizes) and a testnet deploy before funding.
-
-App: leverage tab must also appear on on-ice/frozen Blend pools, disabled with the same
-"unavailable" message the Borrow tab shows there.
+`contracts/` now has open AND one-step close (see contracts/README.md, contracts/AUDIT.md for the
+threat model, the Blend v2 behaviour verified in its source, and the deploy checklist).
+- 27/27 mainnet-fork tests (open: long/short/Aqua/split/add/zero-deposit; close: full long, full
+  short, partial; refusals for every bad argument, health, deadline, missing signature, swap below
+  min_out, over-pull, swap that pays nothing, fake pool that never calls back, no position).
+- Audit changes: `receiver.pending()` check after the flash loan (`NotExecuted` #4); contracts no
+  longer extend their own TTL (a user tx would pay ~3.4 XLM of rent every ~16 days); Seidar runs
+  `contracts/scripts/extend-ttl.mjs <contract> 120 --send` about every 100 days (~0.21 XLM/day).
+- Mainnet upload cost by simulation: **30.76 XLM** (14,226 B + 6,294 B) + ~0.01 create + 1 XLM
+  reserve. Testnet dry run of the exact WASMs: CA3PRI5W5WHL3QSNPSF5SQXAAVUJUMW6BVYIGSSYUE4WI4KQGWIGY7ZX.
+- Deployer `GDZHOPYA2T6OTWT5GLYDDOV4DDRLBAS5DHBQMPVQQGKLRDPPALUISB6W` (key in contracts/.env.local):
+  waiting for the owner to fund ~33 XLM. After deploy: set BLEND_LEVERAGE_CONTRACT, deploy the API,
+  simulate an open and a close against mainnet, return the leftover XLM to the funder.
+- API: `POST /lending/blend/leverage/close { from, pool, collateral, debt, fraction, slippageBps }`
+  (refuses on-ice/frozen pools and when the contract isn't configured). App: Lend & Borrow →
+  Leverage tab has Open / Close (25/50/75/100%) when the wallet has collateral and debt in the pool;
+  the tab also shows on on-ice/frozen Blend pools, blocked like Borrow ("Unavailable" + reason).

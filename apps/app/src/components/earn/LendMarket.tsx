@@ -20,7 +20,7 @@ import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import ActionCard, { AmountBox, DetailRows, type DetailRow } from "./ActionCard";
 import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard, StatusPill } from "./EarnUI";
-import { LeverageFields, useLeverage } from "./leverage";
+import { LeverageFields, SLIPPAGE_BPS, useLeverage } from "./leverage";
 import { LEND_PROTOCOLS, actionBlock, compactUsd, marketHref, marketStatus, pct, useLendMarkets, useLendPositions, type LendAction, type Market } from "./lendData";
 
 const Layout = styled(Box)({
@@ -122,6 +122,24 @@ export default function LendMarket() {
   const borrowedUsd = marketLegs.reduce((s, l) => s + l.borrowedUsd, 0);
   const poolInfo = me && protocol === "blend" ? positions.pools[me]?.[pool] : undefined;
   const health = protocol === "blend" ? (poolInfo?.healthFactor ?? null) : me ? (positions.xoxnoHealth[me] ?? null) : null;
+
+  // Leverage tab, close mode (Blend): unwind this collateral against one of the pool's debts in one
+  // transaction; step-by-step Repay / Withdraw stays available on their tabs.
+  const [levMode, setLevMode] = useState<"open" | "close">("open");
+  const [closeDebtKey, setCloseDebtKey] = useState<string | null>(null);
+  const [closeFrac, setCloseFrac] = useState(1);
+  const poolDebts = useMemo(
+    () =>
+      positions.legs
+        .filter((l) => l.protocol === "blend" && l.pool === pool && l.borrowed > 0 && l.contract !== m?.contract)
+        .sort((a, b) => b.borrowedUsd - a.borrowedUsd),
+    [positions.legs, pool, m?.contract],
+  );
+  const canClose = protocol === "blend" && supplied > 0 && poolDebts.length > 0;
+  const closeDebt = poolDebts.find((d) => d.contract === closeDebtKey) ?? poolDebts[0] ?? null;
+  useEffect(() => {
+    if (!canClose && levMode === "close") setLevMode("open");
+  }, [canClose, levMode]);
 
   const xoxnoAccts = useShared<{ accounts?: XoxnoAccount[] } | null>(
     me && protocol === "xoxno" ? `xoxno:accounts:${me}` : null,
@@ -315,6 +333,53 @@ export default function LendMarket() {
   };
   const levBlocker = !isConnected ? "Connect a wallet" : (actionBlock(m, "leverage") ?? lv.blocker);
 
+  const closing = tab === "leverage" && levMode === "close";
+  const closeBlocker = !isConnected
+    ? "Connect a wallet"
+    : !lv.oneStep
+      ? "One-step close isn't live yet: use Repay and Withdraw"
+      : m.status != null && m.status >= 2
+        ? `Pool is ${m.status >= 4 ? "frozen" : "on ice"}: close with Repay and Withdraw`
+        : !closeDebt
+          ? "No debt to repay in this pool"
+          : null;
+  // Estimate: the debt share repaid, the collateral sold for it (oracle + slippage), what comes back.
+  const closeRepay = closeDebt ? closeDebt.borrowed * closeFrac : 0;
+  const closeRepayUsd = closeDebt ? closeDebt.borrowedUsd * closeFrac : 0;
+  const unitUsd = supplied > 0 ? suppliedUsd / supplied : 0;
+  const closeSold = unitUsd > 0 ? (closeRepayUsd / unitUsd) * (1 + (SLIPPAGE_BPS + 50) / 10_000) : 0;
+  const closeBack = Math.max(0, supplied * closeFrac - closeSold);
+  // Debt backed by several collaterals can be more than this one covers: say so before the click.
+  const closeShort = closeDebt != null && closeSold > supplied * closeFrac;
+  const closeReason =
+    closeBlocker ??
+    (closeShort ? `This ${m.code} alone can't cover that much ${closeDebt?.code}: close a smaller part, or from your other collateral` : null);
+  const closeDetails: DetailRow[] = closeDebt
+    ? [
+        { label: "Repay", value: `${formatAmount(closeRepay, 4)} ${closeDebt.code}` },
+        { label: `${m.code} sold to repay (at most)`, value: `≈ ${formatAmount(closeSold, 4)} ${m.code}` },
+        { label: `${m.code} back to your wallet`, value: `≈ ${formatAmount(closeBack, 4)} ${m.code}`, color: "green.main" },
+        { label: "Swap slippage", value: pct(SLIPPAGE_BPS / 100, 1) },
+        { label: "Transactions", value: "1" },
+      ]
+    : [];
+
+  const submitClose = async () => {
+    if (!activeWallet || !closeDebt || !m.contract) return;
+    const label = `Close ${Math.round(closeFrac * 100)}% · ${m.code} / ${closeDebt.code} · Blend`;
+    setTx({ open: true, steps: [{ key: "s0", label, status: "building" }], error: null });
+    try {
+      await runBuilt(
+        "/api/lending/blend/leverage/close",
+        { from: activeWallet.address, pool: m.pool, collateral: m.contract, debt: closeDebt.contract, fraction: closeFrac, slippageBps: SLIPPAGE_BPS },
+        activeWallet,
+        (steps) => setTx((t) => ({ ...t, steps })),
+      );
+    } catch (e) {
+      setTx((t) => ({ ...t, error: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
   const details: DetailRow[] = [];
   if (tab === "supply" || tab === "withdraw") details.push({ label: "Supply APY", value: pct(m.supplyApy), color: "green.main" });
   if (tab === "borrow" || tab === "repay") details.push({ label: "Borrow APY", value: pct(m.borrowApy), color: "green.main" });
@@ -414,11 +479,91 @@ export default function LendMarket() {
             setTab(id as LendAction);
             router.replace(marketHref(m, id as LendAction, account?.accountId), { scroll: false });
           }}
-          cta={isConnected ? (tab === "leverage" ? "Open Leveraged Position" : (tabs.find((t) => t.id === tab)?.label ?? "")) : "Connect wallet"}
-          blocker={isConnected ? (tab === "leverage" ? levBlocker : blocker) : null}
-          onSubmit={() => (isConnected ? void (tab === "leverage" ? submitLeverage() : submit()) : void openConnectModal())}
+          cta={
+            isConnected
+              ? tab === "leverage"
+                ? closing
+                  ? closeFrac >= 1
+                    ? "Close Position"
+                    : `Close ${Math.round(closeFrac * 100)}%`
+                  : "Open Leveraged Position"
+                : (tabs.find((t) => t.id === tab)?.label ?? "")
+              : "Connect wallet"
+          }
+          blocker={isConnected ? (tab === "leverage" ? (closing ? closeReason : levBlocker) : blocker) : null}
+          onSubmit={() => (isConnected ? void (tab === "leverage" ? (closing ? submitClose() : submitLeverage()) : submit()) : void openConnectModal())}
         >
-          {tab === "leverage" ? (
+          {tab === "leverage" && canClose && (
+            <Box sx={{ display: "flex", gap: "0.375rem", mb: "0.75rem" }}>
+              {(["open", "close"] as const).map((mode) => (
+                <ButtonBase
+                  key={mode}
+                  onClick={() => setLevMode(mode)}
+                  sx={{
+                    flex: 1,
+                    height: "2.25rem",
+                    borderRadius: "999rem",
+                    fontSize: "0.875rem",
+                    fontWeight: 500,
+                    color: levMode === mode ? "sidebar.white" : "grey.200",
+                    backgroundColor: levMode === mode ? "sidebar.primary" : "overlay.white04",
+                  }}
+                >
+                  {mode === "open" ? "Open / add" : "Close"}
+                </ButtonBase>
+              ))}
+            </Box>
+          )}
+          {closing ? (
+            <>
+              {poolDebts.length > 1 && (
+                <Box sx={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", mb: "0.75rem" }}>
+                  {poolDebts.map((d) => (
+                    <ButtonBase
+                      key={d.contract}
+                      onClick={() => setCloseDebtKey(d.contract)}
+                      sx={{
+                        height: "2rem",
+                        px: "0.75rem",
+                        gap: "0.375rem",
+                        borderRadius: "999rem",
+                        fontSize: "0.8125rem",
+                        color: "common.black",
+                        backgroundColor: closeDebt?.contract === d.contract ? "surfaceBg.pill" : "overlay.white04",
+                      }}
+                    >
+                      <TokenLogo code={d.code} contract={d.contract} size="1.125rem" />
+                      Repay {d.code}
+                    </ButtonBase>
+                  ))}
+                </Box>
+              )}
+              <Typography sx={{ fontSize: "0.8125rem", color: "grey.200", mb: "0.5rem" }}>How much of the position to close</Typography>
+              <Box sx={{ display: "flex", gap: "0.375rem", mb: "0.75rem" }}>
+                {[0.25, 0.5, 0.75, 1].map((f) => (
+                  <ButtonBase
+                    key={f}
+                    onClick={() => setCloseFrac(f)}
+                    sx={{
+                      flex: 1,
+                      height: "2.25rem",
+                      borderRadius: "0.75rem",
+                      fontSize: "0.875rem",
+                      color: closeFrac === f ? "sidebar.white" : "common.black",
+                      backgroundColor: closeFrac === f ? "sidebar.primary" : "overlay.white04",
+                    }}
+                  >
+                    {f === 1 ? "All" : `${f * 100}%`}
+                  </ButtonBase>
+                ))}
+              </Box>
+              <DetailRows rows={closeDetails} />
+              <Typography sx={{ fontSize: "0.75rem", color: "grey.200", mt: "0.5rem" }}>
+                Sells part of your {m.code} for {closeDebt?.code ?? "the debt"} with a flash loan, repays it and returns the rest, in one
+                transaction. To repay gradually instead, use the Repay and Withdraw tabs.
+              </Typography>
+            </>
+          ) : tab === "leverage" ? (
             <>
               <AmountBox
                 label={`Deposit ${m.code}`}

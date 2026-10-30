@@ -545,6 +545,125 @@ async function buildOneStep(
   };
 }
 
+export interface BlendCloseBody {
+  from?: string;
+  pool?: string;
+  collateral?: string;
+  debt?: string;
+  /** Share of the position to close: 1 = everything (all debt repaid, all collateral back). */
+  fraction?: number;
+  slippageBps?: number;
+}
+
+/**
+ * One-step close (seidar-leverage `close`): flash-borrow collateral, swap it into the debt asset,
+ * repay, withdraw and repay the flash loan, all in one transaction. Partial closes repay and
+ * withdraw the same share of the position, so its health stays where it was. Only for pools that
+ * allow borrowing (the flash loan is a borrow); on-ice or frozen pools close manually.
+ *
+ *   POST /lending/blend/leverage/close { from, pool, collateral, debt, fraction, slippageBps }
+ */
+export async function buildBlendLeverageClose(body: BlendCloseBody | null): Promise<{ status: number; body: Built | Fail }> {
+  try {
+    const from = String(body?.from ?? "");
+    const pool = String(body?.pool ?? "");
+    const coll = String(body?.collateral ?? "");
+    const debt = String(body?.debt ?? "");
+    const fraction = Number(body?.fraction ?? 1);
+    const slippageBps = Number(body?.slippageBps ?? 50);
+    if (!isAccount(from)) return fail("from must be a G... wallet");
+    if (!isContract(pool) || !isContract(coll) || !isContract(debt) || coll === debt) return fail("pool, collateral and debt (two different tokens) required");
+    if (!(fraction > 0 && fraction <= 1)) return fail("fraction must be between 0 and 1");
+    if (!(slippageBps >= 1 && slippageBps <= 500)) return fail("slippage must be between 0.01% and 5%");
+    const contract = blendLeverageContract();
+    if (!contract) return fail("One-step close isn't available yet. Repay and withdraw step by step below.");
+    const status = Number(((await sorobanView(pool, "get_config")) as { status?: unknown })?.status ?? 0);
+    if (status > 1) return fail("This pool is on ice or frozen, so it can't lend the flash loan a one-step close needs. Repay and withdraw step by step below.");
+
+    const sdk = await import("@stellar/stellar-sdk");
+    const { blendPosition } = await import("./blend-position.js");
+    const { quoteSwap } = await import("./swap.js");
+    const { encodeAggregatorSwapCall } = await import("./swap-route.js");
+    const { withRpc } = await import("./rpc.js");
+    const pos = await blendPosition(pool, from);
+    const cLeg = pos.legs.find((l) => l.asset === coll);
+    const dLeg = pos.legs.find((l) => l.asset === debt);
+    if (!cLeg || cLeg.collateral <= 0n) return fail("No collateral of this asset in this pool to close.");
+    if (!dLeg || dLeg.debt <= 0n) return fail("No debt of this asset in this pool to repay.");
+    const full = fraction >= 0.9999;
+    const part = (v: bigint) => (v * BigInt(Math.round(fraction * 1_000_000))) / 1_000_000n;
+    // Full: the debt plus a 0.2% buffer for interest accrued until the transaction lands (Blend
+    // refunds the excess). Partial: that share of the debt.
+    const repay = full ? dLeg.debt + dLeg.debt / 500n + 1n : part(dLeg.debt);
+    if (repay <= 0n) return fail("Amount too small to close.");
+
+    // Flash enough collateral that the swap covers the repayment: start from the oracle value plus
+    // the slippage and a 0.5% margin, then check the quote and grow once if it falls short.
+    const sizeFlash = (out: bigint) => (out * dLeg.price * cLeg.scalar * BigInt(10_000 + slippageBps + 50)) / (cLeg.price * dLeg.scalar * 10_000n);
+    let flash = sizeFlash(repay);
+    type Q = { amountOutMin?: string; distribution?: unknown[] };
+    let raw: Q | null = null;
+    let minOut = 0n;
+    for (let i = 0; i < 2; i++) {
+      if (flash <= 0n || flash > cLeg.collateral) break;
+      const q = await quoteSwap({ assetIn: coll, assetOut: debt, amount: flash.toString(), tradeType: "EXACT_IN", slippageBps: String(slippageBps), smart: true });
+      raw = ((q.body as { quote?: { rawTrade?: Q } }).quote?.rawTrade ?? null) as Q | null;
+      minOut = BigInt(String(raw?.amountOutMin ?? "0").replace(/\D/g, "") || "0");
+      if (raw?.distribution?.length && minOut >= repay) break;
+      flash = minOut > 0n ? (flash * repay * 1005n) / (minOut * 1000n) : 0n;
+      raw = null;
+    }
+    if (!raw || minOut < repay) return fail("No swap route deep enough to repay this debt from the collateral right now. Try a smaller part, or repay step by step below.");
+    if (flash > cLeg.collateral) return fail("The collateral isn't enough to cover the debt at this price. Repay part of it from your wallet below first.");
+
+    const swap = await encodeAggregatorSwapCall({ receiver: await leverageReceiver(contract), tokenIn: coll, amount: flash, tokenOut: debt, minOut, raw: raw as never });
+    // Partial: withdraw the same share of the collateral, a hair less so health can only improve.
+    const withdraw = full ? null : (part(cLeg.collateral) * 998n) / 1000n;
+    if (withdraw != null && withdraw <= flash) return fail("That share is too small to close in one step. Choose a larger part.");
+    const latest = await withRpc((s) => s.getLatestLedger());
+    const a = (x: string) => sdk.Address.fromString(x).toScVal();
+    const i128 = (v: bigint) => sdk.nativeToScVal(v, { type: "i128" });
+    const op = new sdk.Contract(contract).call(
+      "close",
+      a(from),
+      a(pool),
+      a(coll),
+      a(debt),
+      i128(flash),
+      swap,
+      i128(minOut),
+      i128(repay),
+      withdraw == null ? sdk.xdr.ScVal.scvVoid() : i128(withdraw),
+      i128(10_000_001n),
+      sdk.nativeToScVal(BigInt(Math.floor(Date.now() / 1000) + 300), { type: "u64" }),
+      sdk.nativeToScVal(latest.sequence + 120, { type: "u32" }),
+    );
+    const { xdr } = await invokeAs(from, undefined, op);
+    const sym = async (t: string) => {
+      const v = String((await sorobanView(t, "symbol").catch(() => "")) || "token");
+      return v === "native" ? "XLM" : v.split(":")[0];
+    };
+    const [cCode, dCode] = await Promise.all([sym(coll), sym(debt)]);
+    const fmt = (v: bigint, dec: number) => {
+      const n = Number(v) / 10 ** dec;
+      return n >= 1000 ? n.toFixed(2) : n >= 1 ? String(Number(n.toFixed(4))) : n.toPrecision(4);
+    };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        xdr,
+        label: full
+          ? `Close: repay ${fmt(dLeg.debt, dLeg.decimals)} ${dCode}, withdraw all ${cCode} (one transaction)`
+          : `Close ${Math.round(fraction * 100)}%: repay ${fmt(repay, dLeg.decimals)} ${dCode}, withdraw ${fmt(withdraw!, cLeg.decimals)} ${cCode} (one transaction)`,
+        next: null,
+      },
+    };
+  } catch (e) {
+    return fail(friendly("blend", errMsg(e)));
+  }
+}
+
 /** Intermediate rounds may dip to this health; the chosen leverage is capped so the finished position sits at LEVERAGE_MIN_HEALTH. */
 const LOOP_MIN_HEALTH = 1.1;
 const LOOP_MAX_ROUNDS = 8;

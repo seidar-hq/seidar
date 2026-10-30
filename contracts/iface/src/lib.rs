@@ -12,6 +12,7 @@ use soroban_sdk::{
 
 /// Blend v2 RequestType values (pool/src/pool/actions.rs).
 pub const REQ_SUPPLY_COLLATERAL: u32 = 2;
+pub const REQ_WITHDRAW_COLLATERAL: u32 = 3;
 pub const REQ_BORROW: u32 = 4;
 pub const REQ_REPAY: u32 = 5;
 
@@ -236,14 +237,6 @@ pub fn aggregator_swap(
     out_token.balance(&me) - before
 }
 
-/// Keep a contract's instance and code alive while it is used: extend their TTL to the network
-/// maximum whenever less than half of it is left (the maximum is read from the network, so a
-/// future change of that setting can't make this panic).
-pub fn keep_alive(e: &Env) {
-    let max = e.storage().max_ttl();
-    e.storage().instance().extend_ttl(max / 2, max);
-}
-
 /// Blend v2's own price rule (pool/src/pool/pool.rs load_price): a print over a day old, or not
 /// positive, is invalid. Using the same rule means this contract never refuses a position Blend accepts.
 pub const BLEND_MAX_PRICE_AGE: u64 = 24 * 60 * 60;
@@ -329,17 +322,17 @@ pub struct SwapCall {
     pub pulls: Vec<Pull>,
 }
 
-/// One staged leverage swap, set by seidar-leverage and run by
-/// seidar-leverage-receiver inside Blend's `exec_op` callback: swap the
-/// flashed `amount` of `debt` into `collateral` with `swap` (at least
-/// `min_out`) and send all of it to `user`.
+/// One staged swap, set by seidar-leverage and run by seidar-leverage-receiver inside Blend's
+/// `exec_op` callback: swap the flashed `amount` of `asset_in` into `asset_out` with `swap`
+/// (at least `min_out`) and send all of it to `user`. Opening flashes the debt asset into
+/// collateral; closing flashes the collateral asset into the debt asset.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Staged {
     pub user: Address,
-    pub debt: Address,
+    pub asset_in: Address,
     pub amount: i128,
-    pub collateral: Address,
+    pub asset_out: Address,
     pub swap: SwapCall,
     pub min_out: i128,
 }
@@ -347,4 +340,6 @@ pub struct Staged {
 #[contractclient(name = "ReceiverClient")]
 pub trait LeverageReceiver {
     fn stage(e: Env, op: Staged);
+    /// True while a staged op has not been run (a pool that never called exec_op).
+    fn pending(e: Env) -> bool;
 }

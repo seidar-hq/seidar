@@ -7,13 +7,13 @@
 //! `exec_op` runs only against the op staged in the same transaction, for the
 //! exact user / token / amount, then clears it. It makes the staged swap call
 //! (any DEX: the call is data, not code), with only the staged `pulls` of the
-//! flashed debt token pre-authorized (together at most the flashed amount).
-//! It measures the collateral received by balance, reverts below `min_out`,
-//! sends ALL of it to the user, and returns any debt token the swap didn't
-//! spend to the user too (Blend then pulls the supply from the user). It never
-//! holds funds outside a single flash loan.
+//! flashed token pre-authorized (together at most the flashed amount). It
+//! measures the output received by balance, reverts below `min_out`, sends ALL
+//! of it to the user, and returns any flashed token the swap didn't spend to the
+//! user too (Blend then settles the user's requests). It never holds funds
+//! outside a single flash loan.
 
-use seidar_leverage_iface::{keep_alive, Staged, SwapCall};
+use seidar_leverage_iface::{Staged, SwapCall};
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
     contract, contracterror, contractimpl, contracttype, panic_with_error, token, Address, Env, IntoVal, Symbol, Val, Vec,
@@ -93,6 +93,12 @@ impl SeidarLeverageReceiver {
         e.storage().temporary().set(&Key::Staged, &op);
     }
 
+    /// True while a staged op has not been run: seidar-leverage checks this after the flash loan,
+    /// so a pool that never called back can't leave a stale op behind.
+    pub fn pending(e: Env) -> bool {
+        e.storage().temporary().has(&Key::Staged)
+    }
+
     /// Blend flash-loan callback; `caller` is the position owner (`from`).
     pub fn exec_op(e: Env, caller: Address, token: Address, amount: i128, _fee: i128) {
         let p: Staged = e
@@ -101,19 +107,18 @@ impl SeidarLeverageReceiver {
             .get(&Key::Staged)
             .unwrap_or_else(|| panic_with_error!(&e, ReceiverError::NoStagedOp));
         e.storage().temporary().remove(&Key::Staged);
-        keep_alive(&e);
-        if caller != p.user || token != p.debt || amount != p.amount {
+        if caller != p.user || token != p.asset_in || amount != p.amount {
             panic_with_error!(&e, ReceiverError::BadArgs);
         }
-        let (out, unspent) = run_swap(&e, &p.debt, amount, &p.collateral, &p.swap);
+        let (out, unspent) = run_swap(&e, &p.asset_in, amount, &p.asset_out, &p.swap);
         if out < p.min_out {
             panic_with_error!(&e, ReceiverError::InsufficientOutput);
         }
         let me = e.current_contract_address();
-        token::Client::new(&e, &p.collateral).transfer(&me, &p.user, &out);
-        // Input the swap didn't use belongs to the user (it is their flash-borrowed debt).
+        token::Client::new(&e, &p.asset_out).transfer(&me, &p.user, &out);
+        // Input the swap didn't use belongs to the user (it was flash-borrowed against them).
         if unspent > 0 {
-            token::Client::new(&e, &p.debt).transfer(&me, &p.user, &unspent);
+            token::Client::new(&e, &p.asset_in).transfer(&me, &p.user, &unspent);
         }
     }
 }

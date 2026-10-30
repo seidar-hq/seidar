@@ -59,7 +59,8 @@ const pairLtv = (s: Spoke, d: Market) => s.ltv * (d.protocol === "blend" ? (d.lF
 export function leverageSpokes(m: Market | undefined, markets: Market[]): Spoke[] {
   if (!m?.contract) return [];
   if (m.protocol === "blend") {
-    if (!m.canCollateral || !((m.ltvPct ?? 0) > 0) || (m.status != null && m.status > 1) || !((m.priceUsd ?? 0) > 0)) return [];
+    // On-ice / frozen pools keep the tab (blocked by actionBlock with the reason), like Borrow does.
+    if (!m.canCollateral || !((m.ltvPct ?? 0) > 0) || !((m.priceUsd ?? 0) > 0)) return [];
     const s: Spoke = { spokeId: 0, spokeName: m.poolName, ltv: (m.ltvPct ?? 0) / 100, debts: [] };
     s.debts = markets.filter(
       (x) => x.protocol === "blend" && x.pool === m.pool && x.contract && x.contract !== m.contract && x.canBorrow && (x.priceUsd ?? 0) > 0 && maxLeverage(pairLtv(s, x)) > 1.1,

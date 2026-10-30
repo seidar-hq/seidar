@@ -9,7 +9,7 @@ use base64::Engine;
 use seidar_leverage_iface::{health_factor, price, BlendPoolClient, Hop, Pull, Route, Staged, SwapCall, SCALAR_12, SCALAR_7};
 use soroban_ledger_snapshot::LedgerSnapshot;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::Address as _,
     token,
     xdr::{LedgerEntry, LedgerKey, Limits, ReadXdr, ScVal},
     Address, BytesN, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
@@ -255,11 +255,12 @@ fn assert_opened(s: &Setup, o: &Open, hf: i128, wallet_before: i128) {
     assert!(surplus >= 0, "the swap paid less than min_out");
     std::println!("swap surplus left in the wallet: {surplus} ({:.2}% of min_out)", surplus as f64 * 100.0 / o.min_out as f64);
     assert!(surplus <= o.min_out / 10, "surplus is more than the slippage buffer");
-    // Nothing is left in the contracts.
+    // Nothing is left in the contracts, and the pool's allowance was used up exactly.
     for c in [&s.leverage, &s.receiver] {
         assert_eq!(token::Client::new(&s.f.e, &o.collateral).balance(c), 0);
         assert_eq!(token::Client::new(&s.f.e, &o.debt).balance(c), 0);
     }
+    assert_eq!(token::Client::new(&s.f.e, &o.collateral).allowance(&s.user, &s.f.pool), 0, "allowance left after open");
 }
 
 // ---------- happy paths ----------
@@ -430,9 +431,9 @@ fn only_the_leverage_contract_can_stage() {
     e.set_auths(&[]);
     let op = Staged {
         user: s.user.clone(),
-        debt: s.f.usdc.clone(),
+        asset_in: s.f.usdc.clone(),
         amount: 1,
-        collateral: s.f.xlm.clone(),
+        asset_out: s.f.xlm.clone(),
         swap: aggregator_call(&s, &s.f.usdc, 1, &s.f.xlm, 1, Vec::new(e)),
         min_out: 1,
     };
@@ -542,4 +543,246 @@ fn a_swap_that_pays_nothing_is_refused() {
     };
     assert_eq!(code(try_open(&s, &o).expect_err("no output")), 3);
     assert_eq!(debt_of(&s, &usdc), 0);
+}
+
+// ---------- a pool that never calls back ----------
+
+mod fake_pool {
+    use seidar_leverage_iface::{FlashLoan, Positions, Request};
+    use soroban_sdk::{contract, contractimpl, Address, Env, Map, Vec};
+
+    #[contract]
+    pub struct FakePool;
+
+    #[contractimpl]
+    impl FakePool {
+        pub fn flash_loan(e: Env, _from: Address, _flash_loan: FlashLoan, _requests: Vec<Request>) -> Positions {
+            Positions { liabilities: Map::new(&e), collateral: Map::new(&e), supply: Map::new(&e) }
+        }
+    }
+}
+
+#[test]
+fn open_refuses_a_pool_that_never_runs_the_swap() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let fake = e.register(fake_pool::FakePool, ());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    let args: Vec<Val> = (
+        s.user.clone(),
+        fake,
+        o.collateral.clone(),
+        o.deposit,
+        o.debt.clone(),
+        o.borrow,
+        o.swap.clone(),
+        o.min_out,
+        o.min_hf,
+        o.deadline,
+        e.ledger().sequence() + 20,
+    )
+        .into_val(e);
+    let r = e.try_invoke_contract::<i128, soroban_sdk::Error>(&s.leverage, &Symbol::new(e, "open"), args);
+    assert!(matches!(r, Err(Ok(err)) if err.get_code() == 4), "{r:?}");
+    let pending: bool = e.invoke_contract(&s.receiver, &Symbol::new(e, "pending"), Vec::new(e));
+    assert!(!pending, "no stale op left in the receiver");
+}
+
+// ---------- close ----------
+
+struct Close {
+    collateral: Address,
+    debt: Address,
+    flash: i128,
+    swap: SwapCall,
+    min_out: i128,
+    repay: i128,
+    withdraw: Option<i128>,
+    min_hf: i128,
+}
+
+impl Close {
+    /// Repay `repay` of debt by swapping flashed collateral (oracle value + `slip_bps`), withdraw `withdraw`.
+    fn new(s: &Setup, collateral: &Address, debt: &Address, repay: i128, withdraw: Option<i128>, slip_bps: i128) -> Close {
+        let min_out = repay;
+        let flash = oracle_convert(s, debt, collateral, min_out) * (10_000 + slip_bps) / 10_000;
+        Close {
+            collateral: collateral.clone(),
+            debt: debt.clone(),
+            flash,
+            swap: aggregator_call(s, collateral, flash, debt, min_out, route(&s.f, Via::SoroswapPair, collateral, debt, flash)),
+            min_out,
+            repay,
+            withdraw,
+            min_hf: 11_000_000,
+        }
+    }
+
+    /// Everything: the debt plus a small buffer (interest, rounding; Blend refunds the excess), all collateral.
+    fn all(s: &Setup, collateral: &Address, debt: &Address) -> Close {
+        let owed = debt_of(s, debt);
+        Close::new(s, collateral, debt, owed + owed / 500 + 1, None, 300)
+    }
+}
+
+fn try_close(s: &Setup, c: &Close) -> Result<i128, soroban_sdk::Error> {
+    let e = &s.f.e;
+    let mut args: Vec<Val> = Vec::new(e);
+    args.push_back(s.user.clone().into_val(e));
+    args.push_back(s.f.pool.clone().into_val(e));
+    args.push_back(c.collateral.clone().into_val(e));
+    args.push_back(c.debt.clone().into_val(e));
+    args.push_back(c.flash.into_val(e));
+    args.push_back(c.swap.clone().into_val(e));
+    args.push_back(c.min_out.into_val(e));
+    args.push_back(c.repay.into_val(e));
+    args.push_back(c.withdraw.into_val(e));
+    args.push_back(c.min_hf.into_val(e));
+    args.push_back((e.ledger().timestamp() + 300).into_val(e));
+    args.push_back((e.ledger().sequence() + 20).into_val(e));
+    e.cost_estimate().budget().reset_unlimited();
+    let r = e.try_invoke_contract::<i128, soroban_sdk::Error>(&s.leverage, &Symbol::new(e, "close"), args);
+    let cpu = e.cost_estimate().budget().cpu_instruction_cost();
+    let mem = e.cost_estimate().budget().memory_bytes_cost();
+    std::println!("close cost: cpu {cpu} mem {mem}");
+    match r {
+        Ok(Ok(hf)) => {
+            assert!(cpu < 100_000_000 && mem < 40 * 1024 * 1024, "close over network limits");
+            Ok(hf)
+        }
+        Ok(Err(_)) => panic!("bad return conversion"),
+        Err(_) if std::env::var("LEV_DEBUG").is_ok() => {
+            std::println!("{:#?}", e.host().get_diagnostic_events());
+            Err(soroban_sdk::Error::from_contract_error(0))
+        }
+        Err(Ok(err)) => Err(err),
+        Err(Err(_)) => Err(soroban_sdk::Error::from_contract_error(0)),
+    }
+}
+
+fn assert_clean(s: &Setup, tokens: [&Address; 2]) {
+    let e = &s.f.e;
+    for t in tokens {
+        let c = token::Client::new(e, t);
+        for a in [&s.leverage, &s.receiver] {
+            assert_eq!(c.balance(a), 0, "a contract kept funds");
+        }
+        assert_eq!(c.allowance(&s.user, &s.f.pool), 0, "an allowance to the pool was left");
+    }
+    let pending: bool = e.invoke_contract(&s.receiver, &Symbol::new(e, "pending"), Vec::new(e));
+    assert!(!pending);
+}
+
+#[test]
+fn closes_a_long_in_one_transaction() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    try_open(&s, &o).expect("open");
+    let coll = collateral_of(&s, &xlm);
+    let wallet = bal(&s, &xlm);
+    let c = Close::all(&s, &xlm, &usdc);
+    let hf = try_close(&s, &c).expect("close");
+    assert_eq!(hf, 0, "no debt left");
+    assert_eq!(debt_of(&s, &usdc), 0);
+    assert_eq!(debt_of(&s, &xlm), 0, "flash loan fully repaid");
+    assert_eq!(collateral_of(&s, &xlm), 0, "all collateral withdrawn");
+    let got = bal(&s, &xlm) - wallet;
+    std::println!("collateral {coll}, flashed {}, wallet +{got} XLM, USDC left {}", c.flash, bal(&s, &usdc));
+    // The wallet gets the collateral back minus what was sold to repay the debt.
+    assert!(got > 0 && got >= coll - c.flash - c.flash / 1000 - 10, "wallet received the rest of the collateral");
+    assert_clean(&s, [&xlm, &usdc]);
+}
+
+#[test]
+fn closes_a_short_in_one_transaction() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let r = route(&s.f, Via::Aqua, &xlm, &usdc, 10_000_0000000);
+    let got: i128 = e.invoke_contract(
+        &s.f.aggregator,
+        &Symbol::new(e, "swap_exact_in"),
+        (s.user.clone(), xlm.clone(), 10_000_0000000i128, usdc.clone(), 1i128, r, Option::<Val>::None).into_val(e),
+    );
+    let o = Open::new(&s, Via::SoroswapPair, &usdc, &xlm, got / 2, 18, 300);
+    try_open(&s, &o).expect("open short");
+    let c = Close::all(&s, &usdc, &xlm);
+    assert_eq!(try_close(&s, &c).expect("close short"), 0);
+    assert_eq!(debt_of(&s, &xlm), 0);
+    assert_eq!(debt_of(&s, &usdc), 0);
+    assert_eq!(collateral_of(&s, &usdc), 0);
+    assert_clean(&s, [&xlm, &usdc]);
+}
+
+#[test]
+fn closes_part_of_a_position() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    try_open(&s, &o).expect("open");
+    let owed = debt_of(&s, &usdc);
+    let coll = collateral_of(&s, &xlm);
+    let mut c = Close::new(&s, &xlm, &usdc, owed / 2, None, 300);
+    c.withdraw = Some(c.flash + coll / 10);
+    let hf = try_close(&s, &c).expect("partial close");
+    let left = debt_of(&s, &usdc);
+    std::println!("debt {owed} -> {left}, collateral {coll} -> {}, hf {hf}", collateral_of(&s, &xlm));
+    assert!(left > 0 && left <= owed - owed / 2 + 2, "half the debt repaid");
+    assert!(hf >= c.min_hf);
+    assert_eq!(debt_of(&s, &xlm), 0, "flash loan fully repaid");
+    assert_clean(&s, [&xlm, &usdc]);
+}
+
+#[test]
+fn close_refuses_a_swap_below_min_out() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    try_open(&s, &o).expect("open");
+    let owed = debt_of(&s, &usdc);
+    let mut c = Close::all(&s, &xlm, &usdc);
+    c.min_out = c.min_out * 2;
+    c.repay = c.min_out;
+    assert!(try_close(&s, &c).is_err());
+    assert!(debt_of(&s, &usdc) >= owed, "reverted, position unchanged");
+}
+
+#[test]
+fn close_with_no_position_is_refused() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let c = Close::new(&s, &xlm, &usdc, 100_0000000, None, 300);
+    assert_eq!(code(try_close(&s, &c).expect_err("nothing to close")), 5);
+}
+
+#[test]
+fn close_refuses_bad_args() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let cases: [fn(&mut Close); 6] = [
+        |c| c.repay = 0,
+        |c| c.flash = 0,
+        |c| c.min_out = 0,
+        |c| c.withdraw = Some(0),
+        |c| c.min_hf = SCALAR_7 - 1,
+        |c| c.debt = c.collateral.clone(),
+    ];
+    for f in cases {
+        let mut c = Close::new(&s, &xlm, &usdc, 100_0000000, None, 300);
+        f(&mut c);
+        assert_eq!(code(try_close(&s, &c).expect_err("bad args")), 1);
+    }
+}
+
+#[test]
+fn close_needs_the_users_signature() {
+    let s = setup();
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    try_open(&s, &o).expect("open");
+    let c = Close::all(&s, &xlm, &usdc);
+    s.f.e.set_auths(&[]);
+    assert!(try_close(&s, &c).is_err(), "closed without the user's signature");
 }

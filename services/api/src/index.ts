@@ -478,6 +478,11 @@ app.get("/lending/blend/leverage", async (c) => {
   const { blendLeverageContract } = await import("./lending.js");
   return c.json({ ok: true, oneStep: blendLeverageContract() != null, contract: blendLeverageContract() });
 });
+app.post("/lending/blend/leverage/close", async (c) => {
+  const { buildBlendLeverageClose } = await import("./lending.js");
+  const r = await buildBlendLeverageClose(await c.req.json().catch(() => null));
+  return c.json(r.body, r.status as 200);
+});
 app.post("/lending/blend/leverage", async (c) => {
   const { buildBlendLeverage } = await import("./lending.js");
   const r = await buildBlendLeverage(await c.req.json().catch(() => null));

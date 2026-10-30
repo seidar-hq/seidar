@@ -114,12 +114,14 @@ export type LendAction = "supply" | "borrow" | "withdraw" | "repay" | "leverage"
 /** Why an action is unavailable on this market (null when allowed). */
 export function actionBlock(m: Market, a: LendAction): string | null {
   if (!m.contract) return "Market unavailable";
+  const s = m.status;
   if (a === "leverage") {
     if (!m.canCollateral) return "This asset can't be collateral";
-    if (m.status != null && m.status > 1) return "Borrowing is paused in this pool";
+    if (s != null && s >= 6) return "Pool is in setup";
+    if (s != null && s >= 4) return "Pool is frozen: leverage is paused";
+    if (s != null && s >= 2) return "Pool is on ice: leverage is paused";
     return null;
   }
-  const s = m.status;
   if (s != null && s >= 6) return "Pool is in setup";
   if (a === "supply" && s != null && s >= 4) return "Pool is frozen: supplying is paused";
   if (a === "borrow") {
