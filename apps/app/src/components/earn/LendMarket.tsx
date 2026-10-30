@@ -415,22 +415,57 @@ export default function LendMarket() {
   const preview = (() => {
     if (!me || posLoading) return null;
     const p = price ?? m.priceUsd ?? 0;
-    if (tab === "supply" && n > 0) return { supply: supplied + n, coll: protocol === "xoxno" || (collateral && m.canCollateral) ? n * p : 0, debt: 0 };
-    if (tab === "withdraw" && n > 0) return { supply: Math.max(0, supplied - n), coll: -Math.min(n, collateralHeld) * p, debt: 0 };
-    if (tab === "borrow" && n > 0) return { borrowed: borrowed + n, coll: 0, debt: n * p };
-    if (tab === "repay" && n > 0) return { borrowed: Math.max(0, borrowed - n), coll: 0, debt: -Math.min(n, borrowed) * p };
-    if (opening && lv.preview) return { supply: supplied + lv.preview.added, coll: lv.preview.addedUsd, debt: lv.preview.debtUsd, debtAfter: debtHeld + lv.preview.debtAmount };
+    const mB = m.borrowApy ?? 0;
+    if (tab === "supply" && n > 0)
+      return { supply: supplied + n, coll: protocol === "xoxno" || (collateral && m.canCollateral) ? n * p : 0, debt: 0, sUsd: n * p, bUsd: 0, bApy: mB };
+    if (tab === "withdraw" && n > 0) {
+      const w = Math.min(n, supplied);
+      return { supply: supplied - w, coll: -Math.min(w, collateralHeld) * p, debt: 0, sUsd: -w * p, bUsd: 0, bApy: mB };
+    }
+    if (tab === "borrow" && n > 0) return { borrowed: borrowed + n, coll: 0, debt: n * p, sUsd: 0, bUsd: n * p, bApy: mB };
+    if (tab === "repay" && n > 0) {
+      const r = Math.min(n, borrowed);
+      return { borrowed: borrowed - r, coll: 0, debt: -r * p, sUsd: 0, bUsd: -r * p, bApy: mB };
+    }
+    const dB = levDebtMarket?.borrowApy ?? 0;
+    if (opening && lv.preview)
+      return {
+        supply: supplied + lv.preview.added,
+        coll: lv.preview.addedUsd,
+        debt: lv.preview.debtUsd,
+        debtAfter: debtHeld + lv.preview.debtAmount,
+        sUsd: lv.preview.addedUsd,
+        bUsd: lv.preview.debtUsd,
+        bApy: dB,
+      };
     if (closing && closeDebt && !closeShort) {
       const full = closeFrac >= 1;
+      const out = collateralHeld * closeFrac * unitUsd;
       return {
         supply: full ? lent : supplied - collateralHeld * closeFrac,
-        coll: -collateralHeld * closeFrac * unitUsd,
+        coll: -out,
         debt: -closeRepayUsd,
         debtAfter: full ? 0 : Math.max(0, debtHeld - closeRepay),
+        sUsd: -out,
+        bUsd: -closeRepayUsd,
+        bApy: dB,
       };
     }
     return null;
   })();
+  // Net APY of everything in this pool (Blend) or XOXNO hub: interest earned minus interest paid,
+  // over the position's net value (supplied - borrowed), like the leverage estimate. BLND rewards
+  // are not included.
+  const poolLegs = positions.legs.filter((l) => l.protocol === protocol && l.pool === pool);
+  const apyOf = (contract: string) => markets.find((x) => x.protocol === protocol && x.pool === pool && x.contract === contract);
+  const earnUsd = poolLegs.reduce((a, l) => a + l.suppliedUsd * (apyOf(l.contract)?.supplyApy ?? 0) - l.borrowedUsd * (apyOf(l.contract)?.borrowApy ?? 0), 0);
+  const netUsd = poolLegs.reduce((a, l) => a + l.suppliedUsd - l.borrowedUsd, 0);
+  const netApyOf = (earn: number, net: number) => (net > 0.01 ? earn / net : null);
+  const netApyNow = netApyOf(earnUsd, netUsd);
+  const netApyAfter = preview
+    ? netApyOf(earnUsd + preview.sUsd * (m.supplyApy ?? 0) - preview.bUsd * preview.bApy, netUsd + preview.sUsd - preview.bUsd)
+    : undefined;
+
   // Health after: Blend from the pool's effective collateral and debt (older API builds: derived
   // from health and capacity); XOXNO only for leverage, which opens a fresh account.
   const healthAfter = (() => {
@@ -526,15 +561,14 @@ export default function LendMarket() {
               afterColor={healthAfter != null && healthAfter < 1.1 ? "error.main" : undefined}
               sub={protocol === "blend" ? "This pool" : opening ? "New XOXNO account" : "XOXNO account"}
             />
-            {opening && lv.preview && (
-              <Figure
-                label="Net APY (est.)"
-                value="—"
-                after={lv.preview.netApy != null ? pct(lv.preview.netApy) : "—"}
-                afterColor={lv.preview.netApy != null && lv.preview.netApy < 0 ? "error.main" : undefined}
-                sub="On the leveraged amount"
-              />
-            )}
+            <Figure
+              label="Net APY"
+              value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{netApyNow == null ? "—" : pct(netApyNow)}</Shimmer>}
+              color={netApyNow != null && netApyNow < 0 ? "error.main" : undefined}
+              after={netApyAfter === undefined ? undefined : netApyAfter == null ? "—" : `${opening ? "≈ " : ""}${pct(netApyAfter)}`}
+              afterColor={netApyAfter != null && netApyAfter < 0 ? "error.main" : undefined}
+              sub={protocol === "blend" ? "This pool, before BLND" : "XOXNO"}
+            />
             <Figure
               label="Collateral"
               value={<Shimmer on={posLoading} width="3rem" height="1.5rem">{supplied - lent > 1e-9 || (protocol === "xoxno" && supplied > 0) ? "Yes" : supplied > 0 ? "No (lent only)" : "—"}</Shimmer>}
