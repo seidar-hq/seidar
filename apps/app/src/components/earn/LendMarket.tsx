@@ -18,7 +18,7 @@ import { runBuilt, toBase, type TxStep } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
-import ActionCard, { AmountBox, DetailRows, type DetailRow } from "./ActionCard";
+import ActionCard, { AmountBox, DetailRows, sheetOnly, type DetailRow } from "./ActionCard";
 import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard, StatusPill } from "./EarnUI";
 import { LeverageFields, SLIPPAGE_BPS, useLeverage } from "./leverage";
 import { LEND_PROTOCOLS, actionBlock, compactUsd, marketHref, marketStatus, pct, useLendMarkets, useLendPositions, type LendAction, type Market } from "./lendData";
@@ -490,6 +490,32 @@ export default function LendMarket() {
   })();
   const showDebt = tab === "leverage" && levDebt != null;
 
+  // On phones the form opens in a bottom sheet that covers My Position, so the sheet repeats the
+  // values that change, as "now → after".
+  const change = (now: string, after: string, color?: string) => (
+    <>
+      {now}{" "}
+      <Box component="span" sx={{ color: color ?? "primary.main", fontWeight: 600 }}>
+        → {after}
+      </Box>
+    </>
+  );
+  const sheetRows: DetailRow[] = [];
+  if (preview?.supply != null) sheetRows.push({ label: "My supply", value: change(formatAmount(supplied, 4), `${formatAmount(preview.supply, 4)} ${m.code}`) });
+  if (preview?.borrowed != null) sheetRows.push({ label: "Borrowed", value: change(formatAmount(borrowed, 4), `${formatAmount(preview.borrowed, 4)} ${m.code}`) });
+  if (preview?.debtAfter != null && levDebt)
+    sheetRows.push({ label: `Borrowed ${levDebt.code}`, value: change(formatAmount(debtHeld, 4), `${formatAmount(preview.debtAfter, 4)} ${levDebt.code}`) });
+  if (healthAfter !== undefined)
+    sheetRows.push({
+      label: "Health factor",
+      value: change(health == null ? "—" : health.toFixed(2), healthAfter == null ? "No debt" : healthAfter.toFixed(2), healthAfter != null && healthAfter < 1.1 ? "error.main" : undefined),
+    });
+  if (netApyAfter !== undefined)
+    sheetRows.push({
+      label: "Net APY",
+      value: change(netApyNow == null ? "—" : pct(netApyNow), netApyAfter == null ? "—" : pct(netApyAfter), netApyAfter != null && netApyAfter < 0 ? "error.main" : undefined),
+    });
+
   const details: DetailRow[] = [];
   if (tab === "supply" || tab === "withdraw") details.push({ label: "Supply APY", value: pct(m.supplyApy), color: "green.main" });
   if (tab === "borrow" || tab === "repay") details.push({ label: "Borrow APY", value: pct(m.borrowApy), color: "green.main" });
@@ -787,6 +813,11 @@ export default function LendMarket() {
               )}
               <DetailRows rows={details} />
             </>
+          )}
+          {sheetRows.length > 0 && (
+            <Box sx={{ ...sheetOnly, pt: "0.75rem", borderTop: (t) => `0.0625rem solid ${t.palette.overlay.white08}` }}>
+              <DetailRows rows={sheetRows} />
+            </Box>
           )}
         </ActionCard>
 
