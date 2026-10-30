@@ -20,6 +20,8 @@ import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import { HOME_ENABLED } from "@/lib/features";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
@@ -180,8 +182,15 @@ const MobileDrawerList = styled(Box)(({ theme }) => ({
 type NavEntry = { title: string; value: string; lightIcon: string; darkIcon: string; IconComponent?: SvgIconComponent };
 type SubEntry = { title: string; subtitle: string; path: string; Icon: SvgIconComponent | typeof SwapDropdownIcon };
 
-const NAV: NavEntry[] = [
-  { title: "Dashboard", value: "/dashboard", lightIcon: "/assets/nav/dashboardIcon.svg", darkIcon: "/assets/nav/dashboardDarkIcon.svg" },
+const ALL_NAV: NavEntry[] = [
+  {
+    title: "Home",
+    value: "/",
+    lightIcon: "/assets/nav/dashboardIcon.svg",
+    darkIcon: "/assets/nav/dashboardDarkIcon.svg",
+    IconComponent: HomeOutlinedIcon,
+  },
+  { title: "Portfolio", value: "/portfolio", lightIcon: "/assets/nav/dashboardIcon.svg", darkIcon: "/assets/nav/dashboardDarkIcon.svg" },
   { title: "Trade", value: "/trade-swap", lightIcon: "/assets/nav/tradeSwapLightIcon.svg", darkIcon: "/assets/nav/tradeSwapDarkIcon.svg" },
   { title: "Earn", value: "/earn", lightIcon: "/assets/nav/earnLightIcon.svg", darkIcon: "/assets/nav/earnDarkIcon.svg" },
   { title: "Bridge", value: "/bridge", lightIcon: "/assets/nav/bridgeIconLight.svg", darkIcon: "/assets/nav/bridgeIconDark.svg" },
@@ -194,6 +203,9 @@ const NAV: NavEntry[] = [
     IconComponent: SettingsOutlinedIcon,
   },
 ];
+
+// Home is listed only when it is enabled (lib/features.ts).
+const NAV = ALL_NAV.filter((n) => HOME_ENABLED || n.value !== "/");
 
 const TRADE_ITEMS: SubEntry[] = [
   { title: "Swap", subtitle: "Best route across Stellar DEXs", path: "/trade-swap/dex", Icon: SwapDropdownIcon },
@@ -258,7 +270,10 @@ export default function Header() {
 
   const isActive = useCallback(
     (value: string) => {
-      if (value === "/dashboard") return pathname === "/" || pathname.startsWith("/dashboard") || pathname.startsWith("/asset");
+      // Home owns the asset pages it links to; Portfolio also answers its old /dashboard path.
+      if (value === "/") return pathname === "/" || pathname.startsWith("/asset");
+      if (value === "/portfolio")
+        return pathname.startsWith("/portfolio") || pathname.startsWith("/dashboard") || (!HOME_ENABLED && pathname === "/");
       return pathname.startsWith(value);
     },
     [pathname],

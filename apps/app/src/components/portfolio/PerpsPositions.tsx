@@ -17,7 +17,7 @@ const T = ({ children, color = "common.black" }: { children: React.ReactNode; co
 );
 const pnlColor = (v: number) => (v > 0 ? "green.main" : v < 0 ? "error.main" : "common.black");
 
-// Zenex perps positions for the wallets the dashboard covers.
+// Zenex perps positions for the wallets the portfolio covers.
 export default function PerpsPositions({ addresses }: { addresses: string[] }) {
   const { wallets } = useWallet();
   const { byAddress, loading } = usePerpsAccounts(addresses);
@@ -70,5 +70,5 @@ export default function PerpsPositions({ addresses }: { addresses: string[] }) {
     },
     { id: "pnl", header: "Net PnL", cell: (r) => <T color={pnlColor(r.netPnl)}>{formatUsd(r.netPnl)} ({r.netPnlPct.toFixed(2)}%)</T>, sortValue: (r) => r.netPnl },
   ];
-  return <DataTable from="dashboard" columns={cols} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No open perps positions" getRowId={(r) => `${r.wallet}:${r.side}`} />;
+  return <DataTable from="portfolio" columns={cols} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No open perps positions" getRowId={(r) => `${r.wallet}:${r.side}`} />;
 }

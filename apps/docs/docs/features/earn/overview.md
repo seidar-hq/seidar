@@ -25,7 +25,7 @@ All rates are variable. None of them is guaranteed.
 
 ## Your positions
 
-Everything you deposit through Earn appears on the [Dashboard](/features/dashboard) under **Supplied**, **Borrowed** and **Vaults**, and each Earn page shows your own positions above its market list.
+Everything you deposit through Earn appears on the [Portfolio](/features/portfolio) under **Supplied**, **Borrowed** and **Vaults**, and each Earn page shows your own positions above its market list.
 
 :::caution Smart contract risk
 Each protocol is a separate set of smart contracts with its own audits, admins and failure modes. Seidar builds transactions for them but doesn't control or insure them. Spreading deposits across protocols limits the damage if one fails.

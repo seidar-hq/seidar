@@ -106,7 +106,7 @@ const config: Config = {
         {
           title: 'Product',
           items: [
-            {label: 'Dashboard', to: '/features/dashboard'},
+            {label: 'Portfolio', to: '/features/portfolio'},
             {label: 'Swap', to: '/features/trading/swap'},
             {label: 'Earn', to: '/features/earn/overview'},
             {label: 'Bridge', to: '/features/bridge'},

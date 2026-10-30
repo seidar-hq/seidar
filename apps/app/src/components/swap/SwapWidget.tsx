@@ -269,11 +269,19 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const retryAt = useRef(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Default pair once the catalogue loads: XLM -> USDC.
+  // Default pair once the catalogue loads: XLM -> USDC, or XLM / USDC -> the token in ?buy=CODE:ISSUER
+  // (Home's Swap buttons) when the catalogue has it.
   useEffect(() => {
     if (!tokens.length || fromC) return;
-    setFromC(tokens.find((t) => t.code === "XLM" && !t.issuer)?.contract ?? null);
-    setToC(tokens.find((t) => t.code === "USDC" && t.issuer?.startsWith("GA5ZSE"))?.contract ?? null);
+    const xlm = tokens.find((t) => t.code === "XLM" && !t.issuer)?.contract ?? null;
+    const usdc = tokens.find((t) => t.code === "USDC" && t.issuer?.startsWith("GA5ZSE"))?.contract ?? null;
+    const [code, issuer] = (new URLSearchParams(window.location.search).get("buy") ?? "").split(":");
+    // CODE:ISSUER (classic), CODE:CONTRACT (Soroban-only) or XLM.
+    const buy = code
+      ? tokens.find((t) => (issuer?.startsWith("C") ? t.contract === issuer : t.code === code && (t.issuer ?? null) === (issuer || null)))?.contract
+      : undefined;
+    setFromC(buy && buy === xlm ? usdc : xlm);
+    setToC(buy ?? usdc);
   }, [tokens, fromC]);
 
   const from = tokens.find((t) => t.contract === fromC) ?? null;

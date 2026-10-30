@@ -11,6 +11,7 @@ import SmoothScroll from "./SmoothScroll";
 import { useWallet } from "@/wallet/WalletContext";
 import AgentPanel from "@/components/agent/AgentPanel";
 import { AGENT_DOCK_MIN, AGENT_PANEL_WIDTH, useAgent } from "@/components/agent/AgentContext";
+import { HOME_ENABLED } from "@/lib/features";
 
 const AppRoot = styled(Box)(({ theme }) => ({
   padding: "6.5rem 1rem 1rem 1rem",
@@ -42,9 +43,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { ready } = useWallet();
   const { open } = useAgent();
   const pathname = usePathname();
-  // The dashboard gives the agent its right-hand column; other pages make room beside their content.
-  const onDashboard = pathname === "/" || pathname.startsWith("/dashboard");
-  const dock = open && !onDashboard;
+  // Portfolio gives the agent its right-hand column; other pages make room beside their content.
+  const onPortfolio = pathname.startsWith("/portfolio") || (!HOME_ENABLED && pathname === "/");
+  const dock = open && !onPortfolio;
   return (
     <AppRoot>
       <SmoothScroll />

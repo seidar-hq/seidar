@@ -147,7 +147,7 @@ type Props<Row> = {
   rows: Row[];
   isLoading?: boolean;
   emptyDataText?: string;
-  from?: "dashboard";
+  from?: "portfolio";
   getRowId?: (row: Row, index: number) => string;
   /** Whole row is clickable and highlights on hover. */
   onRowClick?: (row: Row) => void;
@@ -276,7 +276,7 @@ export default function DataTable<Row>({
             borderRadius: "1rem",
             width: "100%",
             minWidth: 0,
-            padding: from === "dashboard" || inset ? "0" : "1rem",
+            padding: from === "portfolio" || inset ? "0" : "1rem",
             overflow: "visible",
             backgroundColor: "transparent",
             backgroundImage: "none",

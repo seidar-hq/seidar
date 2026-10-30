@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme } from "@mui/material/styles";
-import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import ZoomChart from "@/components/common/ZoomChart";
 import { PlainCard } from "@/components/common/SectionCard";
 import Shimmer from "@/components/common/Shimmer";
 import TokenLogo from "@/components/common/TokenLogo";
@@ -146,7 +146,6 @@ export default function VaultDetail() {
     details.push({ label: "Your deposit", value: <Shimmer on={posLoading} width="4.5rem">{`${formatAmount(deposited, 4)} ${vault.assetCode}`}</Shimmer> });
 
   const strategies = detail?.assets?.flatMap((a) => a.strategies ?? []) ?? [];
-  const fmtDay = (t: number) => new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
 
   return (
     <Layout>
@@ -211,20 +210,12 @@ export default function VaultDetail() {
               <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>Value of one vault share in {vault.assetCode}; it rises as the vault earns.</Typography>
             </Box>
             <Box sx={{ height: "14rem" }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={history} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="vaultPps" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={theme.palette.green.main} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={theme.palette.green.main} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="t" tickFormatter={fmtDay} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={32} />
-                  <YAxis orientation="right" domain={["auto", "auto"]} tickFormatter={(v) => Number(v).toFixed(4)} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
-                  <ChartTooltip formatter={(v) => [Number(v).toFixed(6), "Share price"]} labelFormatter={(t) => fmtDay(Number(t))} contentStyle={{ background: "#1F1F1F", border: "1px solid #323232", borderRadius: 12 }} />
-                  <Area type="monotone" dataKey="pps" stroke={theme.palette.green.main} strokeWidth={2} fill="url(#vaultPps)" isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <ZoomChart
+                height="100%"
+                format={(v) => v.toFixed(6)}
+                fitKey="pps"
+                series={[{ id: "pps", label: "Share price", color: theme.palette.green.main, points: history.map((p) => ({ t: p.t, v: p.pps })) }]}
+              />
             </Box>
           </Inset>
         )}

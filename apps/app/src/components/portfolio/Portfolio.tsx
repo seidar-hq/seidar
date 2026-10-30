@@ -30,7 +30,7 @@ function ConnectedPortfolio() {
   );
 }
 
-export default function Dashboard() {
+export default function Portfolio() {
   const { isConnected } = useWallet();
   // While the agent is open it sits over the right-hand column (see AppShell), so leave it empty.
   const { open: agentOpen } = useAgent();

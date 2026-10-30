@@ -16,12 +16,12 @@ npx wrangler pages dev   # serve out/ with the Pages Functions in functions/ (ne
 
 ## Layout
 
-- `src/app/*` routes: `/dashboard`, `/trade-swap/{dex,cex,perps}`, `/earn/{staking,lending&borrow,liquidity}`,
-  `/bridge`, `/transactions`, `/settings`, `/wallets`, `/asset`
+- `src/app/*` routes: `/` (Home), `/portfolio` (`/dashboard` redirects there), `/asset?asset=CODE:ISSUER`,
+  `/trade-swap/{dex,perps}`, `/earn/{lending&borrow,pools,vaults}`, `/bridge`, `/transactions`, `/settings`, `/wallets`
 - `src/theme` palette, MUI component overrides and the light/dark mode provider
 - `src/components/layout` header, footer, search dialog, tour guide
 - `src/components/<page>` per-page widgets; `src/components/common` shared pieces (tabs, locked states, tables)
-- `functions/api/news.ts` Cloudflare Pages Function feeding the dashboard News card
+- `functions/api/news.ts` Cloudflare Pages Function feeding the Portfolio News card
 - `public/assets` images and fonts
 
 Outbound links come from `NEXT_PUBLIC_*` variables (see `.env.example`).

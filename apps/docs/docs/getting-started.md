@@ -40,7 +40,7 @@ If your funds are on another chain, use the [Bridge](/features/bridge) to bring 
 
 | Menu | Where it goes |
 | --- | --- |
-| **Dashboard** | Your portfolio: total value, charts and every position. |
+| **Portfolio** | Your portfolio: total value, charts and every position. |
 | **Trade** | Swap and Perps. |
 | **Earn** | Lending & Borrowing, Pools and Vaults. |
 | **Bridge** | Deposit from other chains into Stellar. |
@@ -57,7 +57,7 @@ Every action follows the same pattern:
 2. Review the details Seidar shows: expected output, fees, health factor or price impact.
 3. Click the action button. Seidar builds and simulates the transaction; if the simulation fails, you'll see why before anything is signed.
 4. Approve the transaction in your wallet.
-5. Wait for confirmation. Stellar ledgers close every ~5 seconds, and the result appears in your dashboard and [History](/features/transactions).
+5. Wait for confirmation. Stellar ledgers close every ~5 seconds, and the result appears in your portfolio and [History](/features/transactions).
 
 :::caution Trustlines
 To hold a classic Stellar asset (USDC, EURC, AQUA and so on) your account needs a trustline for it, which reserves 0.5 XLM. If a transaction would deliver an asset you don't trust yet, the simulation fails with *"Missing trustline for this asset"*: add the trustline in your wallet and try again. The Bridge checks this up front and offers an **Add USDC trustline** button.

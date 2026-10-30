@@ -10,7 +10,7 @@ import Slider from "@mui/material/Slider";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme } from "@mui/material/styles";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
-import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import ZoomChart from "@/components/common/ZoomChart";
 import DataTable, { type Column } from "@/components/common/DataTable";
 import { PlainCard } from "@/components/common/SectionCard";
 import Tabs from "@/components/common/Tabs";
@@ -63,7 +63,6 @@ function ChartCard({ pool, history, prices }: { pool: Pool; history: { t: number
   const cut = Date.now() - days * 86400_000;
   const vol = history.filter((p) => p.t >= cut);
   const last = mode === "volume" ? vol.reduce((s, p) => s + p.volumeUsd, 0) : prices[prices.length - 1]?.px;
-  const fmtDay = (t: number) => new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
   return (
     <Inset sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
@@ -87,29 +86,19 @@ function ChartCard({ pool, history, prices }: { pool: Pool; history: { t: number
       </Box>
       <Box sx={{ height: "16rem" }}>
         {mode === "volume" ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={vol} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <XAxis dataKey="t" tickFormatter={fmtDay} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={24} />
-              <YAxis orientation="right" tickFormatter={(v) => compactUsd(v)} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
-              <ChartTooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} formatter={(v) => [compactUsd(Number(v)), "Volume"]} labelFormatter={(t) => fmtDay(Number(t))} contentStyle={{ background: "#1F1F1F", border: "1px solid #323232", borderRadius: 12 }} />
-              <Bar dataKey="volumeUsd" fill={theme.palette.sidebar.purple100} radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <ZoomChart
+            height="100%"
+            format={compactUsd}
+            fitKey={`vol:${days}`}
+            series={[{ id: "vol", label: "Volume", color: theme.palette.sidebar.purple100, points: vol.map((p) => ({ t: p.t, v: p.volumeUsd })), kind: "histogram" }]}
+          />
         ) : prices.length > 1 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={prices} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="poolPx" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={theme.palette.sidebar.purple100} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={theme.palette.sidebar.purple100} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" tickFormatter={fmtDay} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} minTickGap={32} />
-              <YAxis orientation="right" domain={["auto", "auto"]} tickFormatter={(v) => fmtPx(Number(v))} tick={{ fill: theme.palette.grey[200], fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
-              <ChartTooltip formatter={(v) => [fmtPx(Number(v)), "Price"]} labelFormatter={(t) => new Date(Number(t)).toLocaleString()} contentStyle={{ background: "#1F1F1F", border: "1px solid #323232", borderRadius: 12 }} />
-              <Area type="monotone" dataKey="px" stroke={theme.palette.sidebar.purple100} strokeWidth={2} fill="url(#poolPx)" isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+          <ZoomChart
+            height="100%"
+            format={(v) => fmtPx(v)}
+            fitKey="price"
+            series={[{ id: "px", label: "Price", color: theme.palette.sidebar.purple100, points: prices.map((p) => ({ t: p.t, v: p.px })) }]}
+          />
         ) : (
           <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Typography sx={{ color: "grey.200", fontSize: "0.875rem" }}>No price history for this pair on Stellar&apos;s trade feed.</Typography>

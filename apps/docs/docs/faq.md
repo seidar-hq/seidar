@@ -42,7 +42,7 @@ The price moved more than your slippage tolerance before the transaction landed.
 
 ## Positions
 
-### A position is missing from my dashboard.
+### A position is missing from my portfolio.
 
 Check that:
 
@@ -50,7 +50,7 @@ Check that:
 2. The protocol is one Seidar integrates ([Supported Protocols](/protocols)).
 3. It's had a few minutes to refresh, then reload the page.
 
-### Why is my dashboard value different from the protocol's own app?
+### Why is my portfolio value different from the protocol's own app?
 
 Prices may come from different sources, and some protocols value positions differently (for example including unclaimed rewards). Small differences are normal.
 

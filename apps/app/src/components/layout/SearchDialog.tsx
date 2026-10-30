@@ -9,6 +9,8 @@ import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
 import type { SvgIconComponent } from "@mui/icons-material";
 import CloseIcon from "@mui/icons-material/Close";
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import { HOME_ENABLED } from "@/lib/features";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
@@ -120,7 +122,8 @@ const ResultRow = styled(Box, { shouldForwardProp: (p) => p !== "active" })<{ ac
 );
 
 const SUGGESTIONS = [
-  { label: "Dashboard", route: "/dashboard" },
+  ...(HOME_ENABLED ? [{ label: "Home", route: "/" }] : []),
+  { label: "Portfolio", route: "/portfolio" },
   { label: "Bridge", route: "/bridge" },
   { label: "Swap", route: "/trade-swap/dex" },
   { label: "Perps", route: "/trade-swap/perps" },
@@ -131,7 +134,8 @@ const SUGGESTIONS = [
 type Page = { id: string; name: string; route: string; Icon: SvgIconComponent };
 
 const PAGES: Page[] = [
-  { id: "dashboard", name: "Dashboard", route: "/dashboard", Icon: SpaceDashboardOutlinedIcon },
+  ...(HOME_ENABLED ? [{ id: "home", name: "Home", route: "/", Icon: HomeOutlinedIcon }] : []),
+  { id: "portfolio", name: "Portfolio", route: "/portfolio", Icon: SpaceDashboardOutlinedIcon },
   { id: "trade-swap", name: "Trade / Swap", route: "/trade-swap", Icon: SwapHorizOutlinedIcon },
   { id: "dex", name: "Swap", route: "/trade-swap/dex", Icon: SwapHorizOutlinedIcon },
   { id: "perps", name: "Perps", route: "/trade-swap/perps", Icon: ShowChartOutlinedIcon },

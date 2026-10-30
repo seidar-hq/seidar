@@ -73,6 +73,9 @@ const PERSIST = [
   "chart:",
   "pair:",
   "changes:",
+  // Home's market overview.
+  "market:assets",
+  "market:overview",
 ];
 const LS_PREFIX = "seidar.cache.";
 const MAX_CHARS = 1_500_000;

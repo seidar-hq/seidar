@@ -107,9 +107,11 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
 ```
 
 ### apps/app (the product UI)
-- Routes (`src/app`): `/dashboard`, `/trade-swap/dex`, `/trade-swap/perps`,
-  `/earn/lending&borrow[/view]`, `/earn/pools[/view]`, `/earn/vaults[/view]`, `/bridge`,
-  `/transactions`, `/settings`, `/asset` (parked), `/wallets`.
+- Routes (`src/app`): `/` **Home** (market overview, `components/home/*`), `/portfolio` (the former
+  Dashboard, `components/portfolio/*`; `/dashboard` redirects there), `/asset?asset=CODE:ISSUER|XLM`
+  (asset page, linked from Home), `/trade-swap/dex` (`?buy=CODE:ISSUER` preselects the token to buy),
+  `/trade-swap/perps`, `/earn/lending&borrow[/view]`, `/earn/pools[/view]`, `/earn/vaults[/view]`, `/bridge`,
+  `/transactions`, `/settings`, `/wallets`.
   Detail pages read their target from the URL (`?address=…`) and are wrapped in `<Suspense>`
   (required for static export with `useSearchParams`).
 - **API access only through `src/lib/api.ts`** (`apiFetch` / `apiJson`): `/api/x` → `${NEXT_PUBLIC_API_URL}/x`
@@ -129,7 +131,28 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   - `lib/tx.ts`, `components/tx/useTxRunner.ts`, `TxDialog.tsx` — build → sign → submit flow.
   - `lib/tokens.ts`, `components/common/TokenLogo.tsx` — token icon resolution.
   - `portfolio/usePortfolio.ts`, `useSeries.ts` — portfolio aggregation and chart series.
-  - `components/dashboard/*` — PortfolioBalance (Timeline/Allocation/Performer), AssetTables,
+  - `components/home/*` — **Home** (market overview, public): NetworkHero (DefiLlama Stellar TVL + chart),
+    PortfolioCard, MarketKpis, Leaderboards (reuses Earn `TopList`), AssetsTable (category chips, search, sparklines,
+    Swap → `?buy=`), ActivityChart (Stellar Expert daily ledger stats), Protocols (DefiLlama, links to our Earn
+    pages or out); hooks in `marketData.tsx`. Data from `services/api/src/market.ts`: **categories come from
+    `REGISTRY` (verified issuers, home domains checked 2026-10-30)** — codes are not unique and look-alikes
+    abound (USDC, BTC, SOL, SHX…), so add new RWA/stable/yield tokens there by issuer; unregistered assets
+    only show as "Other" with Stellar Expert rating ≥ 7.2, a home domain and a price. BENJI has no DEX price:
+    priced at its $1 NAV. XLM market cap comes from CoinGecko (Stellar Expert supply = total). Market cap of
+    other assets = issued supply × price (can overstate, e.g. SHX). Stellar Expert `volume7d` is USD × 1e7.
+  - Home layout = Portfolio's two-column grid (`minmax(12.5rem,1fr) 27.375rem`): market on the left; Your
+    portfolio, Protocols, News on the right. **Markets** card (`Markets.tsx`): watchlist + `CompareChart`
+    (up to 3 compared assets, Price = dual axis / % change = shared axis). All Home/asset charts use
+    `components/common/ZoomChart.tsx` (Lightweight Charts: drag either axis to stretch/compress, wheel/drag
+    to zoom/pan, double-click or reset button to fit; `fitKey` refits on period change, otherwise the user's
+    zoom survives data refreshes). Soroban-only tokens (`SOROBAN` in `market.ts`: Centrifuge deJTRSY/deJAAA)
+    are priced from XOXNO's oracle with supply from `total_supply`; holders/volume not published.
+    BENJI's logo (`public/tokens/benji.png`) is Franklin Templeton's portrait mark cropped from the official
+    logo; Franklin publishes no token image. Canvas charts don't show in interceptor screenshots of a
+    background tab: verify with headless Chrome over CDP (`--remote-debugging-port`, Page.captureScreenshot).
+  - `components/asset/Asset.tsx` — asset page (Cropr layout, live): price chart, stats, Your holding,
+    Earn with it (lend markets / pools / vaults that take the asset).
+  - `components/portfolio/*` (was `components/dashboard/`) — Portfolio: PortfolioBalance (Timeline/Allocation/Performer), AssetTables,
     PerpsPositions (incl. TP/SL), News, locked states.
   - `components/swap/SwapWidget.tsx` — Swap / Send / Receive tabs; DEX multi-select with logos;
     MAX keeps 2 XLM; slippage 0.1/0.5/1/custom; button label "EXCHANGE".
@@ -158,7 +181,7 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   `/vaults[/detail|/positions|/build|/snapshots|/watches]`, `/swap/quote|build|send|tokens`, `/tx/send`,
   `/bridge/routes|quote|deposit|submit`, `/zenex/market|candles|trades|account|build`,
   `/activity`, `/history`, `/notifications`, `/tokens/icons`, `/token/logo`, `/icon`, `/fees`, `/feedback`,
-  `/analytics/summary|ping|admin/adjustments`, `/agent/chat`.
+  `/analytics/summary|ping|admin/adjustments`, `/agent/chat`, `/market/assets|overview` (Home; `market.ts`).
 - Notable modules: `rpc.ts`, `prices.ts` (SWR spot prices, 6h retain), `price-chart.ts`,
   `positions.ts`, `pools.ts`, `lend-markets.ts`, `lending.ts` (`XOXNO_ERRORS` map), `blend.ts`
   (`buildBlendClaim`), `dex*.ts`, `sushi-cl.ts`, `aqua-cl.ts`, `pool-activity.ts`, `vaults.ts`
@@ -250,6 +273,15 @@ Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
   Only built + simulated on mainnet so far (no signed run). `/pools` Blend assets now carry `lFactor`, `priceUsd`.
 - Agent (`POST /agent/chat`): built but switched off in the UI (header pill says "Coming soon"). Needs the
   `ANTHROPIC_API_KEY` secret before it answers.
+- **Home is dev-only (feature flag, owner's call 2026-10-30):** `NEXT_PUBLIC_ENABLE_HOME=1` lives in
+  `apps/app/.env.development` only, so `next dev` shows Home at `/` and production builds don't (`/` = Portfolio,
+  no Home in the nav or search; `lib/features.ts` `HOME_ENABLED`). Its docs page is `draft: true` and unlinked.
+  The API's `/market/*` routes ship but the cron warms them only with `MARKET_WARM=1`. **To release Home:** add
+  `NEXT_PUBLIC_ENABLE_HOME=1` to `.env.production`, set `MARKET_WARM = "1"` in wrangler.toml `[vars]`, drop the
+  docs `draft`, re-link it (sidebars.ts, footer, index.md, getting-started.md). Everything else (incl. Dashboard →
+  Portfolio) ships normally.
+- Leverage deployer: `contracts/.env.local` (git-ignored) holds a mainnet keypair generated 2026-10-30 for
+  `deploy.mjs` (`DEPLOYER_SECRET`). Public key in the file; fund ~30 XLM, deploy, return the remainder.
 - App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`, docs/site/X links.
 - WalletConnect (Reown) project id: `NEXT_PUBLIC_WC_PROJECT_ID` in `apps/app/.env.production.local` (git-ignored,
   on the owner's machine only; recreate it from dashboard.reown.com if lost). It ships in the bundle by design;
@@ -430,6 +462,8 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 8. **Asset page** (`/asset`, `components/asset/*`) — parked by the owner ("keep it for later").
 9. **Templar vaults** were in the original brief but are **not integrated**: Merkl's Templar
    opportunities use `0x…` addresses, not Stellar contracts — confirm Templar has Stellar vaults first.
+   DefiLlama does list **Templar Protocol as Stellar lending (~$11.7M TVL, 2026-10-30)**, so it now exists
+   on Stellar; it shows on Home's protocol list linking out to its site.
    Untangled is listed as "pending registry (address unpublished)".
 10. Small known leftovers:
    - Dashboard locked illustration (`public/assets/tokenTableLocked.png`) still has an "AI Insights"

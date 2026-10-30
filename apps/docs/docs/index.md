@@ -14,7 +14,7 @@ Stellar has lending markets, DEXs, perpetuals and yield vaults, but each lives i
 
 | Area | What it does |
 | --- | --- |
-| **[Dashboard](/features/dashboard)** | Total value, balance timeline, allocation and best/worst performers across every wallet in a portfolio, plus tables for assets, supplied, borrowed, vault and perps positions. |
+| **[Portfolio](/features/portfolio)** | Total value, balance timeline, allocation and best/worst performers across every wallet in a portfolio, plus tables for assets, supplied, borrowed, vault and perps positions. |
 | **[Portfolios & Wallets](/features/wallets)** | Group wallets into portfolios and switch the active portfolio and signing wallet. |
 | **[Swap](/features/trading/swap)** | Best-price swaps routed across Soroswap, Aquarius, Phoenix, Sushi and the Stellar DEX, or pinned to the venues you choose. |
 | **[Perps](/features/trading/perps)** | Long or short XLM with leverage on Zenex: market, limit and stop orders with take-profit and stop-loss. |
@@ -30,7 +30,7 @@ Stellar has lending markets, DEXs, perpetuals and yield vaults, but each lives i
 1. **Read.** Seidar's API reads balances, positions, pool reserves, vault shares and prices directly from Stellar (Soroban RPC and Horizon) and from each protocol's contracts.
 2. **Build.** When you act, Seidar builds and simulates the Soroban transaction so you can see what will happen before anything is signed.
 3. **Sign.** Your wallet shows the transaction and you approve it. Seidar never sees your keys and never holds funds.
-4. **Track.** The result appears in your dashboard and history as soon as the ledger closes.
+4. **Track.** The result appears in your portfolio and history as soon as the ledger closes.
 
 :::info Stellar mainnet only
 Seidar runs on Stellar mainnet. There are no other chains to switch to; the Bridge exists to bring funds *into* Stellar.

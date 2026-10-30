@@ -9,7 +9,7 @@ const sidebars: SidebarsConfig = {
       label: 'Features',
       collapsed: false,
       items: [
-        'features/dashboard',
+        'features/portfolio',
         'features/wallets',
         {
           type: 'category',

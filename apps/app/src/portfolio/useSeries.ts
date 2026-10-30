@@ -102,6 +102,24 @@ export function usePriceChanges(exposures: Exposure[], range: Range) {
   return { changes: value?.changes ?? (loading && held ? held : {}), loading: loading && !held };
 }
 
+/**
+ * 24h performance of everything held: each asset's net exposure (wallet + positions) times its
+ * move. `base` is the value a day ago (0 while nothing is priced yet).
+ */
+export function usePerformance24h(exposures: Exposure[]) {
+  const { changes, loading } = usePriceChanges(exposures, "1d");
+  let base = 0;
+  let delta = 0;
+  for (const e of exposures) {
+    const usd = (e.assets + e.positions) * e.price;
+    const c = changes[e.key];
+    if (c == null || !usd) continue;
+    base += usd / (1 + c / 100);
+    delta += usd - usd / (1 + c / 100);
+  }
+  return { pct: base > 0 ? (delta / base) * 100 : 0, delta, base, loading };
+}
+
 /** Latest price per exposure, preferring the chart's last point over the stored price. */
 export function priceOf(e: Exposure, charts: Record<string, { t: number; px: number }[]>) {
   const pts = charts[e.key];

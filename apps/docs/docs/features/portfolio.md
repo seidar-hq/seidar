@@ -1,15 +1,15 @@
 ---
-id: dashboard
-title: Portfolio Dashboard
-sidebar_label: Portfolio Dashboard
+id: portfolio
+title: Portfolio
+sidebar_label: Portfolio
 description: "See the total value, history, allocation and every position across the wallets in a Seidar portfolio."
 ---
 
-<p className="lead">The Dashboard is your whole Stellar footprint on one screen: wallet balances plus every lending, liquidity, vault and perps position, priced in USD.</p>
+<p className="lead">Portfolio is your whole Stellar footprint on one screen: wallet balances plus every lending, liquidity, vault and perps position, priced in USD.</p>
 
 ## What it covers
 
-The Dashboard shows the **active portfolio**: every wallet in it, added together. Use the portfolio dropdown next to the page title to switch portfolios. To manage what's in each one, see [Portfolios & Wallets](/features/wallets).
+Portfolio shows the **active portfolio**: every wallet in it, added together. Use the portfolio dropdown next to the page title to switch portfolios. To manage what's in each one, see [Portfolios & Wallets](/features/wallets).
 
 Seidar reads positions directly from each protocol's contracts:
 

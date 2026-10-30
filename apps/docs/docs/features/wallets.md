@@ -21,7 +21,7 @@ From the card's **⋮** menu you can **Rename** or **Delete** a portfolio. Delet
 
 ### The active portfolio
 
-Only one portfolio is active at a time. The Dashboard, History and the header's portfolio pill all follow it. Switch with **Set as Active** on a card, or from the portfolio dropdown in the header or on the Dashboard.
+Only one portfolio is active at a time. Portfolio, History and the header's portfolio pill all follow it. Switch with **Set as Active** on a card, or from the portfolio dropdown in the header or on the Portfolio page.
 
 ## Wallets
 

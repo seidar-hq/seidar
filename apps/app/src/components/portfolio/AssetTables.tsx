@@ -319,7 +319,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           rows={allRows}
           isLoading={allLoading}
           emptyDataText="Nothing in this portfolio yet"
-          from="dashboard"
+          from="portfolio"
           getRowId={(r) => r.id}
           defaultSort={{ id: "usd", dir: "desc" }}
         />
@@ -330,7 +330,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           rows={assetRows}
           isLoading={portfolio.assetsLoading}
           emptyDataText="No assets in this portfolio"
-          from="dashboard"
+          from="portfolio"
           getRowId={(r) => `${r.code}:${r.issuer}`}
         />
       )}
@@ -340,7 +340,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           rows={portfolio.supplied}
           isLoading={portfolio.positionsLoading && portfolio.supplied.length === 0}
           emptyDataText="Nothing supplied to lending markets or pools"
-          from="dashboard"
+          from="portfolio"
           getRowId={(r, i) => `${r.wallet}:${r.pool}:${r.code}:${i}`}
         />
       )}
@@ -350,7 +350,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           rows={portfolio.borrowed}
           isLoading={portfolio.lendingLoading && portfolio.borrowed.length === 0}
           emptyDataText="No open borrows"
-          from="dashboard"
+          from="portfolio"
           getRowId={(r, i) => `${r.wallet}:${r.pool}:${r.code}:${i}`}
         />
       )}
@@ -360,7 +360,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           rows={portfolio.vaults}
           isLoading={portfolio.vaultsLoading && portfolio.vaults.length === 0}
           emptyDataText="No vault deposits"
-          from="dashboard"
+          from="portfolio"
           getRowId={(r) => `${r.wallet}:${r.vault}`}
         />
       )}

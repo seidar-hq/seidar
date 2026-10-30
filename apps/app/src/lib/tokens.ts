@@ -36,6 +36,9 @@ const PINNED: Record<string, TokenMeta> = {
   USDGLO: { code: "USDGLO", icon: "/tokens/usdglo.png", name: "Glo Dollar" },
   // BLND's list icon is a dead IPFS pin.
   BLND: { code: "BLND", icon: "/tokens/blnd.png", name: "Blend" },
+  // Franklin Templeton publishes no token image: its portrait mark (cropped from the official
+  // Franklin Templeton logo), as Stellar wallets show for BENJI.
+  BENJI: { code: "BENJI", icon: "/tokens/benji.png", name: "Franklin OnChain U.S. Government Money Fund" },
   SOLVBTC: { code: "SOLVBTC", icon: "/tokens/solvbtc.png", name: "SolvBTC" },
   XSOLVBTC: { code: "XSOLVBTC", icon: "/tokens/xsolvbtc.png", name: "xSolvBTC" },
 };

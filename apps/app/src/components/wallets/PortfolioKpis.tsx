@@ -11,7 +11,7 @@ import { KpiCard, KpiFooterRow, KpiHeader, KpiSection, KpiTop, KpiValueRow } fro
 import PortfolioSelect from "@/components/wallet/PortfolioSelect";
 import { formatAmount, formatUsd } from "@/lib/format";
 import { usePortfolio } from "@/portfolio/usePortfolio";
-import { usePriceChanges } from "@/portfolio/useSeries";
+import { usePerformance24h } from "@/portfolio/useSeries";
 
 export const InfoIcon = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -49,19 +49,7 @@ export default function PortfolioKpis() {
   const small = dark ? "subtitle5" : "subtitle3";
   const detail = dark ? "subtitle3" : "body3";
   const p = usePortfolio();
-  const { changes, loading: changesLoading } = usePriceChanges(p.exposures, "1d");
-
-  // 24h performance of everything held: each asset's net exposure (wallet + positions) times its move.
-  let base = 0;
-  let delta = 0;
-  for (const e of p.exposures) {
-    const usd = (e.assets + e.positions) * e.price;
-    const c = changes[e.key];
-    if (c == null || !usd) continue;
-    base += usd / (1 + c / 100);
-    delta += usd - usd / (1 + c / 100);
-  }
-  const perf = base > 0 ? (delta / base) * 100 : 0;
+  const { pct: perf, delta, base, loading: changesLoading } = usePerformance24h(p.exposures);
 
   const t = p.totals;
   const sk = <Skeleton variant="rounded" animation="wave" width="7rem" height="1.75rem" />;

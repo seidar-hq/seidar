@@ -7,7 +7,7 @@ description: "Swap Stellar assets at the best price across Soroswap, Aquarius, P
 
 <p className="lead">Swap finds the best price for a trade across Stellar's DEXs and can split one swap over several of them.</p>
 
-Open it from **Trade → Swap**, or use the widget on the Dashboard. The same widget has [Send & Receive](/features/send-receive) tabs.
+Open it from **Trade → Swap**, or use the widget on Portfolio. The same widget has [Send & Receive](/features/send-receive) tabs.
 
 ## How routing works
 

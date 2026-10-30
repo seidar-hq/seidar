@@ -5,7 +5,7 @@ sidebar_label: Send & Receive
 description: "Send XLM and Stellar assets to any address, with an optional memo, and share your address or QR code to receive."
 ---
 
-<p className="lead">Send and Receive sit next to Swap in the trading widget on the Dashboard and on Trade → Swap.</p>
+<p className="lead">Send and Receive sit next to Swap in the trading widget on Portfolio and on Trade → Swap.</p>
 
 ## Sending
 

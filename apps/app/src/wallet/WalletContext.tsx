@@ -329,7 +329,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [wallets, portfolios, commit, intoActive],
   );
 
-  // Test hooks: /dashboard?watch=G... or window.seidar.watch("G...") in the console.
+  // Test hooks: /portfolio?watch=G... or window.seidar.watch("G...") in the console.
   const [watchQueued, setWatchQueued] = useState<string | null>(null);
   useEffect(() => {
     if (!WATCH_ENABLED) return;

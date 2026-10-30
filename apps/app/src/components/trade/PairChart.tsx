@@ -4,11 +4,10 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Skeleton from "@mui/material/Skeleton";
 import Typography from "@mui/material/Typography";
-import { alpha, styled, useTheme } from "@mui/material/styles";
-import { Area, AreaChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
-import { axisTag, tailSegment, timeDomainWithGap } from "@/components/common/ChartMarker";
+import { styled, useTheme } from "@mui/material/styles";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
 import TokenLogo from "@/components/common/TokenLogo";
+import ZoomChart from "@/components/common/ZoomChart";
 import { apiJson } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
 import { useShared } from "@/lib/useShared";
@@ -34,8 +33,6 @@ const PERIODS: Period<Range>[] = [
   { value: "1y", label: "1y" },
 ];
 
-const Y_AXIS_W = 76;
-
 const ref = (t: SwapToken) => (!t.issuer && t.code === "XLM" ? "native" : t.issuer ? `${t.code}:${t.issuer}` : null);
 
 /**
@@ -58,10 +55,6 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
   const change = value?.ok ? (value.change ?? null) : null;
   const up = (change ?? 0) >= 0;
   const color = up ? theme.palette.green.main : theme.palette.error.main;
-  const fmtTime = (t: number) =>
-    range === "1h" || range === "1d"
-      ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
 
   return (
     <Card>
@@ -112,58 +105,13 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
             </Typography>
           </Box>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={pts} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="pair-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={alpha(color, 0.45)} />
-                  <stop offset="100%" stopColor={alpha(color, 0)} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="t"
-                type="number"
-                scale="time"
-                domain={timeDomainWithGap(pts.map((p) => p.t))}
-                tickFormatter={fmtTime}
-                minTickGap={48}
-                tick={{ fill: theme.palette.grey[200], fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                orientation="right"
-                domain={["auto", "auto"]}
-                width={Y_AXIS_W}
-                tickFormatter={(v: number) => formatAmount(v, 5)}
-                tick={{ fill: theme.palette.grey[200], fontSize: 11, dx: 4 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              {last != null && (
-                <ReferenceLine segment={tailSegment(pts.map((p) => p.t), last)} stroke={color} strokeDasharray="3 3" strokeOpacity={0.8} ifOverflow="extendDomain" label={axisTag(color, formatAmount(last, 5), Y_AXIS_W)} />
-              )}
-              <ChartTooltip
-                cursor={{ stroke: theme.palette.overlay.white20 }}
-                content={({ active, payload }) => {
-                  const p = active ? (payload?.[0]?.payload as { t: number; px: number } | undefined) : undefined;
-                  if (!p) return null;
-                  return (
-                    <Box sx={{ p: "0.5rem 0.75rem", borderRadius: "0.5rem", backgroundColor: "surfaceBg.main" }}>
-                      <Typography variant="caption" color="grey.200">
-                        {new Date(p.t).toLocaleString()}
-                      </Typography>
-                      <Typography variant="subtitle1" color="common.black">
-                        {formatAmount(p.px, 7)} {quote?.code}
-                      </Typography>
-                    </Box>
-                  );
-                }}
-              />
-              <Area type="monotone" dataKey="px" stroke={color} strokeWidth={2} fill="url(#pair-grad)" isAnimationActive={false} />
-              {last != null && <ReferenceDot x={pts[pts.length - 1].t} y={last} r={4} fill={color} stroke="#FFFFFF" strokeWidth={2} ifOverflow="extendDomain" />}
-            </AreaChart>
-          </ResponsiveContainer>
+          <ZoomChart
+            height="100%"
+            format={(v) => formatAmount(v, 7)}
+            intraday={range === "1h" || range === "1d" || range === "7d"}
+            fitKey={`${key}`}
+            series={[{ id: "px", label: `${base?.code ?? ""}/${quote?.code ?? ""}`, color, points: pts.map((p) => ({ t: p.t, v: p.px })) }]}
+          />
         )}
       </Box>
     </Card>

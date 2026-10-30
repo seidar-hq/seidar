@@ -157,6 +157,18 @@ app.get("/prices/changes", async (c) => {
   return c.json({ ok: true, range, changes: await priceChanges(assets, range) }, 200);
 });
 
+// Home: Stellar assets by category, DeFi TVL, protocols, network activity (public data, cached).
+app.get("/market/assets", async (c) => {
+  const { getMarketAssets } = await import("./market.js");
+  const r = await getMarketAssets();
+  return c.json(r.body, r.status as 200);
+});
+app.get("/market/overview", async (c) => {
+  const { getMarketOverview } = await import("./market.js");
+  const r = await getMarketOverview();
+  return c.json(r.body, r.status as 200);
+});
+
 app.get("/prices/history", async (c) => {
   const code = c.req.query("code") ?? "";
   const points = Number(c.req.query("points") ?? 48);
@@ -704,6 +716,8 @@ export async function runWarmersOnce(at: Date): Promise<void> {
     })(),
   ];
   if (m % 2 === 0) jobs.push(import("./price-chart.js").then((x) => x.warmCharts()));
+  // Home's market data: warmed only where Home is live (MARKET_WARM=1); until then /market/* builds on demand.
+  if (m % 5 === 4 && process.env.MARKET_WARM === "1") jobs.push(import("./market.js").then((x) => x.warmMarket()));
   if (m % 5 === 0)
     jobs.push(
       withNetwork("mainnet", async () => {
@@ -739,6 +753,10 @@ export function startWarmers(): void {
     });
   setInterval(warmActivity, 5 * 60_000);
   setTimeout(warmActivity, 5_000);
+  // Home's market overview (Stellar Expert, DefiLlama).
+  const warmMarketNow = () => import("./market.js").then((m) => m.warmMarket()).catch(() => null);
+  setTimeout(warmMarketNow, 10_000);
+  setInterval(warmMarketNow, 5 * 60_000);
 }
 
 // Balances stream helper route: clients prefer Horizon SSE
