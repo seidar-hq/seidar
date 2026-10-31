@@ -168,7 +168,7 @@ export default function ActionCard({
   useEffect(() => {
     if (!docked) return;
     const prev = document.body.style.paddingBottom;
-    document.body.style.paddingBottom = "6.5rem";
+    document.body.style.paddingBottom = "6rem";
     return () => {
       document.body.style.paddingBottom = prev;
     };
@@ -239,19 +239,18 @@ export default function ActionCard({
         sx={{
           position: "fixed",
           zIndex: 1100,
-          left: "0.75rem",
-          right: "0.75rem",
-          bottom: "calc(0.75rem + env(safe-area-inset-bottom))",
-          maxWidth: "36rem",
-          mx: "auto",
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: "calc(1rem + env(safe-area-inset-bottom))",
+          maxWidth: "calc(100vw - 2rem)",
           display: "flex",
+          gap: "0.25rem",
           p: "0.375rem",
-          borderRadius: "1.5rem",
-          border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
-          backgroundColor: "rgba(28, 28, 30, 0.82)",
-          backdropFilter: "blur(1rem)",
-          WebkitBackdropFilter: "blur(1rem)",
-          boxShadow: "0 0.75rem 2.5rem rgba(0, 0, 0, 0.5)",
+          borderRadius: "3.125rem",
+          backgroundColor: "surfaceBg.section",
+          borderTop: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
+          borderBottom: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
+          boxShadow: "0 0.5rem 1.5rem rgba(0, 0, 0, 0.45)",
         }}
       >
         {tabs.map((t) => {
@@ -265,13 +264,13 @@ export default function ActionCard({
                 setSheet(true);
               }}
               sx={{
-                flex: 1,
+                width: "3.75rem",
                 minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
-                gap: "0.3125rem",
-                py: "0.5rem",
-                borderRadius: "1.125rem",
+                gap: "0.25rem",
+                py: "0.375rem",
+                borderRadius: "2.5rem",
                 opacity: t.blocked ? 0.45 : 1,
                 backgroundColor: on ? "overlay.white08" : "transparent",
                 transition: "background-color 150ms",
@@ -279,8 +278,8 @@ export default function ActionCard({
             >
               <Box
                 sx={{
-                  width: "2.25rem",
-                  height: "2.25rem",
+                  width: "2rem",
+                  height: "2rem",
                   borderRadius: "50%",
                   display: "grid",
                   placeItems: "center",
@@ -289,9 +288,9 @@ export default function ActionCard({
                   transition: "background-color 150ms",
                 }}
               >
-                <Icon sx={{ fontSize: "1.125rem" }} />
+                <Icon sx={{ fontSize: "1rem" }} />
               </Box>
-              <Typography noWrap sx={{ fontSize: "0.75rem", fontWeight: 600, color: "common.black", maxWidth: "100%" }}>
+              <Typography noWrap sx={{ fontSize: "0.6875rem", fontWeight: 600, color: "common.black", maxWidth: "100%" }}>
                 {t.label}
               </Typography>
             </ButtonBase>

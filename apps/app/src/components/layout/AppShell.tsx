@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Box from "@mui/material/Box";
 import Skeleton from "@mui/material/Skeleton";
@@ -46,6 +46,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Portfolio gives the agent its right-hand column; other pages make room beside their content.
   const onPortfolio = pathname.startsWith("/portfolio") || (!HOME_ENABLED && pathname === "/");
   const dock = open && !onPortfolio;
+  // Page cache for networks that intermittently can't reach the site (public/sw.js).
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }, []);
   return (
     <AppRoot>
       <SmoothScroll />

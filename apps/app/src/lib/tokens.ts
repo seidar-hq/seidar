@@ -8,7 +8,7 @@
 // IPFS links go through the API /icon?cid= proxy (gateway failover lives server-side).
 // The list and the registry are cached in memory + localStorage for 12h.
 
-import { API_BASE } from "./api";
+import { apiBase, apiFetch } from "./api";
 
 export type TokenMeta = { code: string; icon: string | null; name: string | null };
 
@@ -122,7 +122,7 @@ export function loadDexIcons(): Promise<DexIcons> {
     }
   }
   if (dex && Date.now() - dexAt < 90_000) return Promise.resolve(dex);
-  dexInflight ??= fetch(`${API_BASE}/tokens/icons`, { cache: "no-store" })
+  dexInflight ??= apiFetch("/api/tokens/icons", { cache: "no-store" })
     .then((r) => r.json())
     .then((d: { byContract?: Record<string, string>; byCode?: Record<string, string>; pending?: number }) => {
       const next = { byContract: d?.byContract ?? {}, byCode: d?.byCode ?? {} };
@@ -153,7 +153,7 @@ function dexIcon(code: string, contract?: string | null): string | null {
 export function iconUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   const m = url.match(/\/ipfs\/([^/?#]+)/) ?? url.match(/^ipfs:\/\/([^/?#]+)/);
-  return m ? `${API_BASE}/icon?cid=${m[1]}` : url;
+  return m ? `${apiBase()}/icon?cid=${m[1]}` : url;
 }
 
 export type TokenRef = { code: string; issuer?: string | null; contract?: string | null };
@@ -181,7 +181,7 @@ export async function resolveIcon(t: TokenRef): Promise<string[]> {
     push(dexIcon(code, t.contract));
   }
   push((await listMeta(code))?.icon);
-  if (t.issuer) push(`${API_BASE}/token/logo?asset=${encodeURIComponent(`${t.code}:${t.issuer}`)}`);
+  if (t.issuer) push(`${apiBase()}/token/logo?asset=${encodeURIComponent(`${t.code}:${t.issuer}`)}`);
   if (!out.length) {
     await loadDexIcons();
     push(dexIcon(code, null));
