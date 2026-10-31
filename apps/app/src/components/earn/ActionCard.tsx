@@ -239,17 +239,16 @@ export default function ActionCard({
         sx={{
           position: "fixed",
           zIndex: 1100,
-          left: "50%",
-          transform: "translateX(-50%)",
+          // Page padding (AppShell: 0.75rem on phones, 1rem above) + the page card's 1.5rem.
+          left: { xs: "2.25rem", sm: "2.5rem" },
+          right: { xs: "2.25rem", sm: "2.5rem" },
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
-          maxWidth: "calc(100vw - 2rem)",
           display: "flex",
           gap: "0.25rem",
           p: "0.375rem",
-          borderRadius: "3.125rem",
-          backgroundColor: "surfaceBg.section",
-          borderTop: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
-          borderBottom: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
+          borderRadius: "999rem",
+          backgroundColor: "grey.400",
+          border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
           boxShadow: "0 0.5rem 1.5rem rgba(0, 0, 0, 0.45)",
         }}
       >
@@ -264,7 +263,7 @@ export default function ActionCard({
                 setSheet(true);
               }}
               sx={{
-                width: "3.75rem",
+                flex: 1,
                 minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
