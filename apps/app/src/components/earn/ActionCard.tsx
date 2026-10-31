@@ -247,7 +247,9 @@ export default function ActionCard({
           gap: "0.25rem",
           p: "0.375rem",
           borderRadius: "999rem",
-          backgroundColor: "grey.400",
+          // The stat cards' colour (a 5% white tint over the page card), made opaque so nothing
+          // underneath shows through.
+          background: (t) => `linear-gradient(${t.palette.grey[400]}, ${t.palette.grey[400]}), ${t.palette.surfaceBg.section}`,
           border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
           boxShadow: "0 0.5rem 1.5rem rgba(0, 0, 0, 0.45)",
         }}
