@@ -1,4 +1,4 @@
-# Seidar — handoff (updated 2026-10-30, second session)
+# Seidar — handoff (updated 2026-10-31, third session)
 
 Read this whole file before touching code. It explains what Seidar is, where it came from, how
 the repo and production are laid out, what was built and verified, the rules the owner holds
@@ -114,9 +114,30 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   `/transactions`, `/settings`, `/wallets`.
   Detail pages read their target from the URL (`?address=…`) and are wrapped in `<Suspense>`
   (required for static export with `useSearchParams`).
-- **API access only through `src/lib/api.ts`** (`apiFetch` / `apiJson`): `/api/x` → `${NEXT_PUBLIC_API_URL}/x`
+- **API access only through `src/lib/api.ts`** (`apiFetch` / `apiJson`): `/api/x` → `${API base}/x`
   (default `http://localhost:3002`). The app has no server code except `functions/api/news.ts`
-  (a Cloudflare Pages Function for the dashboard news feed).
+  (a Cloudflare Pages Function for the dashboard news feed) and `functions/_middleware.ts` (sends a
+  route's `.txt` data file opened as a page back to the page).
+  - **API failover (2026-10-31):** production has two addresses for the same Worker:
+    `NEXT_PUBLIC_API_URL=https://api.seidar.xyz` and `NEXT_PUBLIC_API_FALLBACK_URL=https://seidar-api.seidar-frontend.workers.dev`
+    (a different Cloudflare zone, different edge IPs). On first use the app probes `/health` on both
+    (api.seidar.xyz gets a 0.5 s head start) and uses the first that answers; a GET with no response
+    after 6 s re-probes and, if the other address wins, races the request there too. `apiBase()` gives
+    the current address for URLs built outside `apiFetch` (token logos in `lib/tokens.ts`). Non-GET
+    calls are never duplicated. Why: see §9 item 2 (phones on the owner's carrier can't reach some
+    Cloudflare edge IPs). Tested: unreachable primary → data in ~2 s via workers.dev.
+  - **Service worker `public/sw.js` (v3), registered in `AppShell` (production only):** pages are
+    network-first with a 6 s timeout, then the cached copy (only `text/html` is cached, keyed by URL);
+    with neither, a self-retrying "Can't reach Seidar right now" page instead of the browser's
+    ERR_FAILED. `/_next/static/*` cache-first, images/fonts stale-while-revalidate; API origins are
+    never touched. A navigation to `/<route>.txt` is redirected to the page inside the worker (the Pages
+    middleware can't see a page visit once a service worker re-fetches it). **Every cache step is
+    best-effort (`.catch`) — never let a cache error fail a request**: v1 called `event.waitUntil`
+    after an `await`, which threw and failed every script (pages stuck on skeletons), and its page
+    fetch passed raw `.txt` data through. Bump `VERSION` to wipe old caches. Headless Chrome's Cache
+    Storage is broken on the dev machine ("Entry already exists" on an empty cache): test the worker
+    in the real Chrome via interceptor against `npx serve@14 out -l 3005` (stop the server to test
+    offline; CDP offline emulation doesn't apply to the worker's own fetches).
 - Key modules:
   - `wallet/WalletContext.tsx` — wallets, portfolios (`createPortfolio`, `setActivePortfolio`),
     active wallet; everything persisted in localStorage. Re-linking a wallet never moves it between
@@ -164,6 +185,25 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   - `components/earn/*` — `EarnUI.tsx`, `ActionCard.tsx`, `LendBorrow.tsx`/`LendMarket.tsx`
     (+`lendData.ts`), `Pools.tsx`/`PoolPage.tsx`/`PoolRange.tsx` (+`poolData.ts`),
     `Vaults.tsx`/`VaultDetail.tsx` (+`vaultData.ts`).
+    - **LendMarket "My Position" after values:** typing an amount in Supply / Borrow / Withdraw / Repay /
+      Leverage (open) or choosing a Close fraction shows "→ new value" (brand blue; red when health < 1.1
+      or net APY < 0) under My Supply, Borrowed (switches to "Borrowed <debt token>" on Leverage),
+      Health Factor and Net APY. Blend health after = (effCollateralUsd + Δcoll × c_factor) /
+      (effDebtUsd + Δdebt / l_factor) from `/positions` `blendPools[pool]` (older API: derived from health
+      + borrow capacity); XOXNO health after only for Leverage (new account). Leverage values marked "≈".
+      The details under the form keep only rates/limits/slippage/transactions.
+    - **Net APY (always on the card):** Σ supplyUsd×supplyApy − Σ borrowUsd×borrowApy over the pool's legs
+      (or the XOXNO hub), ÷ (supplied − borrowed), i.e. Aave-style on net value; BLND emissions not
+      included ("before BLND"). Blend SDK's own `netApy` divides by total supplied — not used.
+    - **Collateral figure** is Yes / "No (lent only)" / —; the owner wants it to show the collateral
+      amount ("50 XLM of 150") later.
+    - **Phone layout (below 75rem, where those pages stack):** `ActionCard` leaves the page and becomes a
+      fixed bottom dock (one icon button per tab, like backyard.finance) spanning the page content
+      (left/right 2.25rem phones, 2.5rem sm+), solid stat-card shade (grey.400 tint over surfaceBg.section,
+      opaque), fully round ends. A button opens a `SwipeableDrawer` bottom sheet with the card on that tab;
+      the sheet closes on submit so TxDialog is on top. `sheetOnly` sx shows content only in the sheet
+      (LendMarket repeats "now → after" rows there). Body gets 6rem bottom padding while docked. Used by
+      LendMarket and VaultDetail (Pools don't use ActionCard).
   - `components/bridge/*`, `components/transactions/*`, `components/settings/*`,
     `components/layout/*` (Header with page search, Docs button, notifications bell, portfolio
     pill, wallet).
@@ -233,6 +273,16 @@ page with `eval --main` (the dashboard's own fetch adds the auth headers; adding
 `$workers.event.response.status`, `$workers.eventType`. Note `wallTimeMs` includes `waitUntil` time.
 Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
 
+**Pages / zone traffic** (app.seidar.xyz is not in Worker logs): from the same dashboard tab, get the zone
+id with `fetch("/api/v4/zones?name=seidar.xyz")`, then POST `/api/v4/graphql` with
+`httpRequestsAdaptiveGroups(filter: { datetime_geq, datetime_leq, clientRequestHTTPHost: "app.seidar.xyz",
+clientCountryName: "NG" })` and dimensions `datetimeMinute edgeResponseStatus clientRequestPath
+userAgentBrowser userAgent clientRequestHTTPProtocol requestSource edgeResponseContentTypeName`
+(`clientAsn` is not allowed on this plan; limit ≤ 300 rows per query, so page by time). Worker events also
+carry `$workers.event.request.cf.asOrganization` / `country` and the user agent — the owner's phone and
+laptop show as `ENTERPRISE-BENIN`, NG. The 504s with `requestSource: earlyHintsCache` / UA
+"nginx-ssl early hints" next to every page load are Cloudflare's own Early Hints lookups: ignore them.
+
 ---
 
 ## 5. Production (Cloudflare account `7e98bc4bfd2c05a039ac47395702d2db`)
@@ -284,7 +334,11 @@ Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
   Portfolio) ships normally.
 - Leverage deployer: `contracts/.env.local` (git-ignored) holds a mainnet keypair generated 2026-10-30 for
   `deploy.mjs` (`DEPLOYER_SECRET`). Public key in the file; fund ~30 XLM, deploy, return the remainder.
-- App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`, docs/site/X links.
+- App build env: `apps/app/.env.production` → `NEXT_PUBLIC_API_URL=https://api.seidar.xyz`,
+  `NEXT_PUBLIC_API_FALLBACK_URL=https://seidar-api.seidar-frontend.workers.dev` (same Worker; CORS already
+  allows app.seidar.xyz there), docs/site/X links.
+- `/positions` `blendPools[pool]` also returns `effCollateralUsd` / `effDebtUsd` (health inputs, for the
+  app's after-values).
 - WalletConnect (Reown) project id: `NEXT_PUBLIC_WC_PROJECT_ID` in `apps/app/.env.production.local` (git-ignored,
   on the owner's machine only; recreate it from dashboard.reown.com if lost). It ships in the bundle by design;
   the Reown project's domain allowlist is what restricts it.
@@ -298,6 +352,10 @@ Background noise: bots probe `/.env`, `/phpinfo.php` etc. (all 404, harmless).
 
 ### Workers plan
 The owner upgraded to **Workers Paid** ($5/mo) on 2026-10-29; the Free-plan notes below are historical.
+Billing (checked 2026-10-30): the $5 is the flat subscription (invoice Oct 30, period Oct 30 – Nov 29;
+$0.67 prorated on Oct 27); billable usage was $0.00 and projected $0.00. The Oct 30 invoice showed
+**unpaid** (card charge failed; the backup card ending 3930 expired 6/2026) — the owner was told to pay
+it under Billing → Invoices. R2 Paid and Images Stream Basic subscriptions cost $0 at current usage.
 
 ### ⚠️ (Historical) The account was on the Workers **Free** plan
 Free = 10 ms CPU and **50 subrequests per invocation**, 1,000 KV writes/day. Verified effects on
@@ -339,10 +397,24 @@ cd services/api && npx wrangler dev --port 8787 --test-scheduled   # API under w
   Background tabs pause `requestAnimationFrame`, so canvas charts may look blank in screenshots;
   cross-origin iframes don't render in screenshots.
 - On Windows Git Bash, very large heredocs can fail — write scripts with the Write tool and run them.
+- Phone-size checks: headless Chrome over CDP (`Emulation.setDeviceMetricsOverride` 390×844, mobile) works
+  for layout; give every run its own `--user-data-dir` (leftover Chrome children lock a reused profile).
+  The owner can see the same in desktop Chrome: F12, then Ctrl+Shift+M (device toolbar).
 
 ---
 
 ## 7. What has been built (commit trail, newest first)
+
+Session of 2026-10-30/31 (third; all pushed and deployed, app + API):
+- `ce482cd` LendMarket "My Position" after values (supply, borrow, withdraw, repay, leverage, close);
+  API `/positions` exposes `effCollateralUsd` / `effDebtUsd` per Blend pool (API version `06584579`).
+- `4f18a50` permanent **Net APY** figure with after values (formula in §4).
+- `a81d0bf` phone layout: action dock + bottom sheet for lend markets and vaults (§4).
+- `8d07ce1` API failover to workers.dev + service worker v1 (**v1 was broken**, fixed next).
+- `8f6dd34` service worker v3: scripts no longer fail under it, `.txt` page visits redirect inside the
+  worker, retry page instead of ERR_FAILED; dock spans the page content.
+- `0e6d8a0` dock is a solid colour (stat-card shade). Owner: "it has worked, everything is cool".
+- Phone incident investigated from logs (details in §9 item 2).
 
 Session of 2026-10-30 (second): **incident fix — dashboard sat on 0.00 after loading, data appeared
 1–2 min later.** Production logs showed cheap routes (`/prices` CPU 1 ms) taking 24–45 s and
@@ -443,12 +515,18 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
    (~26.2 XLM). Then add `BLEND_LEVERAGE_CONTRACT = "C..."` to `services/api/wrangler.toml` `[vars]`, deploy
    the API, and simulate `POST /lending/blend/leverage` (expect one tx; the app shows "Transactions: 1").
    Contract is unaudited and has never had a real signed run.
-2. **Phone `ERR_CONNECTION_REFUSED` on app.seidar.xyz (owner's ISP, not our config).** Some resolvers (Google
-   DNS) sometimes answer `188.114.96.2` / `188.114.97.2`; from the owner's network those two Cloudflare edge
-   IPs refuse every site (Discord too), while `104.21.78.103` / `172.67.220.56` and even `188.114.96.3` work,
-   and check-host.net reaches `188.114.96.2:443` fine from 6 countries. Advice given: phone Private DNS
-   `one.one.one.one` (Android) / 1.1.1.1 app (iPhone), or another network. Non-Enterprise plans can't pin
-   edge IPs; other users on that ISP may hit it. Offered to draft an ISP report — owner hasn't named the ISP.
+2. **Phone can't reach app.seidar.xyz / data never loads (owner's network, ENTERPRISE-BENIN, NG).**
+   Cloudflare's authoritative DNS answers `104.21.78.103` / `172.67.220.56`, but resolvers on the owner's
+   path sometimes get `188.114.96.x` / `188.114.97.x` (seen: .2, .6) and that network can't connect to them
+   (even `188.114.96.1` times out from the laptop). Evidence, 2026-10-31: no request from the phone reached
+   Cloudflare (pages, files or API) from 08:54 to 09:55 UTC while the owner's Windows Chrome on the same
+   connection loaded the site fine; airplane mode (DNS cache flush) brought it back. The 2026-10-30 23:20
+   "loaded but no data" incident was the same shape: zero API requests from the wallet 23:05–23:26 UTC,
+   then 0.4 s answers. Mitigations shipped: API failover to workers.dev and the page-cache service worker
+   (§4). Not yet proven on the phone itself: next time, open `chrome://net-internals/#dns` on the phone and
+   look up app.seidar.xyz (188.114.x confirms). Other options: phone Private DNS `one.one.one.one`, or an
+   ISP report. Non-Enterprise plans can't pin edge IPs. A page never opened on a device still can't load
+   while its address is unreachable (the cache only helps after one visit).
 3. **Workers Paid is active (2026-10-29).** Free-plan gap re-test: see the 2026-10-30 results in the
    next bullet (update them when re-run).
 4. Owner-confirmed 2026-10-30: phone glide + pull-to-refresh, feedback email delivery, MetaMask connect,
@@ -467,6 +545,9 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
    DefiLlama does list **Templar Protocol as Stellar lending (~$11.7M TVL, 2026-10-30)**, so it now exists
    on Stellar; it shows on Home's protocol list linking out to its site.
    Untangled is listed as "pending registry (address unpublished)".
+9b. LendMarket **Collateral** figure: show the collateral amount ("50 XLM of 150"), not just Yes/No (owner
+   asked to keep it in mind). Watch the API failover's 0.5 s head start: on mobile the phone picked
+   workers.dev even with both healthy (fine, same Worker), raise it if that matters.
 10. Small known leftovers:
    - Dashboard locked illustration (`public/assets/tokenTableLocked.png`) still has an "AI Insights"
      column header (Seidar has no AI Insights). Remove if the owner wants.
