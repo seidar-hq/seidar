@@ -37,7 +37,7 @@ See AUDIT.md for the threat model, verified Blend behaviour and the deployment c
 ```
 cd contracts
 stellar contract build                     # target/wasm32v1-none/release/*.wasm
-cargo test --release -p seidar-leverage-fork-tests   # 27 tests on a mainnet fork
+cargo test --release -p seidar-leverage-fork-tests   # 29 tests on a mainnet fork
 ```
 
 ### Deploy

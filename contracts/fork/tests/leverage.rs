@@ -533,16 +533,149 @@ fn a_swap_that_pays_nothing_is_refused() {
     let s = setup();
     let e = &s.f.e;
     let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let evil = e.register(evil::Evil, ());
     let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
-    // A call that returns without swapping (a token balance read): nothing received -> revert.
+    // A call that returns without swapping: nothing received -> revert.
     o.swap = SwapCall {
-        contract: usdc.clone(),
-        function: Symbol::new(e, "balance"),
-        args: (s.receiver.clone(),).into_val(e),
+        contract: evil,
+        function: Symbol::new(e, "noop"),
+        args: Vec::new(e),
         pulls: Vec::from_array(e, [Pull { to: s.f.aggregator.clone(), amount: o.borrow }]),
     };
     assert_eq!(code(try_open(&s, &o).expect_err("no output")), 3);
     assert_eq!(debt_of(&s, &usdc), 0);
+}
+
+#[test]
+fn the_swap_cannot_be_a_call_on_either_token() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let thief = Address::generate(e);
+    // Called directly by the receiver, a token would authorize it as the receiver with no
+    // pre-authorization at all (direct invoker), skipping `pulls`: refused before the call.
+    for (token, func) in [(usdc.clone(), "transfer"), (usdc.clone(), "approve"), (xlm.clone(), "transfer")] {
+        let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+        let args: Vec<Val> = if func == "approve" {
+            (s.receiver.clone(), thief.clone(), o.borrow, e.ledger().sequence() + 100).into_val(e)
+        } else {
+            (s.receiver.clone(), thief.clone(), o.borrow).into_val(e)
+        };
+        o.swap = SwapCall { contract: token, function: Symbol::new(e, func), args, pulls: o.swap.pulls.clone() };
+        assert_eq!(code(try_open(&s, &o).expect_err("token as the swap")), 2, "{func}");
+    }
+    assert_eq!(token::Client::new(e, &usdc).balance(&thief), 0);
+    assert_eq!(debt_of(&s, &usdc), 0);
+}
+
+/// open with ONLY the user's signature mocked (exactly the tree they sign: open -> approve +
+/// flash_loan). Every contract-address auth inside, the receiver's included, is real host auth.
+fn try_open_real_auth(s: &Setup, o: &Open) -> Result<i128, soroban_sdk::Error> {
+    use seidar_leverage_iface::{FlashLoan, Request, REQ_SUPPLY_COLLATERAL};
+    use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+    let e = &s.f.e;
+    let expiry = e.ledger().sequence() + 20;
+    let supply = o.deposit + o.min_out;
+    let args: Vec<Val> = (
+        s.user.clone(),
+        s.f.pool.clone(),
+        o.collateral.clone(),
+        o.deposit,
+        o.debt.clone(),
+        o.borrow,
+        o.swap.clone(),
+        o.min_out,
+        o.min_hf,
+        o.deadline,
+        expiry,
+    )
+        .into_val(e);
+    let approve = MockAuthInvoke {
+        contract: &o.collateral,
+        fn_name: "approve",
+        args: (s.user.clone(), s.f.pool.clone(), supply, expiry).into_val(e),
+        sub_invokes: &[],
+    };
+    let flash = MockAuthInvoke {
+        contract: &s.f.pool,
+        fn_name: "flash_loan",
+        args: (
+            s.user.clone(),
+            FlashLoan { contract: s.receiver.clone(), asset: o.debt.clone(), amount: o.borrow },
+            Vec::from_array(e, [Request { request_type: REQ_SUPPLY_COLLATERAL, address: o.collateral.clone(), amount: supply }]),
+        )
+            .into_val(e),
+        sub_invokes: &[],
+    };
+    let subs = [approve, flash];
+    let root = MockAuthInvoke { contract: &s.leverage, fn_name: "open", args: args.clone(), sub_invokes: &subs };
+    e.mock_auths(&[MockAuth { address: &s.user, invoke: &root }]);
+    e.cost_estimate().budget().reset_unlimited();
+    match e.try_invoke_contract::<i128, soroban_sdk::Error>(&s.leverage, &Symbol::new(e, "open"), args) {
+        Ok(Ok(hf)) => Ok(hf),
+        Ok(Err(_)) => panic!("bad return conversion"),
+        Err(Ok(err)) => Err(err),
+        Err(Err(_)) => Err(soroban_sdk::Error::from_contract_error(0)),
+    }
+}
+
+#[test]
+fn pulls_are_enforced_by_real_auth() {
+    use soroban_sdk::xdr::ScErrorType;
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let evil = e.register(evil::Evil, ());
+    // Stray USDC in the receiver (minted while all auths are still mocked).
+    token::StellarAssetClient::new(e, &usdc).mint(&s.receiver, &100_0000000);
+    let base = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+
+    // Sanity: the real aggregator swap opens under real auth (the user tree above is exact).
+    let hf = try_open_real_auth(&s, &base).expect("open under real auth");
+    assert!(hf >= base.min_hf);
+    let opened_debt = debt_of(&s, &usdc);
+    assert!(opened_debt >= base.borrow);
+
+    let with = |amount: i128, to: &Address| {
+        let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+        o.swap = SwapCall {
+            contract: evil.clone(),
+            function: Symbol::new(e, "steal"),
+            args: (s.receiver.clone(), usdc.clone(), amount).into_val(e),
+            pulls: Vec::from_array(e, [Pull { to: to.clone(), amount: o.borrow }]),
+        };
+        o
+    };
+    // Positive control: a pull exactly as pre-authorized goes through; then no output -> #3.
+    let o = with(base.borrow, &evil);
+    let err = try_open_real_auth(&s, &with(o.borrow, &evil)).expect_err("no output");
+    assert!(err.is_type(ScErrorType::Contract) && code(err) == 3, "exact pull should pass auth: {err:?}");
+    // One stroop more than pre-authorized (reaching for the stray funds): the host refuses it.
+    let err = try_open_real_auth(&s, &with(o.borrow + 100_0000000, &evil)).expect_err("over-pull");
+    assert!(!(err.is_type(ScErrorType::Contract) && code(err) == 3), "an over-pull got past auth: {err:?}");
+    // The right amount but to a recipient other than the pre-authorized one: refused too.
+    let err = try_open_real_auth(&s, &with(o.borrow, &s.f.aggregator)).expect_err("other recipient");
+    assert!(!(err.is_type(ScErrorType::Contract) && code(err) == 3), "a pull to another address got past auth: {err:?}");
+
+    assert_eq!(token::Client::new(e, &usdc).balance(&s.receiver), 100_0000000, "stray funds untouched");
+    assert_eq!(token::Client::new(e, &usdc).balance(&evil), 0);
+    assert_eq!(debt_of(&s, &usdc), opened_debt, "no extra debt from the refused runs");
+}
+
+mod evil {
+    use soroban_sdk::{contract, contractimpl, token, Address, Env};
+
+    /// A "swap" that does nothing, or pulls `amount` of `token` from `from` to itself.
+    #[contract]
+    pub struct Evil;
+
+    #[contractimpl]
+    impl Evil {
+        pub fn noop(_e: Env) {}
+        pub fn steal(e: Env, from: Address, token: Address, amount: i128) {
+            token::Client::new(&e, &token).transfer(&from, &e.current_contract_address(), &amount);
+        }
+    }
 }
 
 // ---------- a pool that never calls back ----------

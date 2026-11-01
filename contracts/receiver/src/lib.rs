@@ -42,6 +42,12 @@ pub struct SeidarLeverageReceiver;
 /// return (output received, input left unspent), both measured by balance.
 fn run_swap(e: &Env, token_in: &Address, amount: i128, token_out: &Address, swap: &SwapCall) -> (i128, i128) {
     let me = e.current_contract_address();
+    // The swap must not BE either token: a contract the receiver calls directly is authorized as
+    // the receiver without any pre-authorization (Soroban's direct-invoker rule), which would let
+    // a `transfer`/`approve` there skip the `pulls` limit below.
+    if swap.contract == *token_in || swap.contract == *token_out {
+        panic_with_error!(e, ReceiverError::BadArgs);
+    }
     let input = token::Client::new(e, token_in);
     let output = token::Client::new(e, token_out);
     let in_before = input.balance(&me);
