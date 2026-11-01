@@ -122,12 +122,21 @@ async function reflectorSpot(code: string): Promise<number | null> {
 
 /** AQUA/XLM mid on SDEX × XLM_USD. Null when book is thin/missing. */
 export async function sdexAquaUsd(xlmUsd: number | null): Promise<number | null> {
+  return sdexXlmUsd("AQUA", AQUA.issuer, xlmUsd);
+}
+
+/** Blend's BLND (SDEX BLND/XLM is its deepest classic book). */
+const BLND_ISSUER = "GDJEHTBE6ZHUXSWFI642DCGLUOECLHPF3KSXHPXTSTJ7E3JF6MQ5EZYY";
+
+/** CODE/XLM mid on SDEX x the XLM price. Null when the book is thin or gappy. */
+async function sdexXlmUsd(code: string, issuer: string, xlmUsd: number | null): Promise<number | null> {
   if (!(xlmUsd != null && xlmUsd > 0)) return null;
   try {
+    const type = code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12";
     const url =
       `https://horizon.stellar.org/order_book?` +
-      `selling_asset_type=credit_alphanum4&selling_asset_code=AQUA` +
-      `&selling_asset_issuer=${AQUA.issuer}&buying_asset_type=native&limit=5`;
+      `selling_asset_type=${type}&selling_asset_code=${code}` +
+      `&selling_asset_issuer=${issuer}&buying_asset_type=native&limit=5`;
     const book = (await fetchJson(url, 12000)) as {
       bids?: { price: string }[];
       asks?: { price: string }[];
@@ -309,6 +318,7 @@ const CG_ID: Record<string, string> = {
   XLM: "stellar",
   EURC: "euro-coin",
   AQUA: "aquarius",
+  BLND: "blend",
   BTC: "bitcoin",
   WBTC: "bitcoin",
   CBBTC: "bitcoin",
@@ -423,6 +433,17 @@ export async function livePrices(
       prices["AQUA"] = aqua;
       sources["AQUA"] = "sdex-xlm";
       await cacheSet(KEYS.priceSpot("AQUA"), aqua, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
+    }
+  }
+
+  // 4b. SDEX BLND × XLM (Blend's reward token; no major exchange quotes it).
+  if (uncached.includes("BLND") && prices["BLND"] == null) {
+    const xlm = prices["XLM"] ?? (await reflectorSpot("XLM")) ?? (await coinbaseSpot("XLM"));
+    const blnd = await sdexXlmUsd("BLND", BLND_ISSUER, xlm);
+    if (blnd != null && blnd > 0) {
+      prices["BLND"] = blnd;
+      sources["BLND"] = "sdex-xlm";
+      await cacheSet(KEYS.priceSpot("BLND"), blnd, TTL_MS.pricesSpot, SPOT_RETAIN_MS).catch(() => {});
     }
   }
 

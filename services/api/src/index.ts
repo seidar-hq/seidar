@@ -608,6 +608,12 @@ app.get("/lending/xoxno/accounts", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+app.get("/lending/xoxno/limits", async (c) => {
+  const { xoxnoLimits } = await import("./lending.js");
+  const r = await xoxnoLimits();
+  return c.json(r.body, r.status as 200);
+});
+
 app.get("/lending/xoxno/markets", async (c) => {
   const r = await xoxnoMarkets();
   return c.json(r.body, r.status as 200);

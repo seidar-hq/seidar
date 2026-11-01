@@ -63,6 +63,8 @@ export type PoolRow = {
   /** On-chain pool status (Blend): 0-1 active, 2-3 on-ice (no borrows),
       4-5 frozen (no supply/borrow), 6 setup. Null when unreadable. */
   poolStatus?: number | null;
+  /** Blend: collateral (USD, after collateral factors) a position needs before it may borrow. */
+  poolMinCollateralUsd?: number | null;
   cats: ("leverage" | "yield" | "passive")[];
   source: "blend-sdk" | "xoxno-api";
   available: boolean;
@@ -84,6 +86,8 @@ export type PoolAsset = {
   canBorrow: boolean;
   /** On-chain pool status (Blend), see PoolRow.poolStatus. */
   poolStatus?: number | null;
+  /** See PoolRow.poolMinCollateralUsd. */
+  poolMinCollateralUsd?: number | null;
   /** Token contract + decimals (lend / build calls need them). */
   asset?: string;
   decimals?: number;
@@ -93,7 +97,23 @@ export type PoolAsset = {
   /** Blend liability factor (debt weight in health) and oracle price, for leverage sizing. */
   lFactor?: number;
   priceUsd?: number | null;
+  /** Blend BLND emissions per year per token supplied / borrowed (null when the reserve earns none). */
+  supplyBlnd?: number | null;
+  borrowBlnd?: number | null;
 };
+
+/** BLND per year per token from a reserve's emission config (null when there is none or it ended). */
+function blndPerToken(em: unknown, total: unknown, decimals: number): number | null {
+  try {
+    const e = em as { emissionsPerYearPerToken?: (s: bigint, d?: number) => number; expiration?: number } | undefined;
+    if (!e || typeof e.emissionsPerYearPerToken !== "function" || typeof total !== "bigint" || total <= 0n) return null;
+    if (typeof e.expiration === "number" && e.expiration > 0 && e.expiration * 1000 < Date.now()) return null;
+    const v = e.emissionsPerYearPerToken(total, decimals);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 async function sorobanView(_rpcUrl: string, contractId: string, method: string, args: unknown[] = []): Promise<unknown> {
   return sharedView(contractId, method, args);
@@ -231,6 +251,9 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
         } catch {
           /* totals stay null; APYs still served */
         }
+        // min_collateral is in the oracle's decimals (Blend v2 checks it against effective collateral).
+        const minCollRaw = (pool.metadata as { minCollateral?: bigint }).minCollateral;
+        const poolMinCollateralUsd = oracle && minCollRaw != null ? Number(minCollRaw) / 10 ** oracle.decimals : null;
         if (oracle) {
           try {
             const { PoolEstimate } = await import("@blend-capital/blend-sdk");
@@ -391,6 +414,20 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
             px = null;
           }
           px ??= feedPx[r.code.toUpperCase()] ?? null;
+          let supplyBlnd: number | null = null;
+          let borrowBlnd: number | null = null;
+          try {
+            const live = reserveByAsset.get(r.asset) as unknown as {
+              supplyEmissions?: unknown;
+              borrowEmissions?: unknown;
+              totalSupply?: () => bigint;
+              totalLiabilities?: () => bigint;
+            };
+            supplyBlnd = blndPerToken(live?.supplyEmissions, live?.totalSupply?.(), r.decimals);
+            borrowBlnd = blndPerToken(live?.borrowEmissions, live?.totalLiabilities?.(), r.decimals);
+          } catch {
+            /* no emissions */
+          }
           assets.push({
             pool: pid,
             poolName,
@@ -408,8 +445,11 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
             canCollateral: ltvPct > 0,
             canBorrow: (r.borrowApy ?? 0) > 0,
             poolStatus,
+            poolMinCollateralUsd,
             lFactor: r.lFactor,
             priceUsd: px,
+            supplyBlnd,
+            borrowBlnd,
           });
         }
         for (const r of withCode) {
@@ -435,6 +475,7 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
             poolSupplied: poolUsd.supply,
             poolBorrowed: poolUsd.borrow,
             poolStatus,
+            poolMinCollateralUsd,
             cats,
             source: "blend-sdk",
             available: true,
@@ -466,6 +507,7 @@ async function blendRows(poolIds: string[]): Promise<{ rows: PoolRow[]; assets: 
               poolSupplied: poolUsd.supply,
               poolBorrowed: poolUsd.borrow,
               poolStatus,
+              poolMinCollateralUsd,
               cats: ["leverage", "yield"],
               source: "blend-sdk",
               available: true,

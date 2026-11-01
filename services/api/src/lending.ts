@@ -12,9 +12,10 @@
 // response then carries `next` (the remaining actions) and the client builds
 // again after the previous step confirms (fresh sequence each time).
 //
-// "max": Blend caps withdraw/repay to the live position inside the contract,
-// so a large sentinel settles exactly. XOXNO withdraw takes 0 = all; repay
-// reads live debt + 0.2% (excess refunds).
+// "max": Blend caps a withdraw to the live position inside the contract, so a large sentinel
+// settles exactly. A Blend repay is different: the pool pulls the requested amount from the wallet
+// first and refunds what exceeds the debt, so "max" repays the live debt + 0.1% (interest until the
+// transaction lands; the rest comes back). XOXNO withdraw takes 0 = all; repay reads live debt + 0.2%.
 
 import { PoolContract, RequestType } from "@blend-capital/blend-sdk";
 import { isTestnet, networkPassphrase } from "./net.js";
@@ -76,12 +77,20 @@ function errMsg(e: unknown): string {
 
 /** Blend v2 PoolError codes (blend-contracts-v2 pool/src/errors.rs). */
 const BLEND_ERRORS: Record<string, string> = {
+  "1200": "The pool rejected this request.",
   "1204": "The pool's status does not allow this action right now.",
   "1205": "This would put your health factor below the pool minimum — lower the amount.",
   "1206": "The pool is on ice or frozen — this action is paused by the pool.",
   "1207": "Not enough liquidity: the pool's utilization limit would be exceeded.",
   "1208": "Blend allows a limited number of positions per account — close one first.",
+  "1209": "This asset isn't listed in this pool.",
   "1210": "The oracle price for this asset is unavailable or stale.",
+  "1212": "A liquidation auction is running on this position. Wait for it to finish.",
+  "1215": "Amount too small for the pool to account for. Try a larger amount.",
+  "1216": "Amount too small: it rounds to zero in the pool. Try a larger amount.",
+  "1217": "You don't have that much supplied in this pool.",
+  "1218": "Amount too small: it rounds to zero in the pool. Try a larger amount.",
+  "1219": "You don't owe that much of this asset in this pool.",
   "1220": "The reserve's supply cap is full.",
   "1223": "This reserve is disabled.",
   "1224": "Collateral is below the pool's minimum for borrowing.",
@@ -89,21 +98,29 @@ const BLEND_ERRORS: Record<string, string> = {
 
 /** XOXNO controller codes users can hit (rs-lending-xlm catalog, as shipped in @xoxno/sdk-js). */
 const XOXNO_ERRORS: Record<string, string> = {
-  "100": "Not enough collateral: this would leave your XOXNO account under-collateralised. Repay some debt or withdraw less.",
+  "43": "This XOXNO hub isn't active right now.",
+  "44": "That XOXNO position belongs to another wallet.",
+  "47": "Amount too small to borrow. Try a larger amount.",
+  "49": "Amount too small to withdraw. Try a larger amount.",
+  "100": "Not enough collateral: this would leave your XOXNO position under-collateralised. Repay some debt or withdraw less.",
   "102": "This would push your health factor too low. Lower the amount.",
   "104": "This spoke doesn't accept the asset as collateral.",
   "107": "This asset can't be borrowed on your spoke.",
-  "109": "Your XOXNO account has reached its position limit.",
+  "109": "This XOXNO position holds as many assets as it can. Use another position.",
+  "111": "XOXNO doesn't recognise that position type.",
   "112": "Not enough liquidity in the market for this amount right now.",
   "120": "You have no debt in this asset on XOXNO.",
   "121": "You have nothing supplied in this asset on XOXNO.",
   "122": "Repay your debt before closing this position.",
   "126": "With debt open, your collateral would fall below XOXNO's minimum. Keep more collateral.",
+  "123": "This XOXNO market is insolvent right now, so the action is blocked.",
   "127": "The market's utilization limit would be exceeded. Try a smaller amount.",
   "205": "XOXNO's price sources disagree right now, so the action is paused. Try again shortly.",
   "206": "XOXNO's price feed is stale right now. Try again shortly.",
+  "300": "That XOXNO spoke doesn't exist.",
   "301": "This spoke is deprecated.",
   "307": "This asset isn't listed on your spoke.",
+  "310": "That position is on a different spoke. Pick the matching position or open a new one.",
   "311": "The spoke's supply cap is full.",
   "312": "The spoke's borrow cap is full.",
   "315": "This asset is paused on XOXNO.",
@@ -113,12 +130,20 @@ const XOXNO_ERRORS: Record<string, string> = {
 function friendly(protocol: string, msg: string): string {
   const code = msg.match(/error #(\d+)/)?.[1];
   if (protocol === "blend" && code && BLEND_ERRORS[code]) return BLEND_ERRORS[code];
+  // A pool asked for a reserve it doesn't have.
+  if (protocol === "blend" && /Error\(Storage, MissingValue\)/.test(msg)) return BLEND_ERRORS["1209"];
   if (protocol === "xoxno" && code && XOXNO_ERRORS[code]) return XOXNO_ERRORS[code];
+  // Our own RPC limits / network hiccups: not the user's input, so say to retry.
+  if (/queue full|rate limit|429|timed? ?out|abort|ECONNRESET|fetch failed|503|502/i.test(msg))
+    return "The Stellar network is busy right now. Try again in a moment.";
   return msg;
 }
 
+/** i128::MAX: Soroban token amounts are i128. */
+const I128_MAX = (BigInt(1) << BigInt(127)) - BigInt(1);
+
 function validAmount(a: string): boolean {
-  return a === "max" || (/^\d+$/.test(a) && BigInt(a) > BigInt(0));
+  return a === "max" || (/^\d{1,39}$/.test(a) && BigInt(a) > BigInt(0) && BigInt(a) <= I128_MAX);
 }
 
 const LABEL: Record<LendingActionKind, string> = {
@@ -143,14 +168,20 @@ const BLEND_REQ: Record<LendingActionKind, number> = {
 
 async function buildBlend(from: string, pool: string, actions: LendingAction[], signer?: string): Promise<Built> {
   if (!isContract(pool)) throw new Error("Blend pool contract required");
-  const requests = actions.map((a) => {
+  for (const a of actions)
     if (a.amount === "max" && (a.action === "supply" || a.action === "borrow" || a.action === "lend"))
       throw new Error(`"max" is only valid for withdraw/repay`);
-    return {
-      request_type: BLEND_REQ[a.action],
-      address: a.asset,
-      amount: BigInt(a.amount === "max" ? MAX_SENTINEL : a.amount),
-    };
+  // Repay "max": the live debt plus 0.1% (the pool refunds the excess).
+  const repayAll = actions.some((a) => a.action === "repay" && a.amount === "max");
+  const pos = repayAll ? await (await import("./blend-position.js")).blendPosition(pool, from) : null;
+  const requests = actions.map((a) => {
+    let amount = BigInt(a.amount === "max" ? MAX_SENTINEL : a.amount);
+    if (a.action === "repay" && a.amount === "max") {
+      const debt = pos?.legs.find((l) => l.asset === a.asset)?.debt ?? BigInt(0);
+      if (debt <= BigInt(0)) throw new Error("You have no debt in this asset in this pool.");
+      amount = debt + debt / BigInt(1000) + BigInt(1);
+    }
+    return { request_type: BLEND_REQ[a.action], address: a.asset, amount };
   });
   const Ctor = PoolContract as unknown as new (id: string) => { submit(a: unknown): string };
   const op = new Ctor(pool).submit({ from, spender: from, to: from, requests });
@@ -193,7 +224,7 @@ async function buildXoxno(
     if (first.amount === "max") throw new Error(`"max" is only valid for withdraw/repay`);
     built = lend.buildStellarSupplyTx(opts as never, { ...base, amount: first.amount, accountNonce: accountId, spokeId });
   } else {
-    if (accountId === "0") throw new Error("No XOXNO account yet — supply first");
+    if (accountId === "0") throw new Error("No XOXNO position yet: supply first");
     if (first.action === "borrow") {
       if (first.amount === "max") throw new Error(`"max" is only valid for withdraw/repay`);
       built = lend.buildStellarBorrowTx(opts as never, { ...base, amount: first.amount, accountNonce: accountId });
@@ -333,6 +364,24 @@ export async function xoxnoAccounts(owner: string) {
   }
 }
 
+/**
+ * XOXNO's account-wide rules read from the controller: while an account has debt, its collateral
+ * must be worth at least `minBorrowCollateralUsd` (a WAD, governance-set; $5 on 2026-10-31).
+ */
+export async function xoxnoLimits() {
+  try {
+    const { withCache } = await import("@seidar/cache");
+    const r = await withCache("xoxno:limits:minBorrowColl", 30 * 60_000, async () => {
+      const v = await sorobanView(XOXNO_CONTROLLER, "get_min_borrow_collateral_usd");
+      return Number(BigInt(String(v))) / 1e18;
+    });
+    const minBorrowCollateralUsd = r.value;
+    return { status: 200, body: { ok: true, minBorrowCollateralUsd } };
+  } catch (e) {
+    return { status: 200, body: { ok: false, error: errMsg(e) } };
+  }
+}
+
 /** XOXNO markets with hub + per-spoke capability (canSupply/canBorrow...). */
 export async function xoxnoMarkets() {
   try {
@@ -368,6 +417,8 @@ export async function buildXoxnoMultiply(body: {
   deposit?: string;
   debtAmount?: string;
   slippageBps?: number;
+  /** Which way the position faces: XOXNO records it as the account's position mode. */
+  side?: "long" | "short";
 } | null): Promise<{ status: number; body: (Built & { quote: { amountOut: string; amountOutMin: string; priceImpact: number | null }; health: number }) | Fail }> {
   try {
     const from = String(body?.from ?? "");
@@ -379,6 +430,8 @@ export async function buildXoxnoMultiply(body: {
     const debtAmount = String(body?.debtAmount ?? "");
     const spokeId = Number(body?.spokeId);
     const slippageBps = Number(body?.slippageBps ?? 50);
+    // Controller PositionMode: 1 multiply, 2 long, 3 short.
+    const mode = body?.side === "long" ? 2 : body?.side === "short" ? 3 : 1;
     if (!isContract(collateral) || !isContract(debt) || collateral === debt) return fail("collateral and debt must be two different token contracts");
     if (!validAmount(deposit) || deposit === "max" || !validAmount(debtAmount) || debtAmount === "max") return fail("deposit and debtAmount must be base-unit amounts");
     if (!(Number.isInteger(spokeId) && spokeId > 0)) return fail("spokeId required");
@@ -399,50 +452,71 @@ export async function buildXoxnoMultiply(body: {
     const cs = c?.spokes.find((s) => s.spokeId === spokeId);
     const ds = d?.spokes.find((s) => s.spokeId === spokeId);
     if (!c || !cs || cs.canBeCollateral === false || !(cs.ltvBps > 0)) return fail("This asset can't be collateral on that XOXNO spoke.");
-    if (cs.canOpenAccount === false) return fail("That XOXNO spoke isn't opening new accounts right now.");
+    if (cs.canOpenAccount === false) return fail("That XOXNO spoke isn't opening new positions right now.");
     if (!d || !ds?.canBorrow) return fail(`${d?.symbol ?? "That asset"} can't be borrowed on this XOXNO spoke.`);
     if (!(c.priceUsd! > 0) || !(d.priceUsd! > 0)) return fail("XOXNO has no price for one of these assets right now. Try again shortly.");
 
     const lend = await import("@xoxno/sdk-js/stellar-lending");
-    const quote = await lend.getStellarAggregatorQuote(
-      { from: debt, to: collateral, amountIn: debtAmount, slippage: slippageBps / 10_000, platform: "aggregator" } as never,
-      { baseUrl: XOXNO_SWAP_URL },
-    );
-    const q = quote as unknown as { amountOut?: string; amountOutMin?: string; priceImpact?: number; routeXdr?: string };
-    if (!q.routeXdr || !q.amountOutMin) return fail("No swap route between these assets right now. Try a smaller amount.");
-    const steps = lend.mapQuoteResponseToStrategySwap(quote as never);
-
-    // Health right after opening, at the route's minimum output (the worst case the chain accepts).
-    const units = (v: string, dec: number) => Number(v) / 10 ** dec;
-    const collUsd = (units(deposit, c.decimals) + units(q.amountOutMin, c.decimals)) * c.priceUsd!;
-    const debtUsd = units(debtAmount, d.decimals) * d.priceUsd!;
-    const health = ((cs.ltvBps / 10_000) * collUsd) / debtUsd;
-    if (!(health >= LEVERAGE_MIN_HEALTH))
-      return fail(`That leverage would open at health ${health.toFixed(2)}; Seidar keeps leveraged positions at ${LEVERAGE_MIN_HEALTH} or above. Lower the leverage.`);
-
     const sdk = await import("@stellar/stellar-sdk");
-    const opts = { network: "mainnet" as const, caller: isContract(from) ? signer! : from, sourceSequence: "0", controllerAddress: XOXNO_CONTROLLER };
-    const built = lend.buildStellarMultiplyTx(opts as never, {
-      accountNonce: "0",
-      spokeId,
-      collateral: { hubId: c.hubId, asset: collateral },
-      debtToFlashLoan: debtAmount,
-      debt: { hubId: d.hubId, asset: debt },
-      mode: 1,
-      steps,
-      initialPayment: { hubId: c.hubId, asset: collateral, amount: deposit },
-    });
-    const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
-    const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
-    const { xdr } = await invokeAs(from, signer, opXdr);
+    const units = (v: string, dec: number) => Number(v) / 10 ** dec;
+    const debtUsd = units(debtAmount, d.decimals) * d.priceUsd!;
+    type Q = { amountOut?: string; amountOutMin?: string; priceImpact?: number; routeXdr?: string };
+    class Refused extends Error {}
+
+    // Quote, check health and build (the build simulates). `maxSplits: 1` asks XOXNO's router for a
+    // single route: its split routes can include a leg its own strategy router then rejects on chain
+    // (seen 2026-11-01: small USDT0 -> USDC routes with a 5% Curve slice fail with #13 inside
+    // execute_strategy, while the Sushi-only route for the same amount opens fine).
+    const attempt = async (maxSplits?: number) => {
+      const quote = await lend.getStellarAggregatorQuote(
+        { from: debt, to: collateral, amountIn: debtAmount, slippage: slippageBps / 10_000, platform: "aggregator", ...(maxSplits ? { maxSplits } : {}) } as never,
+        { baseUrl: XOXNO_SWAP_URL },
+      );
+      const q = quote as unknown as Q;
+      if (!q.routeXdr || !q.amountOutMin) throw new Refused("No swap route between these assets right now. Try a smaller amount.");
+      // Health right after opening, at the route's minimum output (the worst case the chain accepts).
+      const collUsd = (units(deposit, c.decimals) + units(q.amountOutMin, c.decimals)) * c.priceUsd!;
+      const health = ((cs.ltvBps / 10_000) * collUsd) / debtUsd;
+      if (!(health >= LEVERAGE_MIN_HEALTH))
+        throw new Refused(`That leverage would open at health ${health.toFixed(2)}; Seidar keeps leveraged positions at ${LEVERAGE_MIN_HEALTH} or above. Lower the leverage.`);
+      const opts = { network: "mainnet" as const, caller: isContract(from) ? signer! : from, sourceSequence: "0", controllerAddress: XOXNO_CONTROLLER };
+      const built = lend.buildStellarMultiplyTx(opts as never, {
+        accountNonce: "0",
+        spokeId,
+        collateral: { hubId: c.hubId, asset: collateral },
+        debtToFlashLoan: debtAmount,
+        debt: { hubId: d.hubId, asset: debt },
+        mode,
+        steps: lend.mapQuoteResponseToStrategySwap(quote as never),
+        initialPayment: { hubId: c.hubId, asset: collateral, amount: deposit },
+      });
+      const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
+      const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
+      const { xdr } = await invokeAs(from, signer, opXdr);
+      const minOut: string = q.amountOutMin;
+      return { q: { ...q, amountOut: q.amountOut ?? minOut, amountOutMin: minOut }, health, xdr };
+    };
+    let res: Awaited<ReturnType<typeof attempt>>;
+    try {
+      try {
+        res = await attempt();
+      } catch (e) {
+        if (e instanceof Refused || !/execute_strategy|swap step failed/i.test(errMsg(e))) throw e;
+        res = await attempt(1);
+      }
+    } catch (e) {
+      if (e instanceof Refused) return fail(e.message);
+      throw e;
+    }
+    const { q, health, xdr } = res;
     return {
       status: 200,
       body: {
         ok: true,
         xdr,
-        label: `Leverage ${c.symbol} with ${d.symbol}`,
+        label: body?.side === "short" ? `Short ${d.symbol} with ${c.symbol}` : body?.side === "long" ? `Long ${c.symbol} with ${d.symbol}` : `Leverage ${c.symbol} with ${d.symbol}`,
         next: null,
-        quote: { amountOut: q.amountOut ?? q.amountOutMin, amountOutMin: q.amountOutMin, priceImpact: q.priceImpact ?? null },
+        quote: { amountOut: q.amountOut, amountOutMin: q.amountOutMin, priceImpact: q.priceImpact ?? null },
         health,
       },
     };
@@ -774,6 +848,9 @@ export async function buildBlendLeverage(body: BlendLeverageBody | null): Promis
       if (target <= 0n) return fail("Amount too small to leverage.");
       const oneStep = blendLeverageContract();
       if (oneStep) return { status: 200, body: await buildOneStep(oneStep, { from, pool, coll, debt, deposit, target, slippageBps, cCode, dCode, rc, rd, fmt }) };
+      // The loop's first borrow: with no room (an existing position already near the limit) it would only supply.
+      const room = await borrowCapacity(pool, from, debt, LOOP_MIN_HEALTH, { asset: coll, amount: deposit });
+      if (room <= 0n) return fail(`Your position in this pool has no room to borrow ${dCode} right now. Repay some debt or add collateral first.`);
       return { status: 200, body: await submitRound(deposit, target, 0n, 0) };
     }
 
@@ -787,9 +864,13 @@ export async function buildBlendLeverage(body: BlendLeverageBody | null): Promis
       const { quoteSwap, buildSwap } = await import("./swap.js");
       const q = await quoteSwap({ assetIn: debt, assetOut: coll, amount: amount.toString(), tradeType: "EXACT_IN", slippageBps: String(slippageBps) });
       const qb = q.body as { ok?: boolean; quote?: unknown; error?: string };
-      if (!qb.ok || !qb.quote) return fail(`No swap route from ${dCode} to ${cCode} right now. Your Blend position is open; retry to continue.`);
+      // A timeout, rate limit or busy swap service isn't "no route": say which, so retrying makes sense.
+      const busy = (err: unknown) => /busy|abort|timeout|timed out|rate limit|429|5\d\d/i.test(String(err ?? ""));
+      const busyMsg = `The swap service is busy right now. Your Blend position is open with the ${dCode} borrowed; retry in a moment to continue.`;
+      if (!qb.ok || !qb.quote)
+        return fail(busy(qb.error) ? busyMsg : `No swap route from ${dCode} to ${cCode} right now. Your Blend position is open with the ${dCode} borrowed; retry to continue.`);
       const sb = (await buildSwap({ quote: qb.quote, from })).body as { ok?: boolean; xdr?: string; error?: string };
-      if (!sb.ok || !sb.xdr) return fail(sb.error ?? "Couldn't build the swap.");
+      if (!sb.ok || !sb.xdr) return fail(busy(sb.error) ? busyMsg : (sb.error ?? "Couldn't build the swap."));
       // Read before the swap lands; the next step supplies exactly what it returned.
       const collBefore = await balance(coll);
       return {

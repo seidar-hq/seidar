@@ -9,7 +9,7 @@
 // testnet in the app's Testnet mode or with STELLAR_NETWORK=testnet
 // (scripts, testnet keeper). Testnet endpoints: TESTNET_RPC_URL, then the
 // SDF default.
-import { isTestnet, networkPassphrase } from "./net.js";
+import { horizonUrl, isTestnet, networkPassphrase } from "./net.js";
 export { networkPassphrase } from "./net.js";
 
 function endpoints(): string[] {
@@ -195,6 +195,27 @@ export async function sorobanViewRaw(
  * single host-function op. Returns base64 XDR plus the simulated return value
  * so callers can show expected outputs before the user signs.
  */
+/**
+ * The transaction source account. An RPC endpoint that lags (or can't read the ledger entry at that
+ * moment) answers "Account not found" for an account that exists; Horizon is a second, independent
+ * read of the same sequence number. A truly unfunded account still fails with the RPC's error.
+ */
+async function loadSource(server: Server, from: string) {
+  const sdk = await import("@stellar/stellar-sdk");
+  try {
+    const a = await server.getAccount(from);
+    return new sdk.Account(a.accountId(), a.sequenceNumber());
+  } catch (e) {
+    if (!/Account not found/i.test(String(e instanceof Error ? e.message : e))) throw e;
+    const r = await fetch(`${horizonUrl()}/accounts/${from}`, { cache: "no-store" }).catch(() => null);
+    // Both sources agree it doesn't exist: an unfunded wallet, not a lagging endpoint (no retry).
+    if (r?.status === 404) throw new Error("This wallet isn't activated on Stellar yet: it needs at least 1 XLM before it can transact.");
+    const j = r?.ok ? ((await r.json().catch(() => null)) as { sequence?: string } | null) : null;
+    if (!j?.sequence) throw e;
+    return new sdk.Account(from, j.sequence);
+  }
+}
+
 export async function buildInvoke(opts: {
   from: string;
   op: unknown;
@@ -204,8 +225,7 @@ export async function buildInvoke(opts: {
 }): Promise<{ xdr: string; retval: unknown; minResourceFee: string | null }> {
   const sdk = await import("@stellar/stellar-sdk");
   return withRpc(async (server) => {
-    const account = await server.getAccount(opts.from);
-    const source = new sdk.Account(account.accountId(), account.sequenceNumber());
+    const source = await loadSource(server, opts.from);
     const op =
       typeof opts.op === "string" ? sdk.xdr.Operation.fromXDR(opts.op, "base64") : opts.op;
     const tx = new sdk.TransactionBuilder(source, { fee: "10000", networkPassphrase: networkPassphrase() })
@@ -239,6 +259,8 @@ export function humanizeSimError(raw: string): string {
     return "Insufficient balance for this action.";
   if (/trustline entry is missing|trustline/i.test(s)) return "Missing trustline for this asset — add it in your wallet first.";
   if (/Error\(Auth/.test(s)) return "Authorization failed — the signing account cannot perform this action.";
+  // A swap inside a leverage / strategy call (XOXNO's aggregator) failed: the route, not the lending rules.
+  if (contractErr && /execute_strategy|swap_exact|\bswap\b/.test(s)) return "The swap step failed when checked: no working route for this pair right now. Try another amount or asset.";
   if (contractErr) return `Contract rejected the action (error #${contractErr[1]}).`;
   return `Simulation failed: ${s.slice(0, 180)}`;
 }

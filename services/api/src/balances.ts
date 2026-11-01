@@ -86,6 +86,8 @@ export interface WalletBalance {
   code: string;
   issuer: string | null;
   balance: number;
+  /** XLM only: balance minus the account's minimum reserve and XLM locked in open offers. */
+  spendable?: number;
 }
 
 export async function getBalances(address: string) {
@@ -95,8 +97,14 @@ export async function getBalances(address: string) {
   if (r.status === 404) return { ok: true as const, balances: [] as WalletBalance[] };
   if (!r.ok) throw new Error(`horizon ${r.status}`);
   const body = (await r.json()) as {
-    balances?: { asset_type?: string; asset_code?: string; asset_issuer?: string; balance?: string }[];
+    balances?: { asset_type?: string; asset_code?: string; asset_issuer?: string; balance?: string; selling_liabilities?: string }[];
+    subentry_count?: number;
+    num_sponsoring?: number;
+    num_sponsored?: number;
   };
+  // Stellar keeps (2 + subentries + sponsoring - sponsored) x 0.5 XLM locked in every account
+  // (base reserve 0.5 XLM); XLM promised to open offers can't be spent either.
+  const reserveXlm = (2 + (body.subentry_count ?? 0) + (body.num_sponsoring ?? 0) - (body.num_sponsored ?? 0)) * 0.5;
   // A code alone proves nothing (anyone can issue "USDC"): `listed` marks
   // assets whose code + issuer match the swap registry, the only ones the
   // app prices.
@@ -117,7 +125,8 @@ export async function getBalances(address: string) {
     const n = Number(b?.balance ?? 0);
     if (!(n > 0)) continue;
     if (b.asset_type === "native") {
-      balances.push({ code: "XLM", issuer: null, balance: n, listed: true });
+      const locked = reserveXlm + Number(b.selling_liabilities ?? 0);
+      balances.push({ code: "XLM", issuer: null, balance: n, spendable: Math.max(0, n - locked), listed: true });
     } else if (typeof b.asset_code === "string") {
       const code = b.asset_code.toUpperCase();
       balances.push({
