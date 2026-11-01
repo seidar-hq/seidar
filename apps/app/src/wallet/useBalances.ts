@@ -10,11 +10,13 @@ export type TokenBalance = {
   price: number | null;
   usd: number;
   listed: boolean;
+  /** XLM only: what can be spent after Stellar's minimum reserve (absent from older API builds). */
+  spendable?: number;
 };
 
 export type WalletBalances = { tokens: TokenBalance[]; usd: number; loading: boolean; error: boolean };
 
-type RawBalance = { code: string; issuer: string | null; balance: number | string; listed?: boolean };
+type RawBalance = { code: string; issuer: string | null; balance: number | string; listed?: boolean; spendable?: number };
 
 // One shared cache so the header, dashboard and settings never fetch the same wallet twice.
 const TTL = 60_000;
@@ -74,7 +76,7 @@ async function fetchWallet(address: string): Promise<WalletBalances> {
     .map((r) => {
       const listed = r.listed !== false;
       const price = listed ? (p?.prices?.[r.code] ?? fallback[`${r.code}:${r.issuer}`] ?? null) : null;
-      return { code: r.code, issuer: r.issuer, amount: r.amount, price, usd: price ? price * r.amount : 0, listed };
+      return { code: r.code, issuer: r.issuer, amount: r.amount, price, usd: price ? price * r.amount : 0, listed, ...(r.spendable != null ? { spendable: Number(r.spendable) } : {}) };
     })
     .sort((a, b) => b.usd - a.usd || b.amount - a.amount);
   return { tokens, usd: tokens.reduce((s, t) => s + t.usd, 0), loading: false, error: unpriced };

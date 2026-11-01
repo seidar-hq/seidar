@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import LendMarket from "@/components/earn/LendMarket";
+import LendPool from "@/components/earn/LendPool";
 
-// The page reads its market from the URL (useSearchParams), which static export needs inside Suspense.
+// The page reads its pool from the URL (useSearchParams), which static export needs inside Suspense.
 export default function Page() {
   return (
     <Suspense>
-      <LendMarket />
+      <LendPool />
     </Suspense>
   );
 }

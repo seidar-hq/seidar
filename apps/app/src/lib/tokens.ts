@@ -147,6 +147,22 @@ function dexIcon(code: string, contract?: string | null): string | null {
   return dex.byCode[code.toUpperCase()] ?? null;
 }
 
+// ---- icons published by protocols (e.g. XOXNO's own logos for its LP / hub tokens), by contract ----
+
+const extraIcons: Record<string, string> = {};
+
+/** Register icons a protocol publishes for its tokens; open logos re-resolve when new ones land. */
+export function registerIcons(byContract: Record<string, string | null | undefined>): void {
+  let grew = false;
+  for (const [c, u] of Object.entries(byContract)) {
+    if (u && !extraIcons[c]) {
+      extraIcons[c] = u;
+      grew = true;
+    }
+  }
+  if (grew && typeof window !== "undefined") window.dispatchEvent(new Event(ICONS_EVENT));
+}
+
 // ---- resolution ----
 
 /** IPFS links resolve through the API's gateway proxy; plain HTTPS links pass through. */
@@ -179,6 +195,7 @@ export async function resolveIcon(t: TokenRef): Promise<string[]> {
   if (t.contract) {
     if (!dexIcon(code, t.contract)) await loadDexIcons();
     push(dexIcon(code, t.contract));
+    push(extraIcons[t.contract]);
   }
   push((await listMeta(code))?.icon);
   if (t.issuer) push(`${apiBase()}/token/logo?asset=${encodeURIComponent(`${t.code}:${t.issuer}`)}`);

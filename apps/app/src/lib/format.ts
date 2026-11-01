@@ -6,14 +6,17 @@ const usdFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximu
 /** "$1,234.56"; tiny non-zero values show as "<$0.01". */
 export function formatUsd(value: number | null | undefined): string {
   const v = Number(value) || 0;
+  if (!Number.isFinite(v)) return "N/A";
   if (v > 0 && v < 0.01) return "<$0.01";
+  if (v < 0) return v > -0.01 ? "<-$0.01" : `-$${usdFmt.format(-v)}`;
   return `$${usdFmt.format(v)}`;
 }
 
 /** "$1.2K" / "$3.4M" for tight spaces; plain formatUsd under $1,000. */
 export function formatUsdCompact(value: number | null | undefined): string {
   const v = Number(value) || 0;
-  if (Math.abs(v) < 1000) return formatUsd(v);
+  if (Math.abs(v) < 1000 || !Number.isFinite(v)) return formatUsd(v);
+  if (v < 0) return `-${formatUsdCompact(-v)}`;
   return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v)}`;
 }
 
@@ -23,4 +26,16 @@ export function formatAmount(value: number | null | undefined, maxDecimals = 6):
   if (v === 0) return "0";
   if (Math.abs(v) < 10 ** -maxDecimals) return `<${10 ** -maxDecimals}`;
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: Math.abs(v) >= 1000 ? 2 : maxDecimals }).format(v);
+}
+
+/**
+ * A MAX fill: `value` cut DOWN to `decimals` places as a plain decimal string ("12.5", never "1e-7").
+ * Rounding to nearest (toFixed) can land a hair above the real maximum and trip "more than" checks.
+ */
+export function floorAmount(value: number, decimals: number): string {
+  if (!(value > 0) || !Number.isFinite(value)) return "0";
+  const d = Math.max(0, Math.min(decimals, 18));
+  const [i, f = ""] = value.toFixed(Math.min(20, d + 4)).split(".");
+  const frac = f.slice(0, d).replace(/0+$/, "");
+  return frac ? `${i}.${frac}` : i;
 }

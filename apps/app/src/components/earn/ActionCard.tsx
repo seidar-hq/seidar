@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import CallMadeRoundedIcon from "@mui/icons-material/CallMadeRounded";
 import CallReceivedRoundedIcon from "@mui/icons-material/CallReceivedRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import Box from "@mui/material/Box";
@@ -12,7 +13,6 @@ import ButtonBase from "@mui/material/ButtonBase";
 import InputBase from "@mui/material/InputBase";
 import SwipeableDrawer from "@mui/material/SwipeableDrawer";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Tabs from "@/components/common/Tabs";
 import Shimmer from "@/components/common/Shimmer";
@@ -31,7 +31,9 @@ const DOCK_BELOW = "75rem";
 const DOCK_MEDIA = `(max-width: ${DOCK_BELOW})`;
 
 /** Content shown only inside the mobile sheet (e.g. a position summary that is off-screen there). */
-export const sheetOnly = { [`@media (min-width: calc(${DOCK_BELOW} + 0.0625rem))`]: { display: "none" } } as const;
+export const sheetOnly = {
+  [`@media (min-width: calc(${DOCK_BELOW} + 0.0625rem))`]: { display: "none" },
+} as const;
 
 const TAB_ICONS: Record<string, React.ElementType> = {
   supply: DownloadRoundedIcon,
@@ -43,9 +45,18 @@ const TAB_ICONS: Record<string, React.ElementType> = {
 };
 
 export type ActionTab = { id: string; label: string; blocked?: string | null };
-export type DetailRow = { label: string; value: React.ReactNode; color?: string };
+export type DetailRow = {
+  label: string;
+  value: React.ReactNode;
+  color?: string;
+};
 
-export const sanitizeAmount = (v: string) => (/^\d*\.?\d*$/.test(v) ? v : null);
+/** Digits and one decimal point; a comma (phone keyboards in many locales) counts as the point. */
+export const sanitizeAmount = (raw: string) => {
+  const v = raw.replace(/,/g, ".").replace(/\s/g, "");
+  // At most 12 whole digits (a trillion tokens): nothing real is larger, and longer input only breaks layouts.
+  return /^\d{0,12}(\.\d*)?$/.test(v) ? v : null;
+};
 
 export function AmountBox({
   label,
@@ -55,21 +66,27 @@ export function AmountBox({
   balance,
   balanceLabel = "Balance",
   balanceLoading = false,
+  balanceNote,
   price,
   onMax,
   readOnly,
+  onTokenClick,
 }: {
   label: string;
   token: TokenRef;
   amount: string;
   onAmount?: (v: string) => void;
   balance: number | null;
+  /** Shown in place of the balance (e.g. "Connect a wallet"). */
+  balanceNote?: string;
   balanceLabel?: string;
   /** Balance still loading, or updating after a transaction: shimmer instead of a number. */
   balanceLoading?: boolean;
   price: number | null;
   onMax?: () => void;
   readOnly?: boolean;
+  /** Makes the token chip a picker button (opens the caller's asset menu at that element). */
+  onTokenClick?: (el: HTMLElement) => void;
 }) {
   const n = Number(amount || 0);
   const over = balance != null && n > balance + 1e-12;
@@ -77,7 +94,8 @@ export function AmountBox({
     <Box
       sx={{
         borderRadius: "1rem",
-        border: (t) => `0.0625rem solid ${over ? t.palette.error.main : t.palette.overlay.white08}`,
+        border: (t) =>
+          `0.0625rem solid ${over ? t.palette.error.main : t.palette.overlay.white08}`,
         backgroundColor: "overlay.white04",
         padding: "1rem",
         display: "flex",
@@ -85,7 +103,11 @@ export function AmountBox({
         gap: "0.75rem",
       }}
     >
-      <Typography sx={{ fontSize: "0.8125rem", fontWeight: 500, color: "common.black" }}>{label}</Typography>
+      <Typography
+        sx={{ fontSize: "0.8125rem", fontWeight: 500, color: "common.black" }}
+      >
+        {label}
+      </Typography>
       <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         <InputBase
           placeholder="0.00"
@@ -96,31 +118,101 @@ export function AmountBox({
             if (v != null) onAmount?.(v);
           }}
           inputProps={{ inputMode: "decimal", "aria-label": label }}
-          sx={{ flex: 1, minWidth: 0, fontSize: "1.75rem", fontWeight: 600, color: "common.black" }}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: "1.75rem",
+            fontWeight: 600,
+            color: "common.black",
+          }}
         />
-        <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, px: "0.75rem", height: "2.5rem", borderRadius: "999rem", backgroundColor: "overlay.white08" }}>
-          <TokenLogo code={token.code} issuer={token.issuer} contract={token.contract} size="1.75rem" />
-          <Typography sx={{ fontSize: "0.9375rem", fontWeight: 600, color: "common.black" }}>{token.code}</Typography>
-        </Box>
+        <ButtonBase
+          disabled={!onTokenClick}
+          onClick={(e) => onTokenClick?.(e.currentTarget)}
+          aria-label={onTokenClick ? `Change asset (${token.code})` : undefined}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flexShrink: 0,
+            pl: "0.375rem",
+            pr: onTokenClick ? "0.5rem" : "0.75rem",
+            height: "2.5rem",
+            borderRadius: "999rem",
+            backgroundColor: "overlay.white08",
+            transition: "background-color 150ms",
+            "&:hover": onTokenClick
+              ? { backgroundColor: "overlay.white20" }
+              : {},
+            "&.Mui-disabled": { color: "inherit" },
+          }}
+        >
+          <TokenLogo
+            code={token.code}
+            issuer={token.issuer}
+            contract={token.contract}
+            size="1.75rem"
+          />
+          <Typography
+            sx={{
+              fontSize: "0.9375rem",
+              fontWeight: 600,
+              color: "common.black",
+            }}
+          >
+            {token.code}
+          </Typography>
+          {onTokenClick && (
+            <KeyboardArrowDownRoundedIcon
+              sx={{ fontSize: "1.125rem", color: "grey.200" }}
+            />
+          )}
+        </ButtonBase>
       </Box>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
+      >
         <ButtonBase
           disabled={!onMax || !balance || balanceLoading}
           onClick={onMax}
-          sx={{ height: "1.75rem", px: "0.75rem", borderRadius: "999rem", backgroundColor: "overlay.white08", fontSize: "0.75rem", color: over ? "error.main" : "grey.200" }}
+          sx={{
+            height: "1.75rem",
+            px: "0.75rem",
+            borderRadius: "999rem",
+            backgroundColor: "overlay.white08",
+            fontSize: "0.75rem",
+            color: over ? "error.main" : "grey.200",
+          }}
         >
-          {balanceLabel}:&nbsp;
-          <Shimmer on={balanceLoading} width="3.5rem" height="0.875rem">
-            {balance == null ? "—" : formatAmount(balance, 6)}
-          </Shimmer>
-          &nbsp;{token.code}
-          {onMax && !!balance && !balanceLoading && (
-            <Box component="span" sx={{ ml: "0.5rem", color: "primary.main", fontWeight: 600 }}>
-              MAX
-            </Box>
+          {balanceNote ?? (
+            <>
+              {balanceLabel}:&nbsp;
+              <Shimmer on={balanceLoading} width="3.5rem" height="0.875rem">
+                {balance == null ? "N/A" : formatAmount(balance, 6)}
+              </Shimmer>
+              &nbsp;{token.code}
+              {onMax && !!balance && !balanceLoading && (
+                <Box
+                  component="span"
+                  sx={{ ml: "0.5rem", color: "primary.main", fontWeight: 600 }}
+                >
+                  MAX
+                </Box>
+              )}
+            </>
           )}
         </ButtonBase>
-        <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>≈{price != null ? formatUsd(n * price) : "—"}</Typography>
+        <Typography
+          noWrap
+          sx={{ minWidth: 0, fontSize: "0.8125rem", color: "grey.200" }}
+        >
+          {price != null ? `≈${formatUsd(n * price)}` : "No price"}
+        </Typography>
       </Box>
     </Box>
   );
@@ -129,11 +221,32 @@ export function AmountBox({
 export function DetailRows({ rows }: { rows: DetailRow[] }) {
   if (!rows.length) return null;
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem", px: "0.25rem" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.625rem",
+        px: "0.25rem",
+      }}
+    >
       {rows.map((r) => (
-        <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
-          <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>{r.label}</Typography>
-          <Typography sx={{ fontSize: "0.8125rem", color: r.color ?? "common.black", textAlign: "right", whiteSpace: "nowrap" }}>{r.value}</Typography>
+        <Box
+          key={r.label}
+          sx={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}
+        >
+          <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>
+            {r.label}
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: "0.8125rem",
+              color: r.color ?? "common.black",
+              textAlign: "right",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {r.value}
+          </Typography>
         </Box>
       ))}
     </Box>
@@ -150,6 +263,7 @@ export default function ActionCard({
   blocker,
   onSubmit,
   busy,
+  openSignal,
 }: {
   title: string;
   tabs: ActionTab[];
@@ -161,9 +275,16 @@ export default function ActionCard({
   blocker: string | null;
   onSubmit: () => void;
   busy?: boolean;
+  /** Changing this number opens the phone sheet (e.g. a table row's Supply / Borrow button). */
+  openSignal?: number;
 }) {
   const docked = useMediaQuery(DOCK_MEDIA, { noSsr: true });
   const [sheet, setSheet] = useState(false);
+  useEffect(() => {
+    if (openSignal && docked) setSheet(true);
+    // Only a new signal opens the sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
   // Keep the page's last lines clear of the dock.
   useEffect(() => {
     if (!docked) return;
@@ -195,10 +316,20 @@ export default function ActionCard({
             }),
       }}
     >
-      {!docked && <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black" }}>{title}</Typography>}
+      {!docked && (
+        <Typography
+          sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black" }}
+        >
+          {title}
+        </Typography>
+      )}
       {tabs.length > 1 && (
         <Tabs
-          tabs={tabs.map((t) => ({ id: t.id, label: t.label, padding: "0 0.5rem" }))}
+          tabs={tabs.map((t) => ({
+            id: t.id,
+            label: t.label,
+            padding: "0 0.5rem",
+          }))}
           activeTab={active}
           setActiveTab={onTab}
           isPathProvided={false}
@@ -206,7 +337,7 @@ export default function ActionCard({
         />
       )}
       {children}
-      <Tooltip title={reason && reason.length > 28 ? reason : ""} arrow placement="top">
+      <Box>
         <span>
           <Button
             variant="solid"
@@ -218,14 +349,36 @@ export default function ActionCard({
               setSheet(false);
               onSubmit();
             }}
-            sx={{ height: "3.25rem", borderRadius: "999rem", fontSize: "0.9375rem", fontWeight: 600, textTransform: "uppercase" }}
+            sx={{
+              height: "3.25rem",
+              borderRadius: "999rem",
+              fontSize: "0.9375rem",
+              fontWeight: 600,
+              textTransform: "uppercase",
+            }}
           >
-            {busy ? "Working…" : reason ? (reason.length > 28 ? "Unavailable" : reason) : cta}
+            {busy
+              ? "Working…"
+              : reason
+                ? reason.length > 28
+                  ? "Unavailable"
+                  : reason
+                : cta}
           </Button>
         </span>
-      </Tooltip>
-      {docked && reason && reason.length > 28 && (
-        <Typography sx={{ fontSize: "0.8125rem", color: "grey.200", textAlign: "center", mt: "-0.25rem" }}>{reason}</Typography>
+      </Box>
+      {/* A reason too long for the button is spelled out under it (a hover tooltip never reaches phones). */}
+      {reason && reason.length > 28 && (
+        <Typography
+          sx={{
+            fontSize: "0.8125rem",
+            color: "grey.200",
+            textAlign: "center",
+            mt: "-0.25rem",
+          }}
+        >
+          {reason}
+        </Typography>
       )}
     </Box>
   );
@@ -249,7 +402,8 @@ export default function ActionCard({
           borderRadius: "999rem",
           // The stat cards' colour (a 5% white tint over the page card), made opaque so nothing
           // underneath shows through.
-          background: (t) => `linear-gradient(${t.palette.grey[400]}, ${t.palette.grey[400]}), ${t.palette.surfaceBg.section}`,
+          background: (t) =>
+            `linear-gradient(${t.palette.grey[400]}, ${t.palette.grey[400]}), ${t.palette.surfaceBg.section}`,
           border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
           boxShadow: "0 0.5rem 1.5rem rgba(0, 0, 0, 0.45)",
         }}
@@ -291,7 +445,15 @@ export default function ActionCard({
               >
                 <Icon sx={{ fontSize: "1rem" }} />
               </Box>
-              <Typography noWrap sx={{ fontSize: "0.6875rem", fontWeight: 600, color: "common.black", maxWidth: "100%" }}>
+              <Typography
+                noWrap
+                sx={{
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  color: "common.black",
+                  maxWidth: "100%",
+                }}
+              >
                 {t.label}
               </Typography>
             </ButtonBase>
@@ -319,8 +481,22 @@ export default function ActionCard({
           },
         }}
       >
-        <Box sx={{ display: "flex", justifyContent: "center", pt: "0.625rem", pb: "0.75rem" }}>
-          <Box sx={{ width: "2.5rem", height: "0.3125rem", borderRadius: "999rem", backgroundColor: "overlay.white20" }} />
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            pt: "0.625rem",
+            pb: "0.75rem",
+          }}
+        >
+          <Box
+            sx={{
+              width: "2.5rem",
+              height: "0.3125rem",
+              borderRadius: "999rem",
+              backgroundColor: "overlay.white20",
+            }}
+          />
         </Box>
         {card}
       </SwipeableDrawer>

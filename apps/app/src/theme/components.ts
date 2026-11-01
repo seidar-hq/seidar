@@ -1,6 +1,10 @@
 import type { Components, PaletteMode, Theme } from "@mui/material/styles";
 import type { AppColors } from "./palette";
 
+/** Tooltip surface (dark): solid, so the arrow and box are one colour. */
+const TOOLTIP_DARK = "#1F1F1F";
+const TOOLTIP_DARK_BORDER = "#3A3A3A";
+
 export const getComponents = (d: AppColors, g: PaletteMode): Components<Omit<Theme, "components">> => ({
     MuiCssBaseline: {
       styleOverrides: {
@@ -338,36 +342,28 @@ export const getComponents = (d: AppColors, g: PaletteMode): Components<Omit<The
     },
     MuiTooltip: {
       styleOverrides: {
+        // Solid fill + one border colour shared by the box and its arrow. MUI already sets the arrow
+        // 1px over the box's border, so with a solid fill the two read as one shape (no seam).
         tooltip: {
-          backgroundColor: g === "dark" ? d.overlay.white05 : d.sidebar.white,
+          backgroundColor: g === "dark" ? TOOLTIP_DARK : d.sidebar.white,
           color: g === "dark" ? d.sidebar.white : d.sidebar.black,
           maxWidth: "23.750rem",
           padding: "0.5rem 0.625rem 0.625rem",
-          borderRadius: "1.21875rem",
+          borderRadius: "0.75rem",
           fontFamily: "Public Sans, sans-serif",
           fontSize: "0.750rem",
           fontWeight: 400,
           lineHeight: "120%",
           letterSpacing: "-0.015rem",
-          filter: `drop-shadow(0rem 0.250rem 2.5rem ${d.shadow.elevated})`,
-          ...(g === "dark"
-            ? {
-                backdropFilter: "blur(0.625rem)",
-                WebkitBackdropFilter: "blur(0.625rem)",
-                border: `0.0625rem solid ${d.overlay.white08}`,
-              }
-            : {}),
+          border: `0.0625rem solid ${g === "dark" ? TOOLTIP_DARK_BORDER : "rgba(0, 0, 0, 0.08)"}`,
+          boxShadow: `0 0.75rem 1.875rem ${d.shadow.elevated}`,
         },
         arrow: {
-          color: g === "dark" ? d.overlay.white05 : d.sidebar.white,
-          ...(g === "dark"
-            ? {
-                "&::before": {
-                  backdropFilter: "blur(0.625rem)",
-                  WebkitBackdropFilter: "blur(0.625rem)",
-                },
-              }
-            : {}),
+          color: g === "dark" ? TOOLTIP_DARK : d.sidebar.white,
+          "&::before": {
+            boxSizing: "border-box",
+            border: `0.0625rem solid ${g === "dark" ? TOOLTIP_DARK_BORDER : "rgba(0, 0, 0, 0.08)"}`,
+          },
         },
       },
     },

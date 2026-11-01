@@ -13,7 +13,7 @@ import ActivityTable from "@/components/transactions/ActivityTable";
 import { useActivity } from "@/components/transactions/useActivity";
 import TxDialog from "@/components/tx/TxDialog";
 import { apiJson } from "@/lib/api";
-import { formatAmount, formatUsd } from "@/lib/format";
+import { formatAmount, formatUsd, floorAmount } from "@/lib/format";
 import { runBuilt, toBase, type TxStep } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
 import { usePortfolio, useTokenCatalogue } from "@/portfolio/usePortfolio";
@@ -267,7 +267,7 @@ export default function VaultDetail() {
             balanceLabel={tab === "deposit" ? "Wallet" : "Deposited"}
             balanceLoading={isConnected && (tab === "deposit" ? balLoading : posLoading)}
             price={price}
-            onMax={available ? () => setAmount(String(Number(available.toFixed(vault.assetDecimals)))) : undefined}
+            onMax={available ? () => setAmount(floorAmount(available, vault.assetDecimals)) : undefined}
           />
           <DetailRows rows={details} />
         </ActionCard>

@@ -172,6 +172,10 @@ export function readableError(raw: unknown): string {
   if (/^Simulation failed/i.test(msg)) return "The protocol rejected this transaction when it was checked before signing. Try a different amount, or try again shortly.";
   if (/^Server error \((\d+)\)/i.test(msg)) return "Seidar's server couldn't handle this request. Please try again in a moment.";
   if (/\b429\b|rate.?limit|too many requests/i.test(msg)) return "The network is busy right now. Please try again in a few seconds.";
+  // The RPC servers couldn't read the wallet's account at that moment (a lagging or unreachable
+  // endpoint). A wallet that has never been funded also reads this way.
+  if (/Account not found/i.test(msg))
+    return "Couldn't read your account from the Stellar network just now. Please try again in a few seconds. (A brand-new wallet needs at least 1 XLM before it can transact.)";
   if (/too many subrequests|failed to fetch|fetch failed|network ?error|networkerror|load failed|timed? ?out|ETIMEDOUT|ECONNRESET|aborted/i.test(msg))
     return "Couldn't reach the Stellar network. Check your connection and try again.";
   // Already readable: keep it, but never let a huge dump into the dialog.

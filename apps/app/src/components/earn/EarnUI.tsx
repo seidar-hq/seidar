@@ -15,9 +15,10 @@ import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useAlerts } from "@/components/common/Alerts";
+import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
 import { SearchIcon } from "@/components/icons/HeaderIcons";
 import { shortAddress } from "@/lib/format";
-import type { StatusInfo } from "./lendData";
+import type { Market, StatusInfo } from "./lendData";
 
 // Shared building blocks for the Earn pages (lend & borrow, pools, vaults).
 
@@ -401,6 +402,64 @@ export function TopList({ title, items, emptyText, valueLabel, nameLabel }: { ti
             <Typography sx={{ fontSize: "1.0625rem", color: "green.main", flexShrink: 0 }}>{it.value}</Typography>
           </ButtonBase>
         ))
+      )}
+    </Box>
+  );
+}
+
+/** Overlapping logos of a pool's assets ("+N" past `max`). */
+/** "XLM/USDC LP" -> ["XLM", "USDC"]; null for anything that isn't a two-token LP share. */
+export const lpLegs = (code: string): [string, string] | null => {
+  const m = code.match(/^([^/\s]+)\/([^/\s]+) LP$/);
+  return m ? [m[1], m[2]] : null;
+};
+
+/** A market's logo: an LP share shows its two tokens side by side, anything else its own icon. */
+export function MarketLogo({ m, size = "2.25rem" }: { m: Pick<Market, "code" | "issuer" | "contract">; size?: string }) {
+  const legs = lpLegs(m.code);
+  if (legs) return <PairLogos legs={legs.map((code) => ({ code }))} size={size} />;
+  return <TokenLogo code={m.code} issuer={m.issuer} contract={m.contract} size={size} />;
+}
+
+export function AssetStack({ markets, max = 4, size = "1.75rem" }: { markets: Pick<Market, "code" | "issuer" | "contract">[]; max?: number; size?: string }) {
+  // LP shares count as their underlying tokens, each token once.
+  const seen = new Set<string>();
+  const flat: Pick<Market, "code" | "issuer" | "contract">[] = [];
+  for (const m of markets) {
+    const legs = lpLegs(m.code);
+    for (const x of legs ? legs.map((code) => ({ code, issuer: null, contract: null })) : [m]) {
+      const k = x.code.toUpperCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      flat.push(x);
+    }
+  }
+  const shown = flat.slice(0, max);
+  const more = flat.length - shown.length;
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+      {shown.map((m, i) => (
+        <Box key={`${m.contract ?? m.code}${i}`} sx={{ ml: i ? `calc(${size} * -0.3)` : 0, lineHeight: 0, borderRadius: "50%" }}>
+          <TokenLogo code={m.code} issuer={m.issuer} contract={m.contract} size={size} />
+        </Box>
+      ))}
+      {more > 0 && (
+        <Box
+          sx={{
+            ml: `calc(${size} * -0.3)`,
+            width: size,
+            height: size,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            backgroundColor: "surfaceBg.pill",
+            fontSize: "0.6875rem",
+            fontWeight: 600,
+            color: "common.black",
+          }}
+        >
+          +{more}
+        </Box>
       )}
     </Box>
   );

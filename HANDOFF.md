@@ -575,13 +575,17 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 `contracts/` now has open AND one-step close (see contracts/README.md, contracts/AUDIT.md for the
 threat model, the Blend v2 behaviour verified in its source, and the deploy checklist).
-- 27/27 mainnet-fork tests (open: long/short/Aqua/split/add/zero-deposit; close: full long, full
+- 29/29 mainnet-fork tests (open: long/short/Aqua/split/add/zero-deposit; close: full long, full
   short, partial; refusals for every bad argument, health, deadline, missing signature, swap below
-  min_out, over-pull, swap that pays nothing, fake pool that never calls back, no position).
+  min_out, over-pull, swap that pays nothing, fake pool that never calls back, no position; and
+  since 2026-11-01 `pulls` under REAL auth with a malicious swap, and a swap that is a token call).
+- Re-audit 2026-11-01 (AUDIT.md #4, #16): the receiver now refuses a swap contract equal to either
+  token (Soroban's direct-invoker auth would otherwise skip `pulls`; it wasn't exploitable since such
+  a call delivers no output). The testnet dry run predates this: repeat it before mainnet.
 - Audit changes: `receiver.pending()` check after the flash loan (`NotExecuted` #4); contracts no
   longer extend their own TTL (a user tx would pay ~3.4 XLM of rent every ~16 days); Seidar runs
   `contracts/scripts/extend-ttl.mjs <contract> 120 --send` about every 100 days (~0.21 XLM/day).
-- Mainnet upload cost by simulation: **30.76 XLM** (14,226 B + 6,294 B) + ~0.01 create + 1 XLM
+- Mainnet upload cost by simulation: **30.83 XLM** (14,226 B + 6,323 B, 2026-11-01) + ~0.01 create + 1 XLM
   reserve. Testnet dry run of the exact WASMs: CA3PRI5W5WHL3QSNPSF5SQXAAVUJUMW6BVYIGSSYUE4WI4KQGWIGY7ZX.
 - Deployer `GDZHOPYA2T6OTWT5GLYDDOV4DDRLBAS5DHBQMPVQQGKLRDPPALUISB6W` (key in contracts/.env.local):
   waiting for the owner to fund ~33 XLM. After deploy: set BLEND_LEVERAGE_CONTRACT, deploy the API,

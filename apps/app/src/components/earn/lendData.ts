@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { registerIcons } from "@/lib/tokens";
 import { apiJson, apiJsonWarm } from "@/lib/api";
 import { useShared, useSharedMany } from "@/lib/useShared";
 import { useTokenCatalogue } from "@/portfolio/usePortfolio";
@@ -22,8 +23,11 @@ type BlendAsset = {
   canBorrow?: boolean;
   canCollateral?: boolean;
   poolStatus?: number | null;
+  poolMinCollateralUsd?: number | null;
   lFactor?: number;
   priceUsd?: number | null;
+  supplyBlnd?: number | null;
+  borrowBlnd?: number | null;
 };
 
 export type XoxnoSpoke = {
@@ -64,6 +68,8 @@ export type Market = {
   poolName: string;
   /** Blend pool status (0-1 active, 2-3 on ice, 4-5 frozen, 6 setup); null for XOXNO. */
   status: number | null;
+  /** Collateral (USD) a position needs before it may borrow; Blend per pool (after collateral factors). XOXNO: see /lending/xoxno/limits. */
+  minCollateralUsd: number | null;
   code: string;
   contract: string | null;
   issuer: string | null;
@@ -80,6 +86,9 @@ export type Market = {
   priceUsd: number | null;
   /** Blend liability factor (0..1): debt counts as amount / lFactor in health. */
   lFactor?: number | null;
+  /** Blend BLND emissions per year per token supplied / borrowed. */
+  supplyBlnd?: number | null;
+  borrowBlnd?: number | null;
   xoxno?: XoxnoMarket;
 };
 
@@ -159,6 +168,7 @@ export function useLendMarkets() {
         pool: a.pool,
         poolName: a.poolName,
         status: a.poolStatus ?? null,
+        minCollateralUsd: a.poolMinCollateralUsd ?? null,
         code: a.code,
         contract: a.asset ?? null,
         issuer: meta?.issuer ?? null,
@@ -174,6 +184,8 @@ export function useLendMarkets() {
         canCollateral: a.canCollateral !== false,
         priceUsd: a.priceUsd ?? null,
         lFactor: a.lFactor ?? null,
+        supplyBlnd: a.supplyBlnd ?? null,
+        borrowBlnd: a.borrowBlnd ?? null,
       });
     }
     for (const x of xoxno.value?.assets ?? []) {
@@ -192,6 +204,7 @@ export function useLendMarkets() {
         pool,
         poolName: `${x.hubName ?? "Hub"} hub`,
         status: null,
+        minCollateralUsd: null,
         code: x.symbol,
         contract: x.sac,
         issuer: meta?.issuer ?? null,
@@ -212,7 +225,19 @@ export function useLendMarkets() {
     return out;
   }, [blend.value, xoxno.value, groups.value, byContract, tokens]);
 
-  return { markets, loading: (blend.loading || xoxno.loading) && markets.length === 0 };
+  // XOXNO publishes a logo for every token it lists (its LP tokens have none elsewhere).
+  useEffect(() => {
+    const xs = xoxno.value?.assets;
+    if (xs?.length) registerIcons(Object.fromEntries(xs.map((x) => [x.sac, x.logoUrl])));
+  }, [xoxno.value]);
+
+  // Per protocol too: a Blend list arriving first must not make an XOXNO page decide it doesn't exist.
+  const state = (r: { value: unknown; loading: boolean; error: boolean }) => (r.value ? "ready" : r.loading || !r.error ? "loading" : "failed");
+  return {
+    markets,
+    loading: (blend.loading || xoxno.loading) && markets.length === 0,
+    status: { blend: state(blend), xoxno: state(xoxno) } as Record<LendProtocol, "ready" | "loading" | "failed">,
+  };
 }
 
 export type BlendPoolInfo = {
@@ -315,8 +340,70 @@ export const compactUsd = (v: number | null | undefined) => {
   return `$${v.toFixed(2)}`;
 };
 
-/** Link to a market's page (Supply / Borrow / Withdraw / Repay / Leverage live there). */
+/** A Blend pool or an XOXNO hub with every asset it lists. */
+export type LendPool = {
+  key: string;
+  protocol: LendProtocol;
+  pool: string;
+  name: string;
+  status: number | null;
+  markets: Market[];
+  suppliedUsd: number;
+  borrowedUsd: number;
+  availableUsd: number;
+  collaterals: Market[];
+  borrowables: Market[];
+  bestSupplyApy: number | null;
+};
+
+/** Markets grouped by pool (Blend) / hub (XOXNO), largest first. */
+export function groupPools(markets: Market[]): LendPool[] {
+  const by = new Map<string, LendPool>();
+  for (const m of markets) {
+    const key = `${m.protocol}:${m.pool}`;
+    let p = by.get(key);
+    if (!p) {
+      p = { key, protocol: m.protocol, pool: m.pool, name: m.poolName, status: m.status, markets: [], suppliedUsd: 0, borrowedUsd: 0, availableUsd: 0, collaterals: [], borrowables: [], bestSupplyApy: null };
+      by.set(key, p);
+    }
+    p.markets.push(m);
+    p.suppliedUsd += m.suppliedUsd;
+    p.borrowedUsd += m.borrowedUsd;
+    p.availableUsd += m.availableUsd;
+    if (m.canCollateral) p.collaterals.push(m);
+    if (m.canBorrow && m.borrowApy != null) p.borrowables.push(m);
+    if (m.supplyApy != null && m.suppliedUsd >= 1_000) p.bestSupplyApy = Math.max(p.bestSupplyApy ?? 0, m.supplyApy);
+    if (m.status != null) p.status = p.status == null ? m.status : Math.min(p.status, m.status);
+  }
+  for (const p of by.values()) {
+    p.markets.sort((a, b) => b.suppliedUsd - a.suppliedUsd);
+    p.collaterals.sort((a, b) => b.suppliedUsd - a.suppliedUsd);
+    p.borrowables.sort((a, b) => b.suppliedUsd - a.suppliedUsd);
+  }
+  return [...by.values()].sort((a, b) => b.suppliedUsd - a.suppliedUsd);
+}
+
+/** BLND price (for emission APRs and reward values). */
+export function useBlndPrice(): number | null {
+  return (
+    useShared<{ prices?: Record<string, number | null> } | null>("prices:BLND", () => apiJson("/api/prices?codes=BLND"), 300_000).value?.prices?.BLND ?? null
+  );
+}
+
+/** BLND emissions as an APR (%) on top of the market's own rate, at the BLND and asset prices. */
+export function blndApr(m: Pick<Market, "supplyBlnd" | "borrowBlnd" | "priceUsd">, side: "supply" | "borrow", blndPx: number | null): number | null {
+  const per = side === "supply" ? m.supplyBlnd : m.borrowBlnd;
+  if (!per || !blndPx || !m.priceUsd) return null;
+  const v = ((per * blndPx) / m.priceUsd) * 100;
+  return Number.isFinite(v) && v >= 0.005 ? v : null;
+}
+
+/** Link to a pool's page; `asset` and `mode` preselect the action card. */
+export const poolHref = (p: { protocol: LendProtocol; pool: string }, opts: { asset?: string | null; mode?: LendAction; account?: string } = {}) =>
+  `/earn/lending&borrow/view?protocol=${p.protocol}&pool=${encodeURIComponent(p.pool)}${opts.asset ? `&asset=${encodeURIComponent(opts.asset)}` : ""}${
+    opts.mode ? `&mode=${opts.mode}` : ""
+  }${opts.account ? `&account=${encodeURIComponent(opts.account)}` : ""}`;
+
+/** Link to a market: its pool's page with that asset picked. */
 export const marketHref = (m: Pick<Market, "protocol" | "pool" | "contract" | "code">, mode: LendAction = "supply", accountId?: string) =>
-  `/earn/lending&borrow/view?protocol=${m.protocol}&pool=${encodeURIComponent(m.pool)}&asset=${encodeURIComponent(m.contract ?? m.code)}&mode=${mode}${
-    accountId ? `&account=${encodeURIComponent(accountId)}` : ""
-  }`;
+  poolHref(m, { asset: m.contract ?? m.code, mode, account: accountId });

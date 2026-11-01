@@ -17,7 +17,7 @@ import Tabs from "@/components/common/Tabs";
 import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
 import TxDialog from "@/components/tx/TxDialog";
 import { apiJson } from "@/lib/api";
-import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
+import { formatAmount, formatUsd, shortAddress, floorAmount } from "@/lib/format";
 import { explorerTx, postJson, runBuilt, toBase, type TxStep } from "@/lib/tx";
 import { useShared } from "@/lib/useShared";
 import { usePortfolio } from "@/portfolio/usePortfolio";
@@ -431,7 +431,7 @@ export default function PoolPage() {
                 balance={bal(l)}
                 balanceLoading={balLoading}
                 price={usd(i)}
-                onMax={bal(l) ? () => setLeg(i, String(Number(bal(l)!.toFixed(7)))) : undefined}
+                onMax={bal(l) ? () => setLeg(i, floorAmount(bal(l)!, 7)) : undefined}
               />
             ))}
           </Box>
