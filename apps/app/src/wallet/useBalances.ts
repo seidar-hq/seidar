@@ -12,6 +12,8 @@ export type TokenBalance = {
   listed: boolean;
   /** XLM only: what can be spent after Stellar's minimum reserve (absent from older API builds). */
   spendable?: number;
+  /** The wallets holding it (set on the merged list only). */
+  holders?: string[];
 };
 
 export type WalletBalances = { tokens: TokenBalance[]; usd: number; loading: boolean; error: boolean };
@@ -163,11 +165,16 @@ export function useBalances(addresses: string[]) {
   // Same token held in several wallets is merged into one row.
   const merged = useMemo(() => {
     const m = new Map<string, TokenBalance>();
-    for (const w of list)
+    for (const [address, w] of Object.entries(byAddress))
       for (const t of w.tokens) {
         const k = `${t.code}:${t.issuer ?? "native"}`;
         const prev = m.get(k);
-        m.set(k, prev ? { ...prev, amount: prev.amount + t.amount, usd: prev.usd + t.usd } : t);
+        m.set(
+          k,
+          prev
+            ? { ...prev, amount: prev.amount + t.amount, usd: prev.usd + t.usd, holders: [...(prev.holders ?? []), address] }
+            : { ...t, holders: [address] },
+        );
       }
     return [...m.values()].sort((a, b) => b.usd - a.usd || b.amount - a.amount);
     // eslint-disable-next-line react-hooks/exhaustive-deps

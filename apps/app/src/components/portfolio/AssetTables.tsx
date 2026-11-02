@@ -20,7 +20,9 @@ import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
 import type { BorrowRow, Portfolio, SupplyRow, VaultRow } from "@/portfolio/usePortfolio";
 import { usePriceChanges } from "@/portfolio/useSeries";
 import type { TokenBalance } from "@/wallet/useBalances";
-import { useWallet, walletLabel } from "@/wallet/WalletContext";
+import { displayMeta } from "@/lib/wallets";
+import { useWallet, walletLabel, type LinkedWallet } from "@/wallet/WalletContext";
+import { WalletAvatar } from "@/components/wallet/WalletParts";
 import PerpsPositions from "./PerpsPositions";
 
 const Root = styled(PlainCard)({ position: "relative" });
@@ -63,6 +65,33 @@ function ProtocolCell({ id, name }: { id: string; name: string }) {
   );
 }
 
+/** The wallet apps behind `addresses` (Varial, LOBSTR, ...), one entry per app. */
+function walletApps(addresses: string[], wallets: LinkedWallet[]) {
+  const apps = new Map<string, LinkedWallet>();
+  for (const a of addresses) {
+    const w = wallets.find((x) => x.address === a);
+    if (!w) continue;
+    const name = displayMeta(w.walletId, w.peer)?.name ?? "Wallet";
+    if (!apps.has(name)) apps.set(name, w);
+  }
+  return [...apps.entries()].map(([name, w]) => ({ name, wallet: w }));
+}
+
+/** Wallet holdings: the logo and name of the wallet app(s) holding the token. */
+function WalletAppCell({ apps }: { apps: ReturnType<typeof walletApps> }) {
+  if (!apps.length) return <Num>Wallet</Num>;
+  return (
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+      <Box sx={{ display: "inline-flex", "& > *:not(:first-of-type)": { ml: "-0.25rem" } }}>
+        {apps.map((a) => (
+          <WalletAvatar key={a.name} walletId={a.wallet.walletId} peer={a.wallet.peer} size="1.125rem" />
+        ))}
+      </Box>
+      <Num>{apps.map((a) => a.name).join(" + ")}</Num>
+    </Box>
+  );
+}
+
 const lendLink = (r: { protocol: string; pool: string; contract?: string; code: string; account?: string }, mode: "withdraw" | "repay") =>
   r.protocol === "blend" || r.protocol === "xoxno"
     ? lendHref({ protocol: r.protocol as LendProtocol, pool: r.pool }, { asset: r.contract ?? r.code, mode, account: r.account })
@@ -97,6 +126,8 @@ type AllRow = {
   kind: "Wallet" | "Supplied" | "Liquidity" | "Vault" | "Borrowed" | "Perps";
   asset: React.ReactNode;
   protocol: string;
+  /** Wallet rows: the wallet apps holding the token (shown instead of a protocol logo). */
+  apps?: ReturnType<typeof walletApps>;
   /** Protocol id, for the logo. */
   protocolId: string;
   /** Where clicking the row goes (the position's page); null for wallet holdings. */
@@ -120,7 +151,7 @@ const KIND_COLOR: Record<AllRow["kind"], string> = {
 export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
   const [tab, setTab] = useState("all");
   const router = useRouter();
-  const { activeWallet, switchWallet } = useWallet();
+  const { activeWallet, switchWallet, wallets } = useWallet();
   // Opens a position's page, as the wallet that holds it (the pages act for the active wallet).
   const open = (href: string | null, wallet: string) => {
     if (!href) return;
@@ -242,18 +273,22 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
 
   // All: every category in one list, largest value first.
   const allRows: AllRow[] = [
-    ...portfolio.assets.map((r): AllRow => ({
-      id: `a:${r.code}:${r.issuer}`,
-      kind: "Wallet",
-      asset: token(r.code, r.issuer),
-      protocol: "Wallet",
-      protocolId: "",
-      href: null,
-      amount: `${formatAmount(r.amount)} ${r.code}`,
-      amountTip: String(r.amount),
-      usd: r.listed && r.price != null ? r.usd : null,
-      wallet: "",
-    })),
+    ...portfolio.assets.map((r): AllRow => {
+      const apps = walletApps(r.holders ?? [], wallets);
+      return {
+        id: `a:${r.code}:${r.issuer}`,
+        kind: "Wallet",
+        asset: token(r.code, r.issuer),
+        protocol: apps.map((a) => a.name).join(" + ") || "Wallet",
+        apps,
+        protocolId: "",
+        href: null,
+        amount: `${formatAmount(r.amount)} ${r.code}`,
+        amountTip: String(r.amount),
+        usd: r.listed && r.price != null ? r.usd : null,
+        wallet: "",
+      };
+    }),
     ...portfolio.supplied.map((r, i): AllRow => ({
       id: `s:${r.wallet}:${r.pool}:${r.code}:${i}`,
       kind: r.kind === "lp" ? "Liquidity" : "Supplied",
@@ -328,7 +363,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       cell: (r) => <Num color={KIND_COLOR[r.kind]}>{r.kind}</Num>,
       sortValue: (r) => r.kind,
     },
-    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocolId} name={r.protocol} />, sortValue: (r) => r.protocol },
+    { id: "protocol", header: "Protocol", cell: (r) => (r.apps ? <WalletAppCell apps={r.apps} /> : <ProtocolCell id={r.protocolId} name={r.protocol} />), sortValue: (r) => r.protocol },
     { id: "amount", header: "Amount", cell: (r) => <Num tip={r.amountTip} busy={busyOf(r.kind)}>{r.amount}</Num> },
     {
       id: "usd",
