@@ -21,7 +21,8 @@ import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownR
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import { HOME_ENABLED } from "@/lib/features";
+import { DISCOVER_ENABLED, HOME_ENABLED } from "@/lib/features";
+import TravelExploreOutlinedIcon from "@mui/icons-material/TravelExploreOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
@@ -191,6 +192,13 @@ const ALL_NAV: NavEntry[] = [
     IconComponent: HomeOutlinedIcon,
   },
   { title: "Portfolio", value: "/portfolio", lightIcon: "/assets/nav/dashboardIcon.svg", darkIcon: "/assets/nav/dashboardDarkIcon.svg" },
+  {
+    title: "Discover",
+    value: "/discover",
+    lightIcon: "/assets/nav/dashboardIcon.svg",
+    darkIcon: "/assets/nav/dashboardDarkIcon.svg",
+    IconComponent: TravelExploreOutlinedIcon,
+  },
   { title: "Trade", value: "/trade-swap", lightIcon: "/assets/nav/tradeSwapLightIcon.svg", darkIcon: "/assets/nav/tradeSwapDarkIcon.svg" },
   { title: "Earn", value: "/earn", lightIcon: "/assets/nav/earnLightIcon.svg", darkIcon: "/assets/nav/earnDarkIcon.svg" },
   { title: "Bridge", value: "/bridge", lightIcon: "/assets/nav/bridgeIconLight.svg", darkIcon: "/assets/nav/bridgeIconDark.svg" },
@@ -204,8 +212,8 @@ const ALL_NAV: NavEntry[] = [
   },
 ];
 
-// Home is listed only when it is enabled (lib/features.ts).
-const NAV = ALL_NAV.filter((n) => HOME_ENABLED || n.value !== "/");
+// Home and Discover are listed only when they are enabled (lib/features.ts).
+const NAV = ALL_NAV.filter((n) => (HOME_ENABLED || n.value !== "/") && (DISCOVER_ENABLED || n.value !== "/discover"));
 
 const TRADE_ITEMS: SubEntry[] = [
   { title: "Swap", subtitle: "Best route across Stellar DEXs", path: "/trade-swap/dex", Icon: SwapDropdownIcon },

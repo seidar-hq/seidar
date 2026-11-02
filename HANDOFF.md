@@ -567,6 +567,38 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 ---
 
+## 9c. Discover (dev-only, built 2026-11-02, not deployed)
+
+Browse any wallet, read its risk and P&L, copy its positions. Flag `NEXT_PUBLIC_ENABLE_DISCOVER`
+(`1` in `.env.development`, `0` in `.env.production`; `lib/features.ts` `DISCOVER_ENABLED`); with it off
+the production bundle contains none of its code (checked: no Discover strings in the export) and `/discover`
+redirects to `/`. Nav entry "Discover" and page search entry appear only with the flag on.
+- Route `/discover` (landing) and `/discover?address=G…` (profile), one page: `app/discover/page.tsx`.
+- `components/discover/`: `discoverData.ts` (featured/account hooks, watchlist + recents in localStorage
+  `seidar.discover.watch|recent`, `useCopyItems` = a wallet's tokens/lend/LP/vault positions as copy items with
+  per-item risk and a `blocked` reason, debts), `risk.ts` (0-100 score: leverage, 30-day volatility,
+  concentration HHI, stablecoin share, protocol exposure, unpriced tokens; weights in the file), `pnl.ts`
+  (P&L from `/activity`: today's net holdings walked back by undoing swaps / transfers / reward claims, valued
+  at chart prices on an even grid; transfers = deposits/withdrawals except payments from the token's own
+  issuer; up to 8 pages = 800 ops, flagged when the history doesn't reach the period start; trades judged by
+  today's value of bought vs sold), `copy.ts` (plan: trustline if missing → Soroswap aggregator swap from the
+  pay token, 1% slippage → deposit via the same build endpoints as Earn; deposit amount = Horizon balance
+  delta after the swap, min-out as fallback; LP deposits at the pool's reserve ratio; XOXNO supply opens a new
+  account on the first spoke that accepts the asset), UI in `DiscoverLanding`, `WalletProfile`,
+  `ProfileCards`, `HoldingsCard`, `CopyPanel`, `parts`.
+- Not copyable (shown with "Open page"): concentrated-liquidity positions, multi-asset vaults, frozen pools,
+  unpriced tokens. Borrowing is never copied (debts are shown and count in risk). Perps (Zenex) not shown.
+- API `services/api/src/discover.ts`: `GET /discover/featured` (Blend events of the 4 largest open pools,
+  last 30 days, via Stellar Expert; labelled exchanges/issuers dropped via its directory; wallet value from
+  Stellar Expert `account/{a}/value`; cached 20 min SWR, ~12 s cold), `/discover/account`, `/discover/resolve`
+  (federation `name*domain`). Not cron-warmed.
+- Verified: landing + profile on live data (desktop and 390 px), copy review plan for a watch-only wallet,
+  and the copy's swap quote/build + Blend supply build simulated on mainnet through the API. **Not done: a real
+  signed copy** (the auto-mode checker refused to press Start even for a watch-only wallet), and vault / LP
+  copy builds were not exercised.
+
+---
+
 ## 10. Verification checklist before you commit
 
 - App: `cd apps/app && npx tsc --noEmit && npx next lint --dir src`

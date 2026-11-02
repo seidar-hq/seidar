@@ -169,6 +169,22 @@ app.get("/market/overview", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+// Discover: active wallets to browse, account facts, federation names (discover.ts).
+app.get("/discover/featured", async (c) => {
+  const { featuredWallets } = await import("./discover.js");
+  return c.json(await featuredWallets());
+});
+app.get("/discover/account", async (c) => {
+  const { accountInfo } = await import("./discover.js");
+  const r = await accountInfo(c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+app.get("/discover/resolve", async (c) => {
+  const { resolveAddress } = await import("./discover.js");
+  const r = await resolveAddress(c.req.query("q") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
 app.get("/prices/history", async (c) => {
   const code = c.req.query("code") ?? "";
   const points = Number(c.req.query("points") ?? 48);
