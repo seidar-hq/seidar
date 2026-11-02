@@ -514,7 +514,8 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
    `!` prefix, keeps the secret out of the chat): `DEPLOYER_SECRET=S... node contracts/scripts/deploy.mjs mainnet`
    (~26.2 XLM). Then add `BLEND_LEVERAGE_CONTRACT = "C..."` to `services/api/wrangler.toml` `[vars]`, deploy
    the API, and simulate `POST /lending/blend/leverage` (expect one tx; the app shows "Transactions: 1").
-   Contract is unaudited and has never had a real signed run.
+   Internally and AI-reviewed (contracts/AUDIT.md), no professional audit, no real signed run yet:
+   do one small open + close from the owner's wallet before announcing it.
 2. **Phone can't reach app.seidar.xyz / data never loads (owner's network, ENTERPRISE-BENIN, NG).**
    Cloudflare's authoritative DNS answers `104.21.78.103` / `172.67.220.56`, but resolvers on the owner's
    path sometimes get `188.114.96.x` / `188.114.97.x` (seen: .2, .6) and that network can't connect to them
@@ -575,18 +576,23 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 `contracts/` now has open AND one-step close (see contracts/README.md, contracts/AUDIT.md for the
 threat model, the Blend v2 behaviour verified in its source, and the deploy checklist).
-- 29/29 mainnet-fork tests (open: long/short/Aqua/split/add/zero-deposit; close: full long, full
+- 34/34 mainnet-fork tests (2026-11-02; open: long/short/Aqua/split/add/zero-deposit; close: full long, full
   short, partial; refusals for every bad argument, health, deadline, missing signature, swap below
   min_out, over-pull, swap that pays nothing, fake pool that never calls back, no position; and
   since 2026-11-01 `pulls` under REAL auth with a malicious swap, and a swap that is a token call).
 - Re-audit 2026-11-01 (AUDIT.md #4, #16): the receiver now refuses a swap contract equal to either
   token (Soroban's direct-invoker auth would otherwise skip `pulls`; it wasn't exploitable since such
-  a call delivers no output). The testnet dry run predates this: repeat it before mainnet.
+  a call delivers no output).
+- External review 2026-11-02 (AUDIT.md "External review"): receiver now refuses an `exec_op` whose
+  loan never arrived (`NotFunded` #4; a fake pool could otherwise hand stray receiver funds to its
+  caller); close's flash repay buffer +1 -> +2 stroops (a loan under 0.001 token could leave a d-token
+  of debt); API partial-close guard matches the contract's flash repay, strict `amountOutMin` parse.
+  Testnet dry run redone with the final WASMs: CAJVGZZ4XDERVJIW5ZOY7FR4T45XUGAX3LCUOMCPB2X6VUQT3IN3XAE4.
 - Audit changes: `receiver.pending()` check after the flash loan (`NotExecuted` #4); contracts no
   longer extend their own TTL (a user tx would pay ~3.4 XLM of rent every ~16 days); Seidar runs
   `contracts/scripts/extend-ttl.mjs <contract> 120 --send` about every 100 days (~0.21 XLM/day).
-- Mainnet upload cost by simulation: **30.83 XLM** (14,226 B + 6,323 B, 2026-11-01) + ~0.01 create + 1 XLM
-  reserve. Testnet dry run of the exact WASMs: CA3PRI5W5WHL3QSNPSF5SQXAAVUJUMW6BVYIGSSYUE4WI4KQGWIGY7ZX.
+- Mainnet upload cost by simulation: **31.31 XLM** (14,230 B + 6,811 B, 2026-11-02) + ~0.01 create + 1 XLM
+  reserve. sha256 leverage `21f8cc85…3ba68`, receiver `cdb667ee…71707` (full hashes in AUDIT.md).
 - Deployer `GDZHOPYA2T6OTWT5GLYDDOV4DDRLBAS5DHBQMPVQQGKLRDPPALUISB6W` (key in contracts/.env.local):
   waiting for the owner to fund ~33 XLM. After deploy: set BLEND_LEVERAGE_CONTRACT, deploy the API,
   simulate an open and a close against mainnet, return the leftover XLM to the funder.

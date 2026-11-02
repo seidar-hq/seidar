@@ -183,13 +183,17 @@ impl SeidarLeverage {
                     panic_with_error!(&e, LeverageError::NoPosition);
                 }
                 let underlying = b.checked_mul(r.data.b_rate).unwrap_or_else(|| panic_with_error!(&e, LeverageError::BadArgs)) / SCALAR_12;
-                underlying + underlying / 1_000 + 1
+                underlying
+                    .checked_add(underlying / 1_000 + 1)
+                    .unwrap_or_else(|| panic_with_error!(&e, LeverageError::BadArgs))
             }
         };
         // Repay the flash loan with a hair more than borrowed (Blend rounds the liability up and
-        // refunds any excess), so no flash debt can be left behind.
+        // refunds any excess), so no flash debt can be left behind. Blend burns the repayment's
+        // d-tokens rounded down, so the fixed part must be worth a whole d-token even for a tiny
+        // loan: 2 stroops covers it while the debt rate is below 2.0.
         let flash_repay = flash_amount
-            .checked_add(flash_amount / 10_000 + 1)
+            .checked_add(flash_amount / 10_000 + 2)
             .unwrap_or_else(|| panic_with_error!(&e, LeverageError::BadArgs));
 
         // Blend settles each token net: the user owes `repay` of debt (paid from the swap output)

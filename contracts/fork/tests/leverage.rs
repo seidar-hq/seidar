@@ -675,6 +675,23 @@ mod evil {
         pub fn steal(e: Env, from: Address, token: Address, amount: i128) {
             token::Client::new(&e, &token).transfer(&from, &e.current_contract_address(), &amount);
         }
+        /// Pays `amount` of `out` to `to` from this contract's own balance.
+        pub fn gift(e: Env, out: Address, to: Address, amount: i128) {
+            token::Client::new(&e, &out).transfer(&e.current_contract_address(), &to, &amount);
+        }
+        /// A stand-in DEX: takes `amount_in` of `token_in` from `from` (a pre-authorized pull) and
+        /// pays `amount_out` of `out` back to `from` from this contract's own balance.
+        pub fn trade(e: Env, from: Address, token_in: Address, amount_in: i128, out: Address, amount_out: i128) {
+            let me = e.current_contract_address();
+            token::Client::new(&e, &token_in).transfer(&from, &me, &amount_in);
+            token::Client::new(&e, &out).transfer(&me, &from, &amount_out);
+        }
+        /// Tries to take `amount` of `token` from `from` (the user's auth is NOT staged) and then
+        /// pays `out_amount` of `out` to `to` (the receiver) so the output check would pass.
+        pub fn steal_and_gift(e: Env, from: Address, token: Address, amount: i128, out: Address, to: Address, out_amount: i128) {
+            token::Client::new(&e, &token).transfer(&from, &e.current_contract_address(), &amount);
+            token::Client::new(&e, &out).transfer(&e.current_contract_address(), &to, &out_amount);
+        }
     }
 }
 
@@ -918,4 +935,367 @@ fn close_needs_the_users_signature() {
     let c = Close::all(&s, &xlm, &usdc);
     s.f.e.set_auths(&[]);
     assert!(try_close(&s, &c).is_err(), "closed without the user's signature");
+}
+
+// ---------- adversarial: a fake pool draining the receiver ----------
+
+mod drain_pool {
+    use seidar_leverage_iface::{FlashLoan, PoolConfig, Positions, Request, Reserve, ReserveConfig, ReserveData};
+    use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Map, Symbol, Val, Vec};
+
+    #[contract]
+    pub struct DrainPool;
+
+    fn reserve(_e: &Env, asset: &Address) -> Reserve {
+        Reserve {
+            asset: asset.clone(),
+            config: ReserveConfig {
+                index: 0,
+                decimals: 7,
+                c_factor: 10_000_000,
+                l_factor: 10_000_000,
+                util: 0,
+                max_util: 0,
+                r_base: 0,
+                r_one: 0,
+                r_two: 0,
+                r_three: 0,
+                reactivity: 0,
+                supply_cap: i128::MAX,
+                enabled: true,
+            },
+            data: ReserveData {
+                d_rate: 1_000_000_000_000,
+                b_rate: 1_000_000_000_000,
+                ir_mod: 0,
+                b_supply: 0,
+                d_supply: 0,
+                backstop_credit: 0,
+                last_time: 0,
+            },
+            scalar: 10_000_000,
+        }
+    }
+
+    fn positions(e: &Env) -> Positions {
+        let mut collateral = Map::new(e);
+        collateral.set(0u32, 1_000_000_000_000_000i128);
+        let mut liabilities = Map::new(e);
+        liabilities.set(1u32, 10_000_000i128);
+        Positions { liabilities, collateral, supply: Map::new(e) }
+    }
+
+    #[contractimpl]
+    impl DrainPool {
+        pub fn __constructor(e: Env, oracle: Address, xlm: Address, usdc: Address) {
+            e.storage().instance().set(&0u32, &oracle);
+            e.storage().instance().set(&1u32, &xlm);
+            e.storage().instance().set(&2u32, &usdc);
+        }
+
+        pub fn get_config(e: Env) -> PoolConfig {
+            PoolConfig {
+                oracle: e.storage().instance().get(&0u32).unwrap(),
+                min_collateral: 0,
+                bstop_rate: 0,
+                status: 0,
+                max_positions: 10,
+            }
+        }
+
+        pub fn get_reserve_list(e: Env) -> Vec<Address> {
+            Vec::from_array(
+                &e,
+                [
+                    e.storage().instance().get(&1u32).unwrap(),
+                    e.storage().instance().get(&2u32).unwrap(),
+                ],
+            )
+        }
+
+        pub fn get_reserve(e: Env, asset: Address) -> Reserve {
+            reserve(&e, &asset)
+        }
+
+        pub fn get_positions(e: Env, _address: Address) -> Positions {
+            positions(&e)
+        }
+
+        /// "Flashes" nothing: it just calls the receiver back with the requested amount.
+        pub fn flash_loan(e: Env, from: Address, flash_loan: FlashLoan, _requests: Vec<Request>) -> Positions {
+            let _: Val = e.invoke_contract(
+                &flash_loan.contract,
+                &Symbol::new(&e, "exec_op"),
+                (from, flash_loan.asset, flash_loan.amount, 0i128).into_val(&e),
+            );
+            positions(&e)
+        }
+    }
+}
+
+/// A fake pool calling exec_op without lending anything, with a "swap" that either just pays
+/// min_out (so the receiver would refund the "unspent loan" out of stray funds) or pulls the
+/// "loan" (stray funds) through the pre-authorized pulls. Both are refused before the swap runs.
+#[test]
+fn a_fake_pool_cannot_drain_stray_funds_from_the_receiver() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let oracle = BlendPoolClient::new(e, &s.f.pool).get_config().oracle;
+    let fake = e.register(drain_pool::DrainPool, (oracle, xlm.clone(), usdc.clone()));
+
+    // Somebody accidentally sent 100 USDC to the shared receiver.
+    token::StellarAssetClient::new(e, &usdc).mint(&s.receiver, &100_0000000);
+    let evil = e.register(evil::Evil, ());
+    token::Client::new(e, &xlm).transfer(&s.f.whale, &evil, &10);
+    let attacker = Address::generate(e);
+    let borrow = 100_0000000i128;
+    let swaps = [
+        // Pays one stroop of XLM, spends nothing: the receiver would "refund" 100 USDC.
+        SwapCall {
+            contract: evil.clone(),
+            function: Symbol::new(e, "gift"),
+            args: (xlm.clone(), s.receiver.clone(), 1i128).into_val(e),
+            pulls: Vec::from_array(e, [Pull { to: evil.clone(), amount: borrow }]),
+        },
+        // Pulls the "loan" (really the stray USDC) and pays one stroop of XLM.
+        SwapCall {
+            contract: evil.clone(),
+            function: Symbol::new(e, "trade"),
+            args: (s.receiver.clone(), usdc.clone(), borrow, xlm.clone(), 1i128).into_val(e),
+            pulls: Vec::from_array(e, [Pull { to: evil.clone(), amount: borrow }]),
+        },
+    ];
+    for swap in swaps {
+        let args: Vec<Val> = (
+            attacker.clone(),
+            fake.clone(),
+            xlm.clone(),
+            0i128,
+            usdc.clone(),
+            borrow,
+            swap,
+            1i128,
+            11_000_000i128,
+            e.ledger().timestamp() + 300,
+            e.ledger().sequence() + 20,
+        )
+            .into_val(e);
+        e.cost_estimate().budget().reset_unlimited();
+        let r = e.try_invoke_contract::<i128, soroban_sdk::Error>(&s.leverage, &Symbol::new(e, "open"), args);
+        // ReceiverError::NotFunded (#4): the loan never arrived.
+        assert!(matches!(r, Err(Ok(err)) if err.get_code() == 4), "{r:?}");
+    }
+    assert_eq!(token::Client::new(e, &usdc).balance(&s.receiver), 100_0000000, "stray funds untouched");
+    assert_eq!(token::Client::new(e, &usdc).balance(&attacker), 0);
+    assert_eq!(token::Client::new(e, &usdc).balance(&evil), 0);
+    assert_eq!(token::Client::new(e, &xlm).balance(&evil), 10);
+    let pending: bool = e.invoke_contract(&s.receiver, &Symbol::new(e, "pending"), Vec::new(e));
+    assert!(!pending, "no stale op left in the receiver");
+}
+
+/// With stray funds in the receiver, a real open and a real close still work and leave the stray
+/// funds exactly where they were (the delivery check counts them out, it doesn't trip on them).
+#[test]
+fn stray_funds_dont_block_or_join_a_real_open_and_close() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    token::StellarAssetClient::new(e, &usdc).mint(&s.receiver, &100_0000000);
+    token::Client::new(e, &xlm).transfer(&s.f.whale, &s.receiver, &50_0000000);
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    let before = bal(&s, &xlm);
+    try_open(&s, &o).expect("open");
+    assert!(bal(&s, &xlm) >= before - o.deposit - o.min_out);
+    assert_eq!(bal(&s, &usdc), 0, "no stray USDC reached the user");
+    let c = Close::all(&s, &xlm, &usdc);
+    assert_eq!(try_close(&s, &c).expect("close"), 0);
+    assert_eq!(debt_of(&s, &usdc), 0);
+    assert_eq!(debt_of(&s, &xlm), 0);
+    assert_eq!(token::Client::new(e, &usdc).balance(&s.receiver), 100_0000000, "stray USDC untouched");
+    assert_eq!(token::Client::new(e, &xlm).balance(&s.receiver), 50_0000000, "stray XLM untouched");
+}
+
+// ---------- adversarial: the swap reaching for the user's auth ----------
+
+#[test]
+fn a_swap_cannot_use_the_users_auth() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let evil = e.register(evil::Evil, ());
+    // The user holds USDC the malicious swap will try to take.
+    token::StellarAssetClient::new(e, &usdc).mint(&s.user, &1_000_0000000);
+    let mut o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    // Enough XLM to pay min_out, so only the theft stands between the swap and success.
+    token::Client::new(e, &xlm).transfer(&s.f.whale, &evil, &o.min_out);
+    o.swap = SwapCall {
+        contract: evil.clone(),
+        function: Symbol::new(e, "steal_and_gift"),
+        args: (s.user.clone(), usdc.clone(), 1_000_0000000i128, xlm.clone(), s.receiver.clone(), o.min_out).into_val(e),
+        pulls: Vec::from_array(e, [Pull { to: evil.clone(), amount: o.borrow }]),
+    };
+    let err = try_open_real_auth(&s, &o).expect_err("the swap moved the user's USDC");
+    std::println!("refused: {err:?}");
+    assert_eq!(token::Client::new(e, &usdc).balance(&s.user), 1_000_0000000);
+    assert_eq!(token::Client::new(e, &usdc).balance(&evil), 0);
+    assert_eq!(token::Client::new(e, &xlm).balance(&evil), o.min_out);
+    assert_eq!(debt_of(&s, &usdc), 0);
+}
+
+// ---------- close under the exact signed auth tree ----------
+
+fn try_close_real_auth(s: &Setup, c: &Close, withdraw: i128) -> Result<i128, soroban_sdk::Error> {
+    use seidar_leverage_iface::{FlashLoan, Request, REQ_REPAY, REQ_WITHDRAW_COLLATERAL};
+    use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+    let e = &s.f.e;
+    let expiry = e.ledger().sequence() + 20;
+    let deadline = e.ledger().timestamp() + 300;
+    let flash_repay = c.flash + c.flash / 10_000 + 2;
+    let args: Vec<Val> = (
+        s.user.clone(),
+        s.f.pool.clone(),
+        c.collateral.clone(),
+        c.debt.clone(),
+        c.flash,
+        c.swap.clone(),
+        c.min_out,
+        c.repay,
+        Some(withdraw),
+        c.min_hf,
+        deadline,
+        expiry,
+    )
+        .into_val(e);
+    let approve_debt = MockAuthInvoke {
+        contract: &c.debt,
+        fn_name: "approve",
+        args: (s.user.clone(), s.f.pool.clone(), c.repay, expiry).into_val(e),
+        sub_invokes: &[],
+    };
+    let approve_coll = MockAuthInvoke {
+        contract: &c.collateral,
+        fn_name: "approve",
+        args: (s.user.clone(), s.f.pool.clone(), flash_repay, expiry).into_val(e),
+        sub_invokes: &[],
+    };
+    let flash = MockAuthInvoke {
+        contract: &s.f.pool,
+        fn_name: "flash_loan",
+        args: (
+            s.user.clone(),
+            FlashLoan { contract: s.receiver.clone(), asset: c.collateral.clone(), amount: c.flash },
+            Vec::from_array(
+                e,
+                [
+                    Request { request_type: REQ_REPAY, address: c.debt.clone(), amount: c.repay },
+                    Request { request_type: REQ_WITHDRAW_COLLATERAL, address: c.collateral.clone(), amount: withdraw },
+                    Request { request_type: REQ_REPAY, address: c.collateral.clone(), amount: flash_repay },
+                ],
+            ),
+        )
+            .into_val(e),
+        sub_invokes: &[],
+    };
+    let reset_debt = MockAuthInvoke {
+        contract: &c.debt,
+        fn_name: "approve",
+        args: (s.user.clone(), s.f.pool.clone(), 0i128, expiry).into_val(e),
+        sub_invokes: &[],
+    };
+    let reset_coll = MockAuthInvoke {
+        contract: &c.collateral,
+        fn_name: "approve",
+        args: (s.user.clone(), s.f.pool.clone(), 0i128, expiry).into_val(e),
+        sub_invokes: &[],
+    };
+    let subs = [approve_debt, approve_coll, flash, reset_debt, reset_coll];
+    let root = MockAuthInvoke { contract: &s.leverage, fn_name: "close", args: args.clone(), sub_invokes: &subs };
+    e.mock_auths(&[MockAuth { address: &s.user, invoke: &root }]);
+    e.cost_estimate().budget().reset_unlimited();
+    match e.try_invoke_contract::<i128, soroban_sdk::Error>(&s.leverage, &Symbol::new(e, "close"), args) {
+        Ok(Ok(hf)) => Ok(hf),
+        Ok(Err(_)) => panic!("bad return conversion"),
+        Err(Ok(err)) => Err(err),
+        Err(Err(_)) => Err(soroban_sdk::Error::from_contract_error(0)),
+    }
+}
+
+#[test]
+fn close_works_under_real_auth_with_the_full_signed_tree() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    let o = Open::new(&s, Via::SoroswapPair, &xlm, &usdc, 1_000_0000000, 20, 300);
+    try_open(&s, &o).expect("open");
+    let blend = BlendPoolClient::new(e, &s.f.pool);
+    let r = blend.get_reserve(&xlm);
+    let b = blend.get_positions(&s.user).collateral.get(r.config.index).unwrap();
+    let underlying = b * r.data.b_rate / SCALAR_12;
+    let withdraw = underlying + underlying / 1_000 + 1;
+    let c = Close::all(&s, &xlm, &usdc);
+    let hf = try_close_real_auth(&s, &c, withdraw).expect("close under real auth");
+    assert_eq!(hf, 0);
+    assert_eq!(debt_of(&s, &usdc), 0);
+    assert_eq!(collateral_of(&s, &xlm), 0);
+    assert_clean(&s, [&xlm, &usdc]);
+}
+
+// ---------- a tiny flash loan leaves no flash debt ----------
+
+/// Blend mints the flash liability rounded UP (ceil(flash / d_rate)) and burns the repayment
+/// rounded DOWN, so for a loan under 10,000 stroops the fixed part of the buffer decides it. Find
+/// a loan size where a 1-stroop buffer would leave one d-token of debt behind on this fork's live
+/// rates, and close with exactly that flash: nothing may be left (the contract pads by 2).
+#[test]
+fn a_tiny_flash_close_leaves_no_flash_debt() {
+    let s = setup();
+    let e = &s.f.e;
+    let (xlm, usdc) = (s.f.xlm.clone(), s.f.usdc.clone());
+    // A short: USDC collateral (its d_rate is the further from 1.0, so the window is widest).
+    let r = route(&s.f, Via::Aqua, &xlm, &usdc, 10_000_0000000);
+    let got: i128 = e.invoke_contract(
+        &s.f.aggregator,
+        &Symbol::new(e, "swap_exact_in"),
+        (s.user.clone(), xlm.clone(), 10_000_0000000i128, usdc.clone(), 1i128, r, Option::<Val>::None).into_val(e),
+    );
+    let o = Open::new(&s, Via::SoroswapPair, &usdc, &xlm, got / 2, 15, 300);
+    try_open(&s, &o).expect("open short");
+
+    let d_rate = BlendPoolClient::new(e, &s.f.pool).get_reserve(&usdc).data.d_rate;
+    let up = |x: i128| (x * SCALAR_12 + d_rate - 1) / d_rate;
+    let down = |x: i128| x * SCALAR_12 / d_rate;
+    let flash = (1_000..10_000i128)
+        .find(|&f| down(f + f / 10_000 + 1) < up(f))
+        .expect("a loan size where a 1-stroop buffer leaves dust");
+    assert!(down(flash + flash / 10_000 + 2) >= up(flash), "2 stroops cover it");
+    std::println!("d_rate {d_rate}: flash {flash} would leave dust with +1");
+
+    // A stand-in DEX pays 1 XLM for the flashed USDC; repay 1 XLM of the debt.
+    let evil = e.register(evil::Evil, ());
+    token::Client::new(e, &xlm).transfer(&s.f.whale, &evil, &1_0000000);
+    let repay = 1_0000000i128;
+    let c = Close {
+        collateral: usdc.clone(),
+        debt: xlm.clone(),
+        flash,
+        swap: SwapCall {
+            contract: evil.clone(),
+            function: Symbol::new(e, "trade"),
+            args: (s.receiver.clone(), usdc.clone(), flash, xlm.clone(), repay).into_val(e),
+            pulls: Vec::from_array(e, [Pull { to: evil.clone(), amount: flash }]),
+        },
+        min_out: repay,
+        repay,
+        withdraw: Some(flash * 2),
+        min_hf: 11_000_000,
+    };
+    let owed = debt_of(&s, &xlm);
+    try_close(&s, &c).expect("tiny partial close");
+    assert_eq!(debt_of(&s, &usdc), 0, "no flash debt left");
+    let blend = BlendPoolClient::new(e, &s.f.pool);
+    let idx = blend.get_reserve(&usdc).config.index;
+    assert!(blend.get_positions(&s.user).liabilities.get(idx).is_none(), "no USDC d-tokens left");
+    assert!(debt_of(&s, &xlm) <= owed - repay + 2);
+    assert_clean(&s, [&xlm, &usdc]);
 }

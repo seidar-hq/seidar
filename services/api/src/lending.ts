@@ -552,6 +552,12 @@ async function leverageReceiver(contract: string): Promise<string> {
 /** The contract's own floor (7 decimals) sits a hair under the API's so oracle rounding can't flip a sized trade. */
 const ONE_STEP_MIN_HF = 12_900_000n;
 
+/** What seidar-leverage `close` repays on a flash loan of `flash` (contracts/leverage: flash + 0.01% + 2). */
+const flashRepayOf = (flash: bigint) => flash + flash / 10_000n + 2n;
+
+/** A quote's base-unit integer ("123"), or 0 when it isn't one (never guess at "1.5" or "-5"). */
+const baseUnits = (v: unknown) => (/^\d+$/.test(String(v ?? "")) ? BigInt(String(v)) : 0n);
+
 async function buildOneStep(
   contract: string,
   o: {
@@ -577,7 +583,7 @@ async function buildOneStep(
   // A route the contract can execute itself (Soroswap / Aqua legs on the aggregator).
   const q = await quoteSwap({ assetIn: o.debt, assetOut: o.coll, amount: o.target.toString(), tradeType: "EXACT_IN", slippageBps: String(o.slippageBps), smart: true });
   const quote = (q.body as { ok?: boolean; quote?: { amountIn?: string; rawTrade?: { amountOutMin?: string; distribution?: unknown[] } } }).quote;
-  const minOut = BigInt(String(quote?.rawTrade?.amountOutMin ?? "0").replace(/\D/g, "") || "0");
+  const minOut = baseUnits(quote?.rawTrade?.amountOutMin);
   if (!quote?.rawTrade?.distribution?.length || minOut <= 0n) throw new Error(`No swap route from ${o.dCode} to ${o.cCode} right now. Try a smaller amount.`);
   const supply = o.deposit + minOut;
   // Sized on-chain like Blend checks it, existing position included: the target must fit at the floor.
@@ -682,18 +688,20 @@ export async function buildBlendLeverageClose(body: BlendCloseBody | null): Prom
       if (flash <= 0n || flash > cLeg.collateral) break;
       const q = await quoteSwap({ assetIn: coll, assetOut: debt, amount: flash.toString(), tradeType: "EXACT_IN", slippageBps: String(slippageBps), smart: true });
       raw = ((q.body as { quote?: { rawTrade?: Q } }).quote?.rawTrade ?? null) as Q | null;
-      minOut = BigInt(String(raw?.amountOutMin ?? "0").replace(/\D/g, "") || "0");
+      minOut = baseUnits(raw?.amountOutMin);
       if (raw?.distribution?.length && minOut >= repay) break;
       flash = minOut > 0n ? (flash * repay * 1005n) / (minOut * 1000n) : 0n;
       raw = null;
     }
     if (!raw || minOut < repay) return fail("No swap route deep enough to repay this debt from the collateral right now. Try a smaller part, or repay step by step below.");
-    if (flash > cLeg.collateral) return fail("The collateral isn't enough to cover the debt at this price. Repay part of it from your wallet below first.");
+    // The flash loan is repaid from the collateral released, so that must cover it (with the contract's buffer).
+    if (flashRepayOf(flash) > cLeg.collateral) return fail("The collateral isn't enough to cover the debt at this price. Repay part of it from your wallet below first.");
 
     const swap = await encodeAggregatorSwapCall({ receiver: await leverageReceiver(contract), tokenIn: coll, amount: flash, tokenOut: debt, minOut, raw: raw as never });
     // Partial: withdraw the same share of the collateral, a hair less so health can only improve.
     const withdraw = full ? null : (part(cLeg.collateral) * 998n) / 1000n;
-    if (withdraw != null && withdraw <= flash) return fail("That share is too small to close in one step. Choose a larger part.");
+    // ...and a partial close must release at least what repays the flash loan, or the wallet would top it up.
+    if (withdraw != null && withdraw < flashRepayOf(flash)) return fail("That share is too small to close in one step. Choose a larger part.");
     const latest = await withRpc((s) => s.getLatestLedger());
     const a = (x: string) => sdk.Address.fromString(x).toScVal();
     const i128 = (v: bigint) => sdk.nativeToScVal(v, { type: "i128" });

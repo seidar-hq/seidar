@@ -12,6 +12,10 @@
 //! of it to the user, and returns any flashed token the swap didn't spend to the
 //! user too (Blend then settles the user's requests). It never holds funds
 //! outside a single flash loan.
+//!
+//! `stage` also records what the receiver already holds of the token to be flashed, and
+//! `exec_op` refuses to run unless the pool delivered the loan on top of that. So a pool that
+//! calls back without lending (a fake pool) can never spend or refund tokens someone left here.
 
 use seidar_leverage_iface::{Staged, SwapCall};
 use soroban_sdk::{
@@ -24,6 +28,8 @@ use soroban_sdk::{
 enum Key {
     Leverage,
     Staged,
+    /// The receiver's balance of the staged op's input token when it was staged.
+    Held,
 }
 
 #[contracterror]
@@ -33,6 +39,8 @@ pub enum ReceiverError {
     NoStagedOp = 1,
     BadArgs = 2,
     InsufficientOutput = 3,
+    /// exec_op was called without the flash loan having arrived (not a real flash loan).
+    NotFunded = 4,
 }
 
 #[contract]
@@ -92,10 +100,14 @@ impl SeidarLeverageReceiver {
         e.storage().instance().get(&Key::Leverage).unwrap()
     }
 
-    /// Stage the next op. Only the pinned leverage contract (direct caller).
+    /// Stage the next op. Only the pinned leverage contract (direct caller). Stored with the
+    /// receiver's balance of the token to be flashed, so exec_op can tell the loan from funds
+    /// that were already here.
     pub fn stage(e: Env, op: Staged) {
         let leverage: Address = e.storage().instance().get(&Key::Leverage).unwrap();
         leverage.require_auth();
+        let held = token::Client::new(&e, &op.asset_in).balance(&e.current_contract_address());
+        e.storage().temporary().set(&Key::Held, &held);
         e.storage().temporary().set(&Key::Staged, &op);
     }
 
@@ -112,15 +124,24 @@ impl SeidarLeverageReceiver {
             .temporary()
             .get(&Key::Staged)
             .unwrap_or_else(|| panic_with_error!(&e, ReceiverError::NoStagedOp));
+        let held: i128 = e.storage().temporary().get(&Key::Held).unwrap_or_else(|| panic_with_error!(&e, ReceiverError::NoStagedOp));
         e.storage().temporary().remove(&Key::Staged);
+        e.storage().temporary().remove(&Key::Held);
         if caller != p.user || token != p.asset_in || amount != p.amount {
             panic_with_error!(&e, ReceiverError::BadArgs);
+        }
+        let me = e.current_contract_address();
+        // The loan must really be here, on top of whatever the receiver held when the op was
+        // staged: a pool that calls back without lending can't make the swap (or the refund of
+        // unspent input below) spend tokens someone else left in the receiver.
+        let need = held.checked_add(amount).unwrap_or_else(|| panic_with_error!(&e, ReceiverError::BadArgs));
+        if token::Client::new(&e, &p.asset_in).balance(&me) < need {
+            panic_with_error!(&e, ReceiverError::NotFunded);
         }
         let (out, unspent) = run_swap(&e, &p.asset_in, amount, &p.asset_out, &p.swap);
         if out < p.min_out {
             panic_with_error!(&e, ReceiverError::InsufficientOutput);
         }
-        let me = e.current_contract_address();
         token::Client::new(&e, &p.asset_out).transfer(&me, &p.user, &out);
         // Input the swap didn't use belongs to the user (it was flash-borrowed against them).
         if unspent > 0 {

@@ -28,7 +28,8 @@ close(user, pool, collateral, debt, flash_amount, swap, min_out, repay, withdraw
 - **Storage rent**: the contracts don't extend their own TTL; run `scripts/extend-ttl.mjs`.
 
 Errors: leverage `#1 BadArgs`, `#2 Expired`, `#3 Unhealthy`, `#4 NotExecuted`, `#5 NoPosition`;
-receiver `#1 NoStagedOp`, `#2 BadArgs`, `#3 InsufficientOutput`.
+receiver `#1 NoStagedOp`, `#2 BadArgs`, `#3 InsufficientOutput`, `#4 NotFunded` (the pool called back
+without delivering the loan).
 
 See AUDIT.md for the threat model, verified Blend behaviour and the deployment checklist.
 
@@ -37,7 +38,7 @@ See AUDIT.md for the threat model, verified Blend behaviour and the deployment c
 ```
 cd contracts
 stellar contract build                     # target/wasm32v1-none/release/*.wasm
-cargo test --release -p seidar-leverage-fork-tests   # 29 tests on a mainnet fork
+cargo test --release -p seidar-leverage-fork-tests   # 34 tests on a mainnet fork
 ```
 
 ### Deploy
