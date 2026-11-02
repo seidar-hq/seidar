@@ -9,6 +9,8 @@
 //   navigation) go straight to the page itself. Only HTML is ever cached as a page.
 // - /_next/static/*: cache first (file names are content hashes, so never stale).
 // - Other same-origin images and fonts: cached copy at once, refreshed in the background.
+// - Every page in /sw-manifest.json is saved ahead in the background (see warm()), so pages never
+//   opened on this device open too.
 // API calls go to another origin and are never touched.
 
 const VERSION = "v3";
@@ -101,11 +103,68 @@ async function asset(request) {
   return refresh;
 }
 
+// Every page, saved ahead: /sw-manifest.json (written at build) lists each page and the files it
+// loads. While the site is reachable the worker saves them all once per deploy, in the background,
+// so a page never opened on this device still opens when the network can't reach the site.
+// Files already saved are skipped (content-hashed names), so a deploy only fetches what changed.
+const WARM_KEY = "/__sw-warmed";
+const WARM_EVERY_MS = 10 * 60_000;
+let warming = null;
+let scheduled = false;
+let lastWarm = 0;
+async function warm() {
+  if (warming || Date.now() - lastWarm < WARM_EVERY_MS) return;
+  if (self.navigator?.connection?.saveData) return;
+  lastWarm = Date.now();
+  warming = (async () => {
+    const res = await fetch("/sw-manifest.json", { cache: "no-store" });
+    if (!res.ok) return;
+    const m = await res.json();
+    if (!m?.version || !Array.isArray(m.pages) || !Array.isArray(m.files)) return;
+    const pages = await caches.open(PAGES);
+    const done = await pages.match(WARM_KEY);
+    if (done && (await done.text()) === m.version) return;
+    const files = await caches.open(STATIC);
+    for (const f of m.files) {
+      const key = new URL(f, self.location.origin).href;
+      if (await files.match(key)) continue;
+      const r = await fetch(key);
+      if (r.ok && r.type === "basic") await files.put(key, r);
+    }
+    for (const p of m.pages) {
+      const key = new URL(p, self.location.origin).href;
+      const r = await fetch(key, { cache: "no-store" });
+      if (isHtml(r) && !r.redirected) await pages.put(key, r);
+    }
+    await trim(files);
+    await pages.put(WARM_KEY, new Response(m.version));
+  })()
+    .catch(() => {})
+    .finally(() => {
+      warming = null;
+    });
+  return warming;
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname === "/sw-manifest.json") return;
+  // Save every page ahead, once the page has had the network to itself for a few seconds. Any
+  // request schedules it (an app that stays open never navigates again); warm() runs at most
+  // once per 10 minutes and only downloads when the deploy changed.
+  if (!scheduled && !warming && Date.now() - lastWarm >= WARM_EVERY_MS) {
+    scheduled = true;
+    event.waitUntil(
+      new Promise((r) => setTimeout(r, 8000))
+        .then(warm)
+        .finally(() => {
+          scheduled = false;
+        }),
+    );
+  }
   if (request.mode === "navigate") {
     if (url.pathname.endsWith(".txt")) {
       // A route's data file opened as a page: send the visit to the page itself.
