@@ -77,7 +77,7 @@ function walletApps(addresses: string[], wallets: LinkedWallet[]) {
   return [...apps.entries()].map(([name, w]) => ({ name, wallet: w }));
 }
 
-/** Wallet holdings: the logo and name of the wallet app(s) holding the token. */
+/** Wallet holdings: "Wallet", with the logo of the wallet app(s) holding the token. */
 function WalletAppCell({ apps }: { apps: ReturnType<typeof walletApps> }) {
   if (!apps.length) return <Num>Wallet</Num>;
   return (
@@ -87,7 +87,7 @@ function WalletAppCell({ apps }: { apps: ReturnType<typeof walletApps> }) {
           <WalletAvatar key={a.name} walletId={a.wallet.walletId} peer={a.wallet.peer} size="1.125rem" />
         ))}
       </Box>
-      <Num>{apps.map((a) => a.name).join(" + ")}</Num>
+      <Num>Wallet</Num>
     </Box>
   );
 }
@@ -279,7 +279,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
         id: `a:${r.code}:${r.issuer}`,
         kind: "Wallet",
         asset: token(r.code, r.issuer),
-        protocol: apps.map((a) => a.name).join(" + ") || "Wallet",
+        protocol: "Wallet",
         apps,
         protocolId: "",
         href: null,
