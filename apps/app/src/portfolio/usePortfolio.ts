@@ -24,6 +24,9 @@ export type SupplyRow = {
   usd: number;
   apy: number | null;
   wallet: string;
+  /** Lending only: the asset's contract and the XOXNO account holding it (for links). */
+  contract?: string;
+  account?: string;
   /** LP only: both legs of the pool, and the LP share balance (base units). */
   legs?: { code: string; issuer: string | null; amount: number }[];
   shares?: string;
@@ -37,6 +40,8 @@ export type BorrowRow = {
   amount: number | null;
   usd: number;
   wallet: string;
+  contract?: string;
+  account?: string;
 };
 
 export type VaultRow = {
@@ -68,6 +73,7 @@ type LendingResp = {
     borrowedUsd: number;
     supplyAmount?: number;
     borrowAmount?: number;
+    xoxno?: { accountId: string };
   }[];
 };
 
@@ -171,6 +177,8 @@ export function usePortfolio(addresses?: string[]) {
               usd: g.suppliedUsd,
               apy: null,
               wallet,
+              contract: g.asset,
+              account: g.xoxno?.accountId,
             });
           if (g.borrowedUsd > 0 || (g.borrowAmount ?? 0) > 0)
             borrowed.push({
@@ -181,6 +189,8 @@ export function usePortfolio(addresses?: string[]) {
               amount: g.borrowAmount ?? null,
               usd: g.borrowedUsd,
               wallet,
+              contract: g.asset,
+              account: g.xoxno?.accountId,
             });
         }
       }

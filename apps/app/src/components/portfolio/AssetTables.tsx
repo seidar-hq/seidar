@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -12,6 +13,9 @@ import Tabs, { type TabItem } from "@/components/common/Tabs";
 import TokenComponent from "@/components/common/TokenComponent";
 import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
 import { usePerpsAccounts } from "@/components/trade/perps/usePerps";
+import { LEND_PROTOCOLS, poolHref as lendHref, type LendProtocol } from "@/components/earn/lendData";
+import { poolHref as lpHref, venueMeta } from "@/components/earn/poolData";
+import { vaultHref, vaultProtocol } from "@/components/earn/vaultData";
 import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
 import type { BorrowRow, Portfolio, SupplyRow, VaultRow } from "@/portfolio/usePortfolio";
 import { usePriceChanges } from "@/portfolio/useSeries";
@@ -44,6 +48,27 @@ const Num = ({ children, tip, color = "black.main100", busy = false }: { childre
 
 const pctText = (v: number) => `${v.toFixed(2)}%`;
 
+/** Logo for a protocol id (lending, LP venue, vault curator, Zenex); null when unknown. */
+const protocolLogo = (id: string): string | null =>
+  LEND_PROTOCOLS[id as LendProtocol]?.logo || venueMeta(id).logo || vaultProtocol(id).logo || (id === "zenex" ? "/protocols/zenex.png" : null);
+
+/** Protocol name with its logo in front, about the height of the text. */
+function ProtocolCell({ id, name }: { id: string; name: string }) {
+  const logo = protocolLogo(id);
+  return (
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+      {logo && <Box component="img" src={logo} alt="" sx={{ width: "1.125rem", height: "1.125rem", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />}
+      <Num>{name}</Num>
+    </Box>
+  );
+}
+
+const lendLink = (r: { protocol: string; pool: string; contract?: string; code: string; account?: string }, mode: "withdraw" | "repay") =>
+  r.protocol === "blend" || r.protocol === "xoxno"
+    ? lendHref({ protocol: r.protocol as LendProtocol, pool: r.pool }, { asset: r.contract ?? r.code, mode, account: r.account })
+    : null;
+const supplyLink = (r: SupplyRow) => (r.kind === "lp" ? lpHref({ protocol: r.protocol as never, address: r.pool }, "withdraw") : lendLink(r, "withdraw"));
+
 function WalletCell({ address }: { address: string }) {
   const { wallets } = useWallet();
   const w = wallets.find((x) => x.address === address);
@@ -72,6 +97,10 @@ type AllRow = {
   kind: "Wallet" | "Supplied" | "Liquidity" | "Vault" | "Borrowed" | "Perps";
   asset: React.ReactNode;
   protocol: string;
+  /** Protocol id, for the logo. */
+  protocolId: string;
+  /** Where clicking the row goes (the position's page); null for wallet holdings. */
+  href: string | null;
   amount: string;
   amountTip?: string;
   /** Signed: debt counts against the portfolio. Null when the token has no reliable price. */
@@ -90,6 +119,14 @@ const KIND_COLOR: Record<AllRow["kind"], string> = {
 
 export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
   const [tab, setTab] = useState("all");
+  const router = useRouter();
+  const { activeWallet, switchWallet } = useWallet();
+  // Opens a position's page, as the wallet that holds it (the pages act for the active wallet).
+  const open = (href: string | null, wallet: string) => {
+    if (!href) return;
+    if (wallet && wallet !== activeWallet?.address) switchWallet(wallet);
+    router.push(href);
+  };
   const perps = usePerpsAccounts(portfolio.addresses);
   const { changes } = usePriceChanges(portfolio.exposures, "1d");
   const multi = portfolio.addresses.length > 1;
@@ -155,7 +192,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           token(r.code, r.issuer)
         ),
     },
-    { id: "protocol", header: "Protocol", cell: (r) => <Num>{r.kind === "lp" ? `${r.label} pool` : r.label}</Num> },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} name={r.kind === "lp" ? `${r.label} pool` : r.label} /> },
     {
       id: "amount",
       header: "Amount",
@@ -180,7 +217,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
 
   const borrowCols: Column<BorrowRow>[] = [
     { id: "token", header: "Asset", cell: (r) => token(r.code, r.issuer) },
-    { id: "protocol", header: "Protocol", cell: (r) => <Num>{r.protocol === "blend" ? "Blend" : "XOXNO"}</Num> },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} name={r.protocol === "blend" ? "Blend" : "XOXNO"} /> },
     { id: "amount", header: "Debt", cell: (r) => <Num busy={portfolio.lendingRefreshing}>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num> },
     { id: "usd", header: "USD Value", cell: (r) => <Num color="error.main" busy={portfolio.lendingRefreshing}>{formatUsd(r.usd)}</Num> },
     ...(multi ? [{ id: "wallet", header: "Wallet", cell: (r: BorrowRow) => <WalletCell address={r.wallet} /> }] : []),
@@ -193,6 +230,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       cell: (r) => token(r.underlying[0]?.code ?? "V", r.underlying[0]?.issuer ?? null, r.protocol),
     },
     { id: "name", header: "Name", cell: (r) => <Num color="common.black">{r.name}</Num> },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} name={vaultProtocol(r.protocol).name} /> },
     {
       id: "underlying",
       header: "Underlying",
@@ -209,6 +247,8 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       kind: "Wallet",
       asset: token(r.code, r.issuer),
       protocol: "Wallet",
+      protocolId: "",
+      href: null,
       amount: `${formatAmount(r.amount)} ${r.code}`,
       amountTip: String(r.amount),
       usd: r.listed && r.price != null ? r.usd : null,
@@ -219,6 +259,8 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       kind: r.kind === "lp" ? "Liquidity" : "Supplied",
       asset: supplyCols[0].cell!(r),
       protocol: r.kind === "lp" ? `${r.label} pool` : r.label,
+      protocolId: r.protocol,
+      href: supplyLink(r),
       amount:
         r.kind === "lp"
           ? (r.legs ?? []).map((l) => `${formatAmount(l.amount, 4)} ${l.code}`).join(" + ")
@@ -232,7 +274,9 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       id: `v:${r.wallet}:${r.vault}`,
       kind: "Vault",
       asset: token(r.underlying[0]?.code ?? "V", r.underlying[0]?.issuer ?? null, r.name),
-      protocol: r.protocol,
+      protocol: vaultProtocol(r.protocol).name,
+      protocolId: r.protocol,
+      href: vaultHref(r.vault, "withdraw"),
       amount: r.underlying.map((u) => `${formatAmount(u.amount, 4)} ${u.code}`).join(" + ") || "—",
       usd: r.usd,
       wallet: r.wallet,
@@ -242,6 +286,8 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       kind: "Borrowed",
       asset: token(r.code, r.issuer),
       protocol: r.protocol === "blend" ? "Blend" : "XOXNO",
+      protocolId: r.protocol,
+      href: lendLink(r, "repay"),
       amount: r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—",
       usd: -r.usd,
       wallet: r.wallet,
@@ -263,6 +309,8 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
             </Box>
           ),
           protocol: "Zenex",
+          protocolId: "zenex",
+          href: "/trade-swap/perps",
           amount: `${formatAmount(p.size, 2)} XLM · ${p.leverage.toFixed(1)}x`,
           // What the position is worth to the wallet: its margin plus unrealized PnL.
           usd: p.margin + p.netPnl,
@@ -280,7 +328,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       cell: (r) => <Num color={KIND_COLOR[r.kind]}>{r.kind}</Num>,
       sortValue: (r) => r.kind,
     },
-    { id: "protocol", header: "Protocol", cell: (r) => <Num>{r.protocol}</Num>, sortValue: (r) => r.protocol },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocolId} name={r.protocol} />, sortValue: (r) => r.protocol },
     { id: "amount", header: "Amount", cell: (r) => <Num tip={r.amountTip} busy={busyOf(r.kind)}>{r.amount}</Num> },
     {
       id: "usd",
@@ -321,6 +369,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           emptyDataText="Nothing in this portfolio yet"
           from="portfolio"
           getRowId={(r) => r.id}
+          onRowClick={(r) => open(r.href, r.wallet)}
           defaultSort={{ id: "usd", dir: "desc" }}
         />
       )}
@@ -341,6 +390,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           isLoading={portfolio.positionsLoading && portfolio.supplied.length === 0}
           emptyDataText="Nothing supplied to lending markets or pools"
           from="portfolio"
+          onRowClick={(r) => open(supplyLink(r), r.wallet)}
           getRowId={(r, i) => `${r.wallet}:${r.pool}:${r.code}:${i}`}
         />
       )}
@@ -351,6 +401,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           isLoading={portfolio.lendingLoading && portfolio.borrowed.length === 0}
           emptyDataText="No open borrows"
           from="portfolio"
+          onRowClick={(r) => open(lendLink(r, "repay"), r.wallet)}
           getRowId={(r, i) => `${r.wallet}:${r.pool}:${r.code}:${i}`}
         />
       )}
@@ -361,6 +412,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
           isLoading={portfolio.vaultsLoading && portfolio.vaults.length === 0}
           emptyDataText="No vault deposits"
           from="portfolio"
+          onRowClick={(r) => open(vaultHref(r.vault, "withdraw"), r.wallet)}
           getRowId={(r) => `${r.wallet}:${r.vault}`}
         />
       )}
