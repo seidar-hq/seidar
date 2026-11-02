@@ -122,7 +122,7 @@ function RateCurve({ t }: { t: TemplarMarketInfo }) {
             }}
           />
           {t.rateCurve.kinkPct != null && <ReferenceLine x={Math.round(t.rateCurve.kinkPct)} stroke={theme.palette.overlay.white20} strokeDasharray="4 4" label={{ value: "Kink", fill: theme.palette.grey[200], fontSize: 10, position: "insideTopLeft" }} />}
-          {now != null && <ReferenceLine x={Math.round(now)} stroke={theme.palette.sidebar.primary} label={{ value: `Now ${now.toFixed(1)}%`, fill: theme.palette.primary.main, fontSize: 10, position: "insideTopRight" }} />}
+          {now != null && <ReferenceLine x={Math.round(now)} stroke={theme.palette.sidebar.primary} label={{ value: `Now ${now.toFixed(1)}%`, fill: theme.palette.primary.main, fontSize: 10, position: now < 15 ? "insideTopLeft" : "insideTopRight" }} />}
           <Line type="linear" dataKey="borrow" stroke="#F5B83D" strokeWidth={2} dot={false} isAnimationActive={false} />
           <Line type="linear" dataKey="supply" stroke="#17B26A" strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>
