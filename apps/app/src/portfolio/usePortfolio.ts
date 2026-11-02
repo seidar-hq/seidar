@@ -5,6 +5,7 @@ import { apiJson, apiJsonWarm } from "@/lib/api";
 import { useShared, useSharedMany } from "@/lib/useShared";
 import { useBalances, type TokenBalance } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
+import { DEMO, demo } from "./demo";
 
 // Everything the dashboard shows for the selected portfolio (all wallets or one):
 //   assets    = tokens sitting in the wallets
@@ -146,7 +147,7 @@ export function usePortfolio(addresses?: string[]) {
     return { code: hit?.code ?? code, issuer: hit?.issuer ?? null, decimals: hit?.decimals ?? 7 };
   };
 
-  const derived = useMemo(() => {
+  const real = useMemo(() => {
     const supplied: SupplyRow[] = [];
     const borrowed: BorrowRow[] = [];
     const vaultRows: VaultRow[] = [];
@@ -233,6 +234,9 @@ export function usePortfolio(addresses?: string[]) {
     return { supplied, borrowed, vaultRows, rewardsUsd, claimableBlnd, apyByWallet, healthFactor };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioAddresses.join(","), lending.values, vaults.values, lps.values, byContract]);
+  // Dev-only demo portfolio (portfolio/demo.ts) in place of the wallet's real positions.
+  const demoFor = portfolioAddresses[0];
+  const derived = useMemo(() => (DEMO && demoFor ? demo.demoPositions(demoFor) : real), [real, demoFor]);
 
   // BLND emissions are reported in tokens; price them with the wallet price feed when we can.
   const blndPrice = balances.tokens.find((t) => t.code === "BLND")?.price ?? null;
@@ -274,12 +278,15 @@ export function usePortfolio(addresses?: string[]) {
     POSITIONS_TTL,
   );
   const exposures = useMemo(
-    () => rawExposures.map((e) => (e.price ? e : { ...e, price: fill?.prices?.[e.code.toUpperCase()] ?? 0 })),
+    () =>
+      rawExposures.map((e) =>
+        e.price ? e : { ...e, price: fill?.prices?.[e.code.toUpperCase()] ?? (DEMO ? (demo.DEMO_PRICES[e.code.toUpperCase()] ?? 0) : 0) },
+      ),
     [rawExposures, fill],
   );
 
-  const lendingLoading = lending.loading;
-  const positionsLoading = lending.loading || vaults.loading || lps.loading;
+  const lendingLoading = DEMO ? false : lending.loading;
+  const positionsLoading = DEMO ? false : lending.loading || vaults.loading || lps.loading;
 
   return {
     addresses: portfolioAddresses,
@@ -303,14 +310,14 @@ export function usePortfolio(addresses?: string[]) {
     healthFactor: derived.healthFactor,
     lendingLoading,
     positionsLoading,
-    vaultsLoading: vaults.loading,
-    lpLoading: lps.loading,
+    vaultsLoading: DEMO ? false : vaults.loading,
+    lpLoading: DEMO ? false : lps.loading,
     // Updating after a transaction: the numbers are about to change (shown with the loading shimmer).
     assetsRefreshing: balances.refreshing,
-    lendingRefreshing: lending.refreshing,
-    vaultsRefreshing: vaults.refreshing,
-    lpRefreshing: lps.refreshing,
-    positionsRefreshing: lending.refreshing || vaults.refreshing || lps.refreshing,
+    lendingRefreshing: !DEMO && lending.refreshing,
+    vaultsRefreshing: !DEMO && vaults.refreshing,
+    lpRefreshing: !DEMO && lps.refreshing,
+    positionsRefreshing: !DEMO && (lending.refreshing || vaults.refreshing || lps.refreshing),
   };
 }
 

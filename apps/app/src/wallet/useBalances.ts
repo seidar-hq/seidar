@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiJson } from "@/lib/api";
+import { DEMO, demo } from "@/portfolio/demo";
 
 export type TokenBalance = {
   code: string;
@@ -180,5 +181,13 @@ export function useBalances(addresses: string[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, totalUsd, loading]);
 
+  if (DEMO && addresses.length) {
+    // Dev-only demo portfolio (portfolio/demo.ts): every holding sits in the first wallet.
+    const fake: Record<string, WalletBalances> = {};
+    for (const a of addresses) fake[a] = { tokens: a === addresses[0] ? demo.DEMO_TOKENS : [], usd: 0, loading: false, error: false };
+    const usd = demo.DEMO_TOKENS.reduce((s, t) => s + t.usd, 0);
+    fake[addresses[0]].usd = usd;
+    return { byAddress: fake, totalUsd: usd, loading: false, refreshing: false, tokens: demo.DEMO_TOKENS.map((t) => ({ ...t, holders: [addresses[0]] })) };
+  }
   return { byAddress, totalUsd, loading, refreshing, tokens: merged };
 }

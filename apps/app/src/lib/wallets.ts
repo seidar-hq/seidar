@@ -10,6 +10,7 @@ import { xBullModule } from "@creit.tech/stellar-wallets-kit/modules/xbull";
 import { LobstrModule } from "@creit.tech/stellar-wallets-kit/modules/lobstr";
 import { RabetModule } from "@creit.tech/stellar-wallets-kit/modules/rabet";
 import { HanaModule } from "@creit.tech/stellar-wallets-kit/modules/hana";
+import { DEMO } from "@/portfolio/demo";
 // MetaMask's own Stellar adapter (@metamask/connect-stellar, SEP-43 over the MetaMask Multichain API).
 import { MetaMaskModule } from "@creit.tech/stellar-wallets-kit/modules/metamask";
 
@@ -51,7 +52,8 @@ export const STELLAR_LOGO = "/assets/wallets/xlm-logo.png";
 export const MAINNET_PASSPHRASE = Networks.PUBLIC;
 
 export const walletMeta = (id: WalletKind | null | undefined): WalletMeta | undefined =>
-  id === "watch" ? WATCH_META : WALLETS.find((w) => w.id === id);
+  // The dev-only demo portfolio (portfolio/demo.ts) shows its watch wallet as Varial.
+  id === "watch" ? (DEMO ? WALLETS[0] : WATCH_META) : WALLETS.find((w) => w.id === id);
 
 /** The wallet app on the other end of a WalletConnect session (e.g. Varial or LOBSTR mobile). */
 export type WalletPeer = { name: string; icon?: string };

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { apiJson } from "@/lib/api";
 import { loadShared, useShared, useSharedMany } from "@/lib/useShared";
 import type { Exposure } from "./usePortfolio";
+import { DEMO, demo } from "./demo";
 
 export type Range = "1h" | "1d" | "7d" | "14d" | "30d" | "90d" | "1y";
 export type SeriesPoint = { time: number; assets: number; positions: number; total: number };
@@ -38,10 +39,10 @@ export function useExposureCharts(exposures: Exposure[], range: Range) {
   }, [loading, sig, range]);
   const charts: Record<string, { t: number; px: number }[]> = {};
   for (const e of exposures) {
-    const pts = values[`chart:${range}:${e.key}`]?.points;
+    const pts = DEMO ? demo.demoChart(e.key, range) : values[`chart:${range}:${e.key}`]?.points;
     if (pts?.length) charts[e.key] = pts;
   }
-  return { charts, loading };
+  return { charts, loading: DEMO ? false : loading };
 }
 
 /**
@@ -99,6 +100,7 @@ export function usePriceChanges(exposures: Exposure[], range: Range) {
   const last = useRef<{ range: Range; changes: Record<string, number | null> } | null>(null);
   if (value?.changes) last.current = { range, changes: value.changes };
   const held = last.current?.range === range ? last.current.changes : null;
+  if (DEMO) return { changes: demo.demoChanges(assets, range), loading: false };
   return { changes: value?.changes ?? (loading && held ? held : {}), loading: loading && !held };
 }
 
