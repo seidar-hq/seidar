@@ -218,7 +218,7 @@ export function useCopyItems(p: Portfolio) {
           reasons.push(`${m.utilPct.toFixed(0)}% utilised: withdrawals can wait for repayments`);
           lvl = worst(lvl as RiskLevel, "medium");
         }
-        const meta = LEND_PROTOCOLS[r.protocol as "blend" | "xoxno"];
+        const meta = LEND_PROTOCOLS[r.protocol as "blend" | "xoxno" | "templar"];
         const xoxnoSpoke = m?.xoxno?.spokes.find((s) => s.canSupply);
         items.push({
           id: `lend:${r.protocol}:${r.pool}:${r.contract}`,
@@ -229,7 +229,12 @@ export function useCopyItems(p: Portfolio) {
           usd: r.usd,
           apy: m?.supplyApy ?? null,
           risk: { level: lvl as RiskLevel, reasons: ["Smart-contract risk of the lending pool", ...reasons] },
-          blocked: !m ? "Market not found" : actionBlock(m, "supply") ?? (m.protocol === "xoxno" && !xoxnoSpoke ? "No XOXNO spoke accepts this asset" : !a.price ? "No price" : null),
+          blocked:
+            r.protocol === "templar"
+              ? "Templar runs on NEAR: open it in Templar's app"
+              : !m
+                ? "Market not found"
+                : (actionBlock(m, "supply") ?? (m.protocol === "xoxno" && !xoxnoSpoke ? "No XOXNO spoke accepts this asset" : !a.price ? "No price" : null)),
           asset: a,
           market: m as Market,
           href: m ? marketHref(m, "supply") : null,
@@ -311,7 +316,7 @@ export function useCopyItems(p: Portfolio) {
         issuer: b.issuer,
         usd: b.usd,
         amount: b.amount,
-        protocol: LEND_PROTOCOLS[b.protocol as "blend" | "xoxno"]?.name ?? b.protocol,
+        protocol: LEND_PROTOCOLS[b.protocol as "blend" | "xoxno" | "templar"]?.name ?? b.protocol,
         poolName: m?.poolName ?? "",
         apy: m?.borrowApy ?? null,
       };

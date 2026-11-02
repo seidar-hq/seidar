@@ -169,6 +169,17 @@ app.get("/market/overview", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+// Templar (read-only): NEAR lending markets with Stellar assets, and a Stellar wallet's positions (templar.ts).
+app.get("/templar/markets", async (c) => {
+  const { templarMarkets } = await import("./templar.js");
+  return c.json(await templarMarkets());
+});
+app.get("/templar/positions", async (c) => {
+  const { templarPositions } = await import("./templar.js");
+  const r = await templarPositions(c.req.query("address") ?? "");
+  return c.json(r.body, r.status as 200);
+});
+
 // Discover: active wallets to browse, account facts, federation names (discover.ts).
 app.get("/discover/featured", async (c) => {
   const { featuredWallets } = await import("./discover.js");
