@@ -42,6 +42,9 @@ API_RL_LIMIT = "120"
 API_RL_QUOTE_LIMIT = "600"
 API_RL_WINDOW_MS = "60000"
 FEEDBACK_TO = "feedback@seidar.xyz"
+# seidar-leverage on mainnet (deployed 2026-11-02; receiver CA2DDRJS5W57WRSEXJJX7V62KXXPFO4IXF5NSPU7PZOOO7JUP6ZNXTTC).
+# Enables one-transaction Blend leverage open/close.
+BLEND_LEVERAGE_CONTRACT = "CB2XUBNX5WI77MAPZ76X67CUPWGOGDFBK7TIBQ2UTFAVGTIPFTTQCOMZ"
 
 [observability]
 enabled = true

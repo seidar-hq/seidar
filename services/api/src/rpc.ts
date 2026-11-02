@@ -259,6 +259,9 @@ export function humanizeSimError(raw: string): string {
     return "Insufficient balance for this action.";
   if (/trustline entry is missing|trustline/i.test(s)) return "Missing trustline for this asset — add it in your wallet first.";
   if (/Error\(Auth/.test(s)) return "Authorization failed — the signing account cannot perform this action.";
+  // Blend pool codes (12xx) keep their number so lending.ts can word them, even when the call also
+  // carries a swap (seidar-leverage's args mention "swap", which the next check would catch).
+  if (contractErr && /^12\d\d$/.test(contractErr[1])) return `Contract rejected the action (error #${contractErr[1]}).`;
   // A swap inside a leverage / strategy call (XOXNO's aggregator) failed: the route, not the lending rules.
   if (contractErr && /execute_strategy|swap_exact|\bswap\b/.test(s)) return "The swap step failed when checked: no working route for this pair right now. Try another amount or asset.";
   if (contractErr) return `Contract rejected the action (error #${contractErr[1]}).`;

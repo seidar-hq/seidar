@@ -572,7 +572,23 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 ---
 
-## 11. Blend leverage contract: ready to deploy (2026-10-30)
+## 11. Blend leverage contract: LIVE on mainnet (deployed 2026-11-02)
+
+- **seidar-leverage `CB2XUBNX5WI77MAPZ76X67CUPWGOGDFBK7TIBQ2UTFAVGTIPFTTQCOMZ`**, receiver
+  `CA2DDRJS5W57WRSEXJJX7V62KXXPFO4IXF5NSPU7PZOOO7JUP6ZNXTTC`. Fees 27.29 XLM (uploads 8.53 + 18.70,
+  create 0.06). Txs: upload receiver `2c7a1794…57c9`, upload leverage `18e8da92…c570`, create `6a3e80dd…6b75`.
+  On-chain code read back = the audited sha256s; receiver.leverage = the contract; `pending` false;
+  unstaged `exec_op` refused #1. Set as `BLEND_LEVERAGE_CONTRACT` in services/api/wrangler.toml.
+- Mainnet simulations through the API code with the contract (2026-11-02, Fixed v2.1): open 2x short
+  (USDC coll / XLM debt) and 2x long (XLM / EURC) build; 3x refused by the 1.3 floor; full and 50%
+  closes of real XLM/USDC positions ($5k, $1.6k) and a full EURC/USDC close build.
+- Pool state that day: Fixed + YieldBlox status 3 (on ice), Etherfuse/Orbit frozen; Fixed v2.1 active
+  but USDC 100% utilized, so USDC-debt opens fail with Blend #1207 (now worded as "Not enough
+  liquidity", rpc.ts keeps 12xx codes even when the call mentions a swap). Not a contract issue.
+- Still to do: one small REAL signed open + close from the owner's wallet; return the deployer's
+  leftover (~6.5 XLM) to the funder; TTL extension about every 100 days (extend-ttl.mjs).
+
+### History (before deploy)
 
 `contracts/` now has open AND one-step close (see contracts/README.md, contracts/AUDIT.md for the
 threat model, the Blend v2 behaviour verified in its source, and the deploy checklist).
@@ -594,8 +610,7 @@ threat model, the Blend v2 behaviour verified in its source, and the deploy chec
 - Mainnet upload cost by simulation: **31.31 XLM** (14,230 B + 6,811 B, 2026-11-02) + ~0.01 create + 1 XLM
   reserve. sha256 leverage `21f8cc85…3ba68`, receiver `cdb667ee…71707` (full hashes in AUDIT.md).
 - Deployer `GDZHOPYA2T6OTWT5GLYDDOV4DDRLBAS5DHBQMPVQQGKLRDPPALUISB6W` (key in contracts/.env.local):
-  waiting for the owner to fund ~33 XLM. After deploy: set BLEND_LEVERAGE_CONTRACT, deploy the API,
-  simulate an open and a close against mainnet, return the leftover XLM to the funder.
+  funded and used 2026-11-02 (see the top of this section).
 - API: `POST /lending/blend/leverage/close { from, pool, collateral, debt, fraction, slippageBps }`
   (refuses on-ice/frozen pools and when the contract isn't configured). App: Lend & Borrow →
   Leverage tab has Open / Close (25/50/75/100%) when the wallet has collateral and debt in the pool;

@@ -62,7 +62,16 @@ An outside AI review (12 findings, none critical) and a follow-up review were ch
 | Loop fallback can end below 1.3 | Left: only runs while no contract is configured. |
 | Manual TTL | Unchanged (row 13). The contracts hold no funds; positions live in Blend, so an archived contract only blocks one-step open/close until restored, never a withdrawal. |
 
-## Out of scope / residual risk
+## Mainnet deployment (2026-11-02)
+
+seidar-leverage `CB2XUBNX5WI77MAPZ76X67CUPWGOGDFBK7TIBQ2UTFAVGTIPFTTQCOMZ`, receiver
+`CA2DDRJS5W57WRSEXJJX7V62KXXPFO4IXF5NSPU7PZOOO7JUP6ZNXTTC`, deployed by
+`GDZHOPYA2T6OTWT5GLYDDOV4DDRLBAS5DHBQMPVQQGKLRDPPALUISB6W` for 27.29 XLM. Code fetched back from
+chain: leverage `21f8cc855fd6fcc81cbbefe4c37bee8841489f752e49257ed76bc691bbf3ba68`, receiver
+`cdb667eec47cc5b95833230c562988ac9a87494911e45056c1a8571555a71707` (the audited builds). Receiver
+points back to the leverage contract, `pending` false, unstaged `exec_op` refused #1.
+
+
 
 - No external audit. The fork tests run the release WASMs on real mainnet state (Blend Fixed v2.1,
   Reflector, Soroswap aggregator) but are not a formal verification.
