@@ -526,8 +526,15 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
    then 0.4 s answers. Mitigations shipped: API failover to workers.dev and the page-cache service worker
    (§4). Not yet proven on the phone itself: next time, open `chrome://net-internals/#dns` on the phone and
    look up app.seidar.xyz (188.114.x confirms). Other options: phone Private DNS `one.one.one.one`, or an
-   ISP report. Non-Enterprise plans can't pin edge IPs. A page never opened on a device still can't load
-   while its address is unreachable (the cache only helps after one visit).
+   ISP report. Non-Enterprise plans can't pin edge IPs.
+   **2026-11-02 recurrence** ("Can't reach Seidar" + ERR_TIMED_OUT): re-measured from the laptop on the
+   phone hotspot (resolver 192.168.43.113): 188.114.96.2/.6 and 188.114.97.2/.6 all time out (12 s, no
+   TCP connect) while 104.21.78.103 / 172.67.220.56 answer in <1 s; that resolver gave the good IPs for
+   app.seidar.xyz at the time but 188.114.x for seidar-app.pages.dev. Public resolvers (1.1.1.1, 8.8.8.8,
+   9.9.9.9, OpenDNS, DoH) all gave the good IPs. Shipped: service worker now saves EVERY page + its
+   files ahead (`sw-manifest.json` from scripts/pages-routes.mjs, `warm()` in sw.js, once per deploy),
+   so pages never opened on the device open too; tested in Chrome with the server down (vaults, perps,
+   settings, lending view opened from cache). A device that has never opened Seidar still can't.
 3. **Workers Paid is active (2026-10-29).** Free-plan gap re-test: see the 2026-10-30 results in the
    next bullet (update them when re-run).
 4. Owner-confirmed 2026-10-30: phone glide + pull-to-refresh, feedback email delivery, MetaMask connect,
