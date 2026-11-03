@@ -599,47 +599,16 @@ redirects to `/`. Nav entry "Discover" and page search entry appear only with th
   signed copy** (the auto-mode checker refused to press Start even for a watch-only wallet), and vault / LP
   copy builds were not exercised.
 
-## 9d. Templar (third lending venue; read-only, dev-only, built 2026-11-02, not deployed)
+## 9d. Templar: evaluated and removed (2026-11-03, owner's call)
 
-Owner's call: "read only for now, don't deploy, let me see it first". Flag `NEXT_PUBLIC_ENABLE_TEMPLAR`
-(1 in `.env.development`, 0 in `.env.production`; `lib/features.ts` `TEMPLAR_ENABLED`). With it off nothing
-fetches Templar and `LendView` drops `TemplarMarket` from the bundle.
-
-**What Templar is (researched 2026-11-02; sources: github.com/Templar-Protocol/contracts `docs/src/*.md`,
-api.templarfi.org/docs/*.yaml, NEAR RPC):**
-- Markets are immutable NEAR contracts `<collateral>-<borrow>[-n].v1.tmplr.near`, one collateral + one borrow
-  asset each (supply earns, collateral doesn't; supply withdrawals go through a queue when utilization is high).
-- Stellar assets live on NEAR as NEAR Intents tokens bridged by HOT: `nep245:v2_1.omni.hot.tg:1100_<base58>`;
-  the base58's last 32 bytes ARE the asset's Stellar contract id (`templar.ts` `stellarContractOf`).
-- A Stellar wallet acts through a NEAR universal account it controls with SEP-53 signed messages:
-  `hex(sha256("G…"))[0..12] + ".user0.tmplr.near"` (verified against 37 of the 38 Stellar-keyed accounts).
-  `execute` on a universal account is public (anyone may relay + pay gas); CREATING one goes only through
-  Templar's relayer (`user0.tmplr.near` deploys it; PoW + signature checked off-chain).
-- Public without a key: `/v1/markets`, `/markets/{id}`, `/assets`, `/accounts`, `/accounts/{id}/positions`.
-  Needs a partner `X-API-Key`: every `/lending/*/prepare`, `/bridge/deposit|withdraw/prepare`, all `/relay/*`.
-  NEAR Intents' own bridge (bridge.chaindefuser.com/rpc, `deposit_address` with `deposit_mode: "MEMO"`) gives a
-  Stellar deposit address + memo for any account without a key, but carries only XLM and USDC from Stellar.
-- Precept (Templar's Soroban Blend v2 fork) has no live market yet (v0.1.1, 2026-10-23). Templar's Stellar
-  curated vaults (Soroban ERC-4626, e.g. tBizUSDC-CORE) are a vault product, not integrated.
-- Listed: the 8 markets whose two assets are Stellar tokens (XLM/USDC, XLM/PYUSD, CETES, USTRY, SolvBTC,
-  deJAAA ×2, deJTRSY → USDC). Only XLM/USDC is fully usable from a Stellar wallet today; the others lend USDC
-  from Stellar but their collateral can't cross (pages say so).
-
-**Code:** API `services/api/src/templar.ts` (`/templar/markets` cached 2 min SWR, `/templar/positions?address=G…`
-with per-market health = collateral ratio / liquidation MCR and liquidation price). App: `lendData.ts`
-(`LendProtocol` "templar", `useTemplarMarkets`, `useTemplarPositions`, two `Market` rows per market:
-collateral and borrow side), `LendBorrow.tsx` (Templar venue; positions in unlisted markets open Templar's app),
-`LendView.tsx` → `TemplarMarket.tsx` (position + LTV bar, stats, rate curve, risk parameters, how-it-works,
-"Supply/Borrow on Templar" links), `usePortfolio.ts` (supply/collateral/debt rows, health), Discover blocks
-copying Templar. Logo `public/protocols/templar.png` (Templar's dark-theme icon).
-
-**To make it read-write later** (owner decides): either a Templar partner API key (prepare + sponsored relayer +
-account creation), or a Seidar-funded NEAR account relaying `execute` (works only for wallets that already
-have a universal account). Message format: `universal-account/src/authentication/*` in Templar's repo.
-
-**Dev-server gotcha seen here:** two `next dev` processes on the same app share `.next`; one started with other
-env flags left stale client chunks (hydration error, Home tab missing, Templar off on one route). Fix: stop the
-server, move `.next` away, restart.
+A read-only Templar integration was built (commits `1047664`, `97e4bae`) and then reverted: the owner judged it
+not worth the integration cost. Why it's costly, so nobody re-researches it: Templar's markets run on NEAR, not
+Stellar. Stellar wallets reach them through a NEAR "universal account" (`hex(sha256(G…))[0..12].user0.tmplr.near`,
+signed with SEP-53 messages). Reading markets and positions is public (api.templarfi.org/v1), but every write
+(prepare endpoints, relayer, account creation) needs a Templar partner API key, or a Seidar-funded NEAR relayer
+that still can't create accounts. NEAR Intents carries only XLM and USDC from Stellar, so of the 8 all-Stellar
+markets only XLM/USDC was fully usable. Their Soroban Blend fork (Precept) had no live market. To bring it back:
+`git revert` the revert commit.
 
 ---
 

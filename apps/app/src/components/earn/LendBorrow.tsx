@@ -14,13 +14,11 @@ import Shimmer from "@/components/common/Shimmer";
 import TxDialog from "@/components/tx/TxDialog";
 import { formatAmount, formatUsd } from "@/lib/format";
 import { runBuilt, type TxStep } from "@/lib/tx";
-import { TEMPLAR_ENABLED } from "@/lib/features";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 import { EarnGrid } from "./EarnParts";
 import { AssetStack, ProtocolChips, RowAction, SearchBox, StatusPill, TopList } from "./EarnUI";
 import {
   LEND_PROTOCOLS,
-  templarAppHref,
   actionBlock,
   blndApr,
   compactUsd,
@@ -152,14 +150,9 @@ function VenueCard({ id, count, tvl, borrowed, children }: { id: LendProtocol; c
             {meta.name}
           </Typography>
           <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>
-            {count} {id === "xoxno" ? "hub" : id === "templar" ? "market" : "pool"}
+            {count} {id === "xoxno" ? "hub" : "pool"}
             {count === 1 ? "" : "s"} · TVL {compactUsd(tvl)} · Borrowed {compactUsd(borrowed)}
           </Typography>
-          {id === "templar" && (
-            <Typography sx={{ fontSize: "0.75rem", color: "grey.200", mt: "0.125rem" }}>
-              Markets run on NEAR and take Stellar assets through NEAR Intents · view-only in Seidar, actions open Templar
-            </Typography>
-          )}
         </Box>
         <ButtonBase
           aria-expanded={open}
@@ -199,9 +192,6 @@ type PoolPos = {
   blnd: number;
 };
 
-/** Lending venues shown, in order. Templar is in review (dev only, lib/features.ts). */
-const VENUES: LendProtocol[] = TEMPLAR_ENABLED ? ["blend", "xoxno", "templar"] : ["blend", "xoxno"];
-
 export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   const router = useRouter();
   const { activeWallet, portfolioAddresses, portfolioWallets, switchWallet } = useWallet();
@@ -224,12 +214,8 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
   const query = q.trim().toLowerCase();
   const matchingAssets = (p: LendPool) => (query ? p.markets.filter((m) => m.code.toLowerCase().includes(query)) : []);
   const matches = (p: LendPool) => !query || p.name.toLowerCase().includes(query) || matchingAssets(p).length > 0;
-  const venues = VENUES.filter((p) => proto === "all" || proto === p);
+  const venues = (["blend", "xoxno"] as LendProtocol[]).filter((p) => proto === "all" || proto === p);
   const go = (p: { protocol: LendProtocol; pool: string }, opts: Parameters<typeof poolHref>[1] = {}, wallet?: string) => {
-    if (p.protocol === "templar" && !pools.some((x) => x.protocol === "templar" && x.pool === p.pool)) {
-      window.open(templarAppHref(p.pool), "_blank", "noopener");
-      return;
-    }
     if (wallet && wallet !== activeWallet?.address) switchWallet(wallet);
     router.push(poolHref(p, opts));
   };
@@ -253,19 +239,13 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
           legs: [],
           supUsd: 0,
           debtUsd: 0,
-          health:
-            l.protocol === "blend"
-              ? (positions.pools[l.wallet]?.[l.pool]?.healthFactor ?? null)
-              : l.protocol === "templar"
-                ? (l.templar?.healthFactor ?? null)
-                : (positions.xoxnoHealth[l.wallet] ?? null),
+          health: l.protocol === "blend" ? (positions.pools[l.wallet]?.[l.pool]?.healthFactor ?? null) : (positions.xoxnoHealth[l.wallet] ?? null),
           netApy: null,
           blnd: l.protocol === "blend" ? (positions.pools[l.wallet]?.[l.pool]?.claimableBlnd ?? 0) : 0,
         };
         by.set(key, r);
       }
       r.legs.push(l);
-      if (l.templar?.healthFactor != null) r.health = l.templar.healthFactor;
       r.supUsd += l.suppliedUsd;
       r.debtUsd += l.borrowedUsd;
     }
@@ -311,11 +291,6 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
       cell: (r) =>
         r.pool ? (
           <PoolCell p={r.pool} sub={[LEND_PROTOCOLS[r.protocol].name, r.accountId ? `Position #${r.accountId}` : null, multi ? walletName(r.wallet) : null].filter(Boolean).join(" · ")} />
-        ) : r.protocol === "templar" ? (
-          <Box sx={{ minWidth: 0 }}>
-            <Num color="common.black">{r.legs[0]?.templar?.name ?? r.poolId}</Num>
-            <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>Templar · not listed in Seidar (opens Templar)</Typography>
-          </Box>
         ) : (
           <Num>{r.poolId.slice(0, 8)}…</Num>
         ),
@@ -415,13 +390,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
             ) : list.length ? (
               list.map((x) => {
                 const hit = matchingAssets(x);
-                const t = x.markets[0]?.templar;
-                const hint = hit.length
-                  ? `Has ${hit.map((m) => m.code).slice(0, 3).join(", ")}`
-                  : t
-                    ? `Lend ${x.borrowables[0]?.code ?? ""} · borrow against ${x.collaterals[0]?.code ?? ""} up to ${t.maxLtvPct.toFixed(0)}% LTV`
-                    : undefined;
-                return <PoolCard key={x.key} p={x} mine={yours(x)} hint={hint} onOpen={() => go(x)} />;
+                return <PoolCard key={x.key} p={x} mine={yours(x)} hint={hit.length ? `Has ${hit.map((m) => m.code).slice(0, 3).join(", ")}` : undefined} onOpen={() => go(x)} />;
               })
             ) : (
               <Typography sx={{ color: "grey.200", fontSize: "0.875rem", p: "1.5rem", textAlign: "center" }}>{query ? "No pool has that asset or name" : `${meta.name} markets didn't load: reload to retry`}</Typography>
@@ -455,7 +424,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
 
   const main = (
     <>
-      <ProtocolChips items={VENUES.map((p) => ({ id: p, label: LEND_PROTOCOLS[p].name, logo: LEND_PROTOCOLS[p].logo }))} value={proto} onChange={setProto} />
+      <ProtocolChips items={(["blend", "xoxno"] as LendProtocol[]).map((p) => ({ id: p, label: LEND_PROTOCOLS[p].name, logo: LEND_PROTOCOLS[p].logo }))} value={proto} onChange={setProto} />
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", mt: "1.25rem", mb: "0.25rem" }}>
         <Tabs
           tabs={[

@@ -93,7 +93,7 @@ function WalletAppCell({ apps }: { apps: ReturnType<typeof walletApps> }) {
 }
 
 const lendLink = (r: { protocol: string; pool: string; contract?: string; code: string; account?: string }, mode: "withdraw" | "repay") =>
-  r.protocol === "blend" || r.protocol === "xoxno" || r.protocol === "templar"
+  r.protocol === "blend" || r.protocol === "xoxno"
     ? lendHref({ protocol: r.protocol as LendProtocol, pool: r.pool }, { asset: r.contract ?? r.code, mode, account: r.account })
     : null;
 const supplyLink = (r: SupplyRow) => (r.kind === "lp" ? lpHref({ protocol: r.protocol as never, address: r.pool }, "withdraw") : lendLink(r, "withdraw"));
@@ -248,7 +248,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
 
   const borrowCols: Column<BorrowRow>[] = [
     { id: "token", header: "Asset", cell: (r) => token(r.code, r.issuer) },
-    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} name={LEND_PROTOCOLS[r.protocol as LendProtocol]?.name ?? r.protocol} /> },
+    { id: "protocol", header: "Protocol", cell: (r) => <ProtocolCell id={r.protocol} name={r.protocol === "blend" ? "Blend" : "XOXNO"} /> },
     { id: "amount", header: "Debt", cell: (r) => <Num busy={portfolio.lendingRefreshing}>{r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—"}</Num> },
     { id: "usd", header: "USD Value", cell: (r) => <Num color="error.main" busy={portfolio.lendingRefreshing}>{formatUsd(r.usd)}</Num> },
     ...(multi ? [{ id: "wallet", header: "Wallet", cell: (r: BorrowRow) => <WalletCell address={r.wallet} /> }] : []),
@@ -320,7 +320,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       id: `b:${r.wallet}:${r.pool}:${r.code}:${i}`,
       kind: "Borrowed",
       asset: token(r.code, r.issuer),
-      protocol: LEND_PROTOCOLS[r.protocol as LendProtocol]?.name ?? r.protocol,
+      protocol: r.protocol === "blend" ? "Blend" : "XOXNO",
       protocolId: r.protocol,
       href: lendLink(r, "repay"),
       amount: r.amount != null ? `${formatAmount(r.amount)} ${r.code}` : "—",

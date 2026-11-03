@@ -6,8 +6,6 @@ import { useShared, useSharedMany } from "@/lib/useShared";
 import { useBalances, type TokenBalance } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import { DEMO, demo } from "./demo";
-import { TEMPLAR_ENABLED } from "@/lib/features";
-import type { TemplarPositionsResp } from "@/components/earn/lendData";
 
 // Everything the dashboard shows for the selected portfolio (all wallets or one):
 //   assets    = tokens sitting in the wallets
@@ -138,12 +136,6 @@ export function usePortfolio(addresses?: string[]) {
     (k) => () => apiJsonWarm<VaultResp>(`/api/vaults/positions?address=${k.slice(7)}`),
     POSITIONS_TTL,
   );
-  // Templar (NEAR markets reached from Stellar; dev only for now). Same keys as Lend & Borrow's hook.
-  const templar = useSharedMany<TemplarPositionsResp | null>(
-    TEMPLAR_ENABLED ? portfolioAddresses.map((a) => `templar:pos:${a}`) : [],
-    (k) => () => apiJson<TemplarPositionsResp>(`/api/templar/positions?address=${k.slice(12)}`),
-    POSITIONS_TTL,
-  );
   const lps = useSharedMany<LpResp | null>(
     portfolioAddresses.map((a) => `lp:${a}`),
     (k) => () => apiJsonWarm<LpResp>(`/api/dex/positions?address=${k.slice(3)}`),
@@ -203,22 +195,6 @@ export function usePortfolio(addresses?: string[]) {
             });
         }
       }
-      for (const t of templar.values[`templar:pos:${wallet}`]?.positions ?? []) {
-        const res = (contract: string | null, code: string) => (contract ? resolve(contract, code) : { code, issuer: null, decimals: 7 });
-        if (t.supply) {
-          const r = res(t.supply.contract, t.supply.symbol);
-          supplied.push({ kind: "lend", protocol: "templar", label: "Templar", code: r.code, issuer: r.issuer, pool: t.marketId, amount: t.supply.amount, usd: t.supply.usd, apy: t.supply.apy, wallet, contract: t.supply.contract ?? undefined });
-        }
-        if (t.borrow) {
-          const c = res(t.borrow.collateral.contract, t.borrow.collateral.symbol);
-          if (t.borrow.collateral.amount > 0)
-            supplied.push({ kind: "lend", protocol: "templar", label: "Templar", code: c.code, issuer: c.issuer, pool: t.marketId, amount: t.borrow.collateral.amount, usd: t.borrow.collateral.usd, apy: null, wallet, contract: t.borrow.collateral.contract ?? undefined });
-          const d = res(t.borrow.contract, t.borrow.symbol);
-          if (t.borrow.amount > 0) borrowed.push({ protocol: "templar", code: d.code, issuer: d.issuer, pool: t.marketId, amount: t.borrow.amount, usd: t.borrow.usd, wallet, contract: t.borrow.contract ?? undefined });
-          const hf = t.borrow.healthFactor;
-          if (hf != null && t.borrow.amount > 0) healthFactor = healthFactor == null ? hf : Math.min(healthFactor, hf);
-        }
-      }
       for (const p of lps.values[`lp:${wallet}`]?.positions ?? []) {
         if (p.rewards?.usd) rewardsUsd += p.rewards.usd;
         const legs = p.underlying.map((u) => ({ ...resolve(u.contract, u.code), amount: u.amount }));
@@ -257,7 +233,7 @@ export function usePortfolio(addresses?: string[]) {
     vaultRows.sort((a, b) => b.usd - a.usd);
     return { supplied, borrowed, vaultRows, rewardsUsd, claimableBlnd, apyByWallet, healthFactor };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioAddresses.join(","), lending.values, vaults.values, lps.values, templar.values, byContract]);
+  }, [portfolioAddresses.join(","), lending.values, vaults.values, lps.values, byContract]);
   // Dev-only demo portfolio (portfolio/demo.ts) in place of the wallet's real positions.
   const demoFor = portfolioAddresses[0];
   const derived = useMemo(() => (DEMO && demoFor ? demo.demoPositions(demoFor) : real), [real, demoFor]);
@@ -309,8 +285,8 @@ export function usePortfolio(addresses?: string[]) {
     [rawExposures, fill],
   );
 
-  const lendingLoading = DEMO ? false : lending.loading || templar.loading;
-  const positionsLoading = DEMO ? false : lending.loading || vaults.loading || lps.loading || templar.loading;
+  const lendingLoading = DEMO ? false : lending.loading;
+  const positionsLoading = DEMO ? false : lending.loading || vaults.loading || lps.loading;
 
   return {
     addresses: portfolioAddresses,

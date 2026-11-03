@@ -5,7 +5,6 @@ import { registerIcons } from "@/lib/tokens";
 import { apiJson, apiJsonWarm } from "@/lib/api";
 import { useShared, useSharedMany } from "@/lib/useShared";
 import { useTokenCatalogue } from "@/portfolio/usePortfolio";
-import { TEMPLAR_ENABLED } from "@/lib/features";
 
 // Lending markets across Blend (isolated pools, each with an admin status) and XOXNO (hubs with
 // spokes), normalised to one row per (venue, pool/hub, asset).
@@ -59,89 +58,7 @@ export type XoxnoMarket = {
 type GroupAsset = { asset: string; code: string; suppliedUsd: number; borrowedUsd: number; availableUsd?: number; utilPct?: number };
 type LendGroups = { groups?: { protocol: string; id: string; name: string; assets: GroupAsset[] }[] };
 
-export type LendProtocol = "blend" | "xoxno" | "templar";
-
-/** A Templar market as /templar/markets describes it (services/api/src/templar.ts). Percent fields are 0..100. */
-export type TemplarAsset = { assetId: string; contract: string; symbol: string; name: string | null; decimals: number; priceUsd: number | null };
-export type TemplarMarketInfo = {
-  id: string;
-  name: string;
-  status: string;
-  version: string | null;
-  collateral: TemplarAsset;
-  borrow: TemplarAsset;
-  supplyApy: number | null;
-  borrowApy: number | null;
-  utilizationPct: number | null;
-  totalSupplyUsd: number;
-  totalBorrowUsd: number;
-  collateralUsd: number;
-  availableUsd: number;
-  maxLtvPct: number;
-  liquidationLtvPct: number;
-  mcrMaintenance: number;
-  mcrLiquidation: number;
-  maxUsagePct: number;
-  liquidationPenaltyPct: number;
-  originationFee: { kind: "flat" | "proportional"; value: number };
-  withdrawalFee: { kind: "flat" | "proportional"; value: number; durationMs: number } | null;
-  supplierSharePct: number | null;
-  minSupply: number | null;
-  maxBorrowDurationMs: number | null;
-  priceMaxAgeS: number | null;
-  oracle: string | null;
-  withdrawalQueue: { length: number; depthUsd: number };
-  rateCurve: { kind: "piecewise" | "linear" | "other"; points: { u: number; rate: number }[]; kinkPct: number | null };
-  appUrl: string;
-};
-
-/** One Templar position of a Stellar wallet's universal account (/templar/positions). */
-export type TemplarPosition = {
-  marketId: string;
-  listed: boolean;
-  name: string;
-  appUrl: string;
-  supply: { contract: string | null; symbol: string; amount: number; usd: number; apy: number | null; earnedUsd: number; queuedWithdrawal: number | null } | null;
-  borrow: {
-    contract: string | null;
-    symbol: string;
-    amount: number;
-    usd: number;
-    apy: number | null;
-    collateral: { contract: string | null; symbol: string; amount: number; usd: number };
-    healthFactor: number | null;
-    liquidationPrice: number | null;
-  } | null;
-};
-export type TemplarPositionsResp = {
-  ok?: boolean;
-  error?: string;
-  account?: string;
-  positions?: TemplarPosition[];
-  totals?: { suppliedUsd: number; collateralUsd: number; borrowedUsd: number };
-  appUrl?: string;
-};
-
-export const TEMPLAR_APP = "https://app.templarfi.org";
-export const templarAppHref = (marketId: string, action: "market" | "supply" | "borrow" = "market") =>
-  action === "market" ? `${TEMPLAR_APP}/markets/${marketId}` : `${TEMPLAR_APP}/${action}?market=${marketId}`;
-
-/** Templar positions of these wallets (one shared fetch per wallet; Portfolio reads the same keys). */
-export function useTemplarPositions(addresses: string[]) {
-  const keys = TEMPLAR_ENABLED ? addresses.map((a) => `templar:pos:${a}`) : [];
-  const r = useSharedMany<TemplarPositionsResp | null>(keys, (k) => () => apiJson<TemplarPositionsResp>(`/api/templar/positions?address=${k.slice(12)}`), 120_000);
-  return { values: r.values, loading: TEMPLAR_ENABLED && r.loading, refreshing: TEMPLAR_ENABLED && r.refreshing };
-}
-
-/** Templar's markets (only those whose two assets are Stellar tokens; the API filters). */
-export function useTemplarMarkets() {
-  const r = useShared<{ ok?: boolean; markets?: TemplarMarketInfo[] } | null>(
-    TEMPLAR_ENABLED ? "templar:markets" : null,
-    () => apiJson("/api/templar/markets", undefined, 60_000),
-    300_000,
-  );
-  return { markets: r.value?.markets ?? [], loading: TEMPLAR_ENABLED && r.loading && !r.value, error: r.error, ready: !!r.value };
-}
+export type LendProtocol = "blend" | "xoxno";
 
 export type Market = {
   key: string;
@@ -173,15 +90,11 @@ export type Market = {
   supplyBlnd?: number | null;
   borrowBlnd?: number | null;
   xoxno?: XoxnoMarket;
-  /** Templar: the market, and which of its two assets this row is (collateral only, or the lent/borrowed asset). */
-  templar?: TemplarMarketInfo;
-  templarSide?: "collateral" | "borrow";
 };
 
 export const LEND_PROTOCOLS: Record<LendProtocol, { name: string; logo: string; site: string }> = {
   blend: { name: "Blend", logo: "/protocols/blend.png", site: "https://mainnet.blend.capital" },
   xoxno: { name: "XOXNO", logo: "/protocols/xoxno.png", site: "https://xoxno.com/lending" },
-  templar: { name: "Templar", logo: "/protocols/templar.png", site: "https://app.templarfi.org" },
 };
 
 export type StatusInfo = { label: string; tone: "ice" | "frozen" | "setup"; tip: string };
@@ -234,7 +147,6 @@ export function useLendMarkets() {
   const blend = useShared<{ assets?: BlendAsset[] } | null>("pools:blend", () => apiJson("/api/pools?protocol=blend", undefined, 120_000), 300_000);
   const xoxno = useShared<{ assets?: XoxnoMarket[] } | null>("xoxno:markets", () => apiJson("/api/lending/xoxno/markets", undefined, 120_000), 300_000);
   const groups = useShared<LendGroups | null>("lend:markets", () => apiJson("/api/lend/markets", undefined, 120_000), 300_000);
-  const templar = useTemplarMarkets();
 
   const markets = useMemo<Market[]>(() => {
     const tvl = new Map<string, GroupAsset>();
@@ -310,61 +222,8 @@ export function useLendMarkets() {
         xoxno: x,
       });
     }
-    // Templar: one pool per market with two rows: the collateral (backs loans, earns nothing) and the
-    // asset suppliers lend and borrowers take.
-    const dupes = new Map<string, number>();
-    for (const t of templar.markets) dupes.set(t.name, (dupes.get(t.name) ?? 0) + 1);
-    const seenName = new Map<string, number>();
-    for (const t of templar.markets) {
-      const n = (seenName.get(t.name) ?? 0) + 1;
-      seenName.set(t.name, n);
-      const cMeta = byContract.get(t.collateral.contract);
-      const bMeta = byContract.get(t.borrow.contract);
-      const cCode = cMeta?.code ?? t.collateral.symbol;
-      const bCode = bMeta?.code ?? t.borrow.symbol;
-      const poolName = `${cCode} / ${bCode}${(dupes.get(t.name) ?? 0) > 1 ? ` #${n}` : ""}`;
-      const base = { protocol: "templar" as const, pool: t.id, poolName, status: null, minCollateralUsd: null, templar: t };
-      out.push({
-        ...base,
-        key: `templar:${t.id}:${t.collateral.contract}`,
-        templarSide: "collateral",
-        code: cCode,
-        contract: t.collateral.contract,
-        issuer: cMeta?.issuer ?? null,
-        decimals: cMeta?.decimals ?? t.collateral.decimals,
-        supplyApy: null,
-        borrowApy: null,
-        suppliedUsd: t.collateralUsd,
-        borrowedUsd: 0,
-        availableUsd: 0,
-        utilPct: null,
-        ltvPct: t.maxLtvPct,
-        canBorrow: false,
-        canCollateral: true,
-        priceUsd: t.collateral.priceUsd,
-      });
-      out.push({
-        ...base,
-        key: `templar:${t.id}:${t.borrow.contract}`,
-        templarSide: "borrow",
-        code: bCode,
-        contract: t.borrow.contract,
-        issuer: bMeta?.issuer ?? null,
-        decimals: bMeta?.decimals ?? t.borrow.decimals,
-        supplyApy: t.supplyApy,
-        borrowApy: t.borrowApy,
-        suppliedUsd: t.totalSupplyUsd,
-        borrowedUsd: t.totalBorrowUsd,
-        availableUsd: t.availableUsd,
-        utilPct: t.utilizationPct,
-        ltvPct: null,
-        canBorrow: true,
-        canCollateral: false,
-        priceUsd: t.borrow.priceUsd,
-      });
-    }
     return out;
-  }, [blend.value, xoxno.value, groups.value, byContract, tokens, templar.markets]);
+  }, [blend.value, xoxno.value, groups.value, byContract, tokens]);
 
   // XOXNO publishes a logo for every token it lists (its LP tokens have none elsewhere).
   useEffect(() => {
@@ -377,11 +236,7 @@ export function useLendMarkets() {
   return {
     markets,
     loading: (blend.loading || xoxno.loading) && markets.length === 0,
-    status: {
-      blend: state(blend),
-      xoxno: state(xoxno),
-      templar: templar.ready ? "ready" : templar.loading || !templar.error ? "loading" : "failed",
-    } as Record<LendProtocol, "ready" | "loading" | "failed">,
+    status: { blend: state(blend), xoxno: state(xoxno) } as Record<LendProtocol, "ready" | "loading" | "failed">,
   };
 }
 
@@ -429,8 +284,6 @@ export type UserLeg = {
   /** Blend: part of the supply that is not collateral. */
   lent: number;
   xoxno?: { accountId: string; spokeId: number; hubId: number };
-  /** Templar: the market's name and health, and whether Seidar lists it (else it opens in Templar's app). */
-  templar?: { name: string; listed: boolean; appUrl: string; healthFactor: number | null; liquidationPrice: number | null; side: "supply" | "collateral" | "borrow" };
 };
 
 /**
@@ -443,7 +296,6 @@ export function useLendPositions(addresses: string[]) {
     (k) => () => apiJsonWarm<PositionsResp>(`/api/positions?address=${k.slice(5)}`),
     120_000,
   );
-  const tp = useTemplarPositions(addresses);
   return useMemo(() => {
     const legs: UserLeg[] = [];
     const pools: Record<string, Record<string, BlendPoolInfo>> = {};
@@ -471,31 +323,9 @@ export function useLendPositions(addresses: string[]) {
         });
       }
     }
-    // Templar: the supplied asset, collateral and debt are each a leg (as Blend reports them).
-    for (const a of addresses)
-      for (const t of tp.values[`templar:pos:${a}`]?.positions ?? []) {
-        const info = { name: t.name, listed: t.listed, appUrl: t.appUrl, healthFactor: t.borrow?.healthFactor ?? null, liquidationPrice: t.borrow?.liquidationPrice ?? null };
-        const leg = (side: "supply" | "collateral" | "borrow", contract: string | null, code: string, usd: number, amount: number): UserLeg => ({
-          wallet: a,
-          protocol: "templar",
-          pool: t.marketId,
-          contract: contract ?? code,
-          code,
-          suppliedUsd: side === "borrow" ? 0 : usd,
-          borrowedUsd: side === "borrow" ? usd : 0,
-          supplied: side === "borrow" ? 0 : amount,
-          borrowed: side === "borrow" ? amount : 0,
-          lent: side === "supply" ? amount : 0,
-          templar: { ...info, side },
-        });
-        if (t.supply) legs.push(leg("supply", t.supply.contract, t.supply.symbol, t.supply.usd, t.supply.amount));
-        if (t.borrow && t.borrow.collateral.amount > 0)
-          legs.push(leg("collateral", t.borrow.collateral.contract, t.borrow.collateral.symbol, t.borrow.collateral.usd, t.borrow.collateral.amount));
-        if (t.borrow && t.borrow.amount > 0) legs.push(leg("borrow", t.borrow.contract, t.borrow.symbol, t.borrow.usd, t.borrow.amount));
-      }
-    return { legs, pools, xoxnoHealth, claimableBlnd, loading: r.loading || tp.loading, refreshing: r.refreshing || tp.refreshing };
+    return { legs, pools, xoxnoHealth, claimableBlnd, loading: r.loading, refreshing: r.refreshing };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addresses.join(","), r.values, r.loading, r.refreshing, tp.values, tp.loading, tp.refreshing]);
+  }, [addresses.join(","), r.values, r.loading, r.refreshing]);
 }
 
 export const pct = (v: number | null | undefined, digits = 2) =>
