@@ -493,6 +493,12 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
   as collateral (`SupplyCollateral`). Pool status → On ice / Frozen / In setup pills. BLND claims are
   per pool; **Fixed v2.1's claim fails** (its backstop `CCS4AZ…` holds 0 BLND) — not our bug.
 - **XOXNO**: hubs of spokes; positions live in a numbered account (NFT); first Supply opens it.
+  Checked 2026-11-03: Stellar lending launched Sept 2026, DefiLlama TVL ~$140K (+$50K borrowed), flat since
+  mid-Oct (MultiversX side ~$724K); SCF #43 Build award $135K, listed team size 2; no backstop (bad debt is
+  written down on that market's suppliers); Immunefi bounty max $20K; DefiLlama lists no audit (repo has
+  Certora work). Their swap aggregator (`stellar-swap.xoxno.com`, used by our Multiply) supports on-chain
+  referral ids (`referral_id` in the route payload; fee set by XOXNO's admin, claimed with
+  `claim_referral_fees`): a referral id for Seidar must come from XOXNO. Integrator API is keyless.
 - **Swap**: Soroswap aggregator (`SOROSWAP_API_KEY`) over soroswap/phoenix/aqua/sdex/sushi.
   Phoenix has no XLM→USDC route. Seidar adds no fee to normal swaps.
 - **Vaults**: DeFindex = full factory catalogue read on-chain (listed above a min TVL, ~124 vaults,
