@@ -484,6 +484,13 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
   (`authMode: record_allow_nonroot`). **Claimable credit** = earned funding credited at settlement
   plus payouts that couldn't be transferred (e.g. no trustline); `claim_credit` pays it, no fee.
   Zenex's public API: `api.zenex.trade/v1/...` incl. `prices/udf/history` (TradingView UDF).
+  Verified by simulation 2026-11-03: `create_order` only checks size/position caps; leverage is checked when
+  a keeper fills (a 50x or near-full margin withdrawal is accepted and then can't fill), so the app and the
+  API block those up front. Every order needs >= `min_order_margin` (1 USDC) when it moves margin (else #732).
+  Zenex's index keeps expired unfilled orders as "pending": our API flags `expired` from the ledger, the app
+  shows "Reclaim", and `cancel_order` refunds the escrowed keeper fee + margin. Chart resolutions: 5, 15, 60,
+  240, D (not "1D"). Test suite: build every action through `/zenex/build` with real traders found in the
+  trading contract's events (Stellar Expert `contract/CAOZCITW…/events`).
   Zenex's own app uses TradingView's *licensed* Charting Library; TradingView has **no** Zenex
   symbol (only an unrelated `CRYPTO:ZNXUSD`). We use the free Lightweight Charts with Zenex candles.
   Reference: `docs.zenex.trade` (llms.txt), contract interfaces via
