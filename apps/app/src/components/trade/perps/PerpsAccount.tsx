@@ -47,6 +47,14 @@ function PositionDialog({ position, market, initialMode = "close", onClose }: { 
   const n = Number(value || 0);
   const execFee = market?.limits.execFee ?? 0;
   const mark = market?.price?.mid ?? position.markPrice;
+  const minMargin = market?.limits.minOrderMargin ?? 1;
+  const minNotional = market?.limits.minOrderNotional ?? 1;
+  const minPosition = market?.limits.minPositionNotional ?? 1;
+  const maxLev = market?.limits.maxLeverage ?? 20;
+  const reduceBy = (position.notional * part) / 100;
+  // Leverage once the margin move fills (Zenex checks it at fill time, not when the order is placed).
+  const equityAfter = mode === "add" ? position.equity + n : mode === "withdraw" ? position.equity - n : position.equity;
+  const levAfter = equityAfter > 0 ? position.notional / equityAfter : Infinity;
 
   const submit = async () => {
     const side = position.side;
@@ -66,13 +74,21 @@ function PositionDialog({ position, market, initialMode = "close", onClose }: { 
 
   const blocker =
     mode === "close"
-      ? null
+      ? part < 100 && reduceBy < minNotional
+        ? `Close at least ${minNotional} USDC`
+        : part < 100 && position.notional - reduceBy < minPosition
+          ? "Close the whole position instead"
+          : null
       : !(n > 0)
         ? "Enter a value"
-        : mode === "add" && n + execFee > usdc + 1e-9
-          ? "Insufficient USDC"
-          : mode === "withdraw" && n >= position.margin
-            ? "Leaves no margin"
+        : (mode === "add" || mode === "withdraw") && n < minMargin
+          ? `Minimum ${minMargin} USDC`
+          : mode === "add" && n + execFee > usdc + 1e-9
+            ? "Insufficient USDC"
+            : mode === "withdraw" && n >= position.margin
+              ? "Leaves no margin"
+              : mode === "withdraw" && levAfter > maxLev
+                ? `Leaves leverage above ${maxLev}x: withdraw less`
             : mode === "tp" && (isLong ? n <= mark : n >= mark)
               ? `Take profit must be ${isLong ? "above" : "below"} the mark`
               : mode === "sl" && (isLong ? n >= mark : n <= mark)
@@ -143,6 +159,7 @@ function PositionDialog({ position, market, initialMode = "close", onClose }: { 
                 mode === "add" || mode === "withdraw"
                   ? [
                       { label: "Margin after", value: `${formatAmount(newMargin, 4)} USDC` },
+                      { label: "Leverage after (est.)", value: n > 0 && Number.isFinite(levAfter) ? `${levAfter.toFixed(1)}x` : `${position.leverage.toFixed(1)}x`, color: levAfter > maxLev ? "error.main" : undefined },
                       { label: "Liquidation after (est.)", value: n > 0 ? `$${fmtPx(liqAfter)}` : `$${fmtPx(position.liquidationPrice)}`, color: "orange.main" },
                       { label: mode === "add" ? "Wallet USDC" : "Keeper fee", value: mode === "add" ? formatAmount(usdc, 2) : `${execFee} USDC` },
                     ]
@@ -155,7 +172,7 @@ function PositionDialog({ position, market, initialMode = "close", onClose }: { 
             />
           </Box>
         )}
-        {blocker && mode !== "close" && n > 0 && <Typography sx={{ fontSize: "0.8125rem", color: "error.main" }}>{blocker}</Typography>}
+        {blocker && (mode === "close" || n > 0) && <Typography sx={{ fontSize: "0.8125rem", color: "error.main" }}>{blocker}</Typography>}
       </GlassDialog>
       {dialog}
     </>
@@ -177,7 +194,14 @@ export function AccountCard({ account, loading }: { account: PerpsAccount | null
     { label: "Position equity", value: formatUsd(equity) },
     { label: "Margin in use", value: formatUsd(margin) },
     { label: "Unrealised net PnL", value: formatUsd(upnl), color: pnlColor(upnl) },
-    { label: "Open orders", value: String(account?.openOrders.length ?? 0) },
+    {
+      label: "Open orders",
+      value: (() => {
+        const all = account?.openOrders ?? [];
+        const expired = all.filter((o) => o.expired).length;
+        return `${all.length - expired}${expired ? ` (+${expired} expired)` : ""}`;
+      })(),
+    },
   ];
   return (
     <Box sx={cardSx}>
@@ -270,9 +294,38 @@ export default function PerpsTables({ account, market, loading }: { account: Per
     { id: "size", header: "Size", cell: (o) => <T>{o.fullClose ? "Full position" : o.notional ? formatUsd(o.notional) : "—"}</T> },
     { id: "margin", header: "Margin", cell: (o) => <T>{o.margin ? formatUsd(o.margin) : "—"}</T> },
     { id: "trigger", header: "Trigger / bound", cell: (o) => <T>{o.triggerPrice ? `$${fmtPx(o.triggerPrice)}` : o.priceBound ? `≤ $${fmtPx(o.priceBound)}` : "Market"}</T> },
-    { id: "status", header: "Status", cell: (o) => <T color={o.status === "filled" ? "green.main" : o.status === "pending" ? "primary.main" : "grey.200"}>{o.status}</T> },
+    {
+      id: "status",
+      header: "Status",
+      cell: (o) =>
+        o.expired ? (
+          <Tooltip arrow placement="top" title="This order passed its expiry without filling, so keepers can't fill it any more.">
+            <span>
+              <T color="orange.main">expired</T>
+            </span>
+          </Tooltip>
+        ) : (
+          <T color={o.status === "filled" ? "green.main" : o.status === "pending" ? "primary.main" : "grey.200"}>{o.status}</T>
+        ),
+    },
     open
-      ? { id: "cancel", header: "", align: "right", cell: (o) => <Button size="small" variant="outlined" color="cancel" onClick={() => void run(`Cancel order #${o.id}`, { action: "cancel", orderId: o.id })} sx={{ borderRadius: "999rem" }}>Cancel</Button> }
+      ? {
+          id: "cancel",
+          header: "",
+          align: "right",
+          cell: (o) =>
+            o.expired ? (
+              <Tooltip arrow placement="top" title={`Cancelling it returns what it holds: the ${formatAmount(o.execFee, 2)} USDC keeper fee${o.margin ? ` and ${formatAmount(o.margin, 2)} USDC margin` : ""}.`}>
+                <Button size="small" variant="outlined" color="cancel" onClick={() => void run(`Reclaim expired order #${o.id}`, { action: "cancel", orderId: o.id })} sx={{ borderRadius: "999rem" }}>
+                  Reclaim
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button size="small" variant="outlined" color="cancel" onClick={() => void run(`Cancel order #${o.id}`, { action: "cancel", orderId: o.id })} sx={{ borderRadius: "999rem" }}>
+                Cancel
+              </Button>
+            ),
+        }
       : { id: "tx", header: "Transaction", cell: (o) => <TxLink tx={o.tx} /> },
   ];
 
@@ -298,7 +351,7 @@ export default function PerpsTables({ account, market, loading }: { account: Per
 
   const tabs = [
     { id: "positions", label: `Positions${a?.positions.length ? ` (${a.positions.length})` : ""}` },
-    { id: "open", label: `Open Orders${a?.openOrders.length ? ` (${a.openOrders.length})` : ""}` },
+    { id: "open", label: `Open Orders${a?.openOrders.length ? ` (${a.openOrders.filter((o) => !o.expired).length}${a.openOrders.some((o) => o.expired) ? ` · ${a.openOrders.filter((o) => o.expired).length} expired` : ""})` : ""}` },
     { id: "history", label: "Order History" },
     { id: "fills", label: "Trades" },
     { id: "closed", label: "Closed" },

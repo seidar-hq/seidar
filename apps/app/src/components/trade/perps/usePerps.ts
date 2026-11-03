@@ -64,12 +64,15 @@ export type PerpsOrder = {
   status: string;
   placedAt: string;
   tx: string;
+  /** Past its expiration ledger: can't fill; cancelling refunds it. */
+  expired?: boolean;
 };
 
 /** Resting exits on one side: take profit = limit decrease (kind 4), stop loss = stop decrease (kind 5). */
 export function positionExits(orders: PerpsOrder[] | undefined, side: string) {
   const pick = (kind: number) =>
-    (orders ?? []).filter((o) => o.side === side && o.kind === kind && o.triggerPrice != null).map((o) => o.triggerPrice as number);
+    // An expired TP/SL can't fill any more: it doesn't protect the position.
+    (orders ?? []).filter((o) => o.side === side && o.kind === kind && o.triggerPrice != null && !o.expired).map((o) => o.triggerPrice as number);
   return { tp: pick(4), sl: pick(5) };
 }
 

@@ -320,7 +320,8 @@ type ApiOrder = {
 
 const KIND_LABEL = ["Market open", "Limit open", "Stop open", "Market close", "Take profit", "Stop loss"];
 
-function orderRow(o: ApiOrder, dec: number) {
+/** `latest`: the current ledger; an order past its expiration ledger can no longer fill (cancel refunds it). */
+function orderRow(o: ApiOrder, dec: number, latest = 0) {
   const notional = big(o.notionalAtomic);
   const kind = Number(o.kind);
   const marginOnly = notional === 0n && big(o.marginAtomic) > 0n;
@@ -336,6 +337,8 @@ function orderRow(o: ApiOrder, dec: number) {
     priceBound: big(o.priceBoundAtomic) > 0n ? px(big(o.priceBoundAtomic)) : null,
     execFee: toNum(big(o.executionFeeAtomic), dec),
     expirationLedger: Number(o.expirationLedger),
+    // Zenex's index keeps an expired, unfilled order as "pending"; it can't fill any more.
+    expired: latest > 0 && o.status === "pending" && Number(o.expirationLedger) > 0 && Number(o.expirationLedger) < latest,
     status: o.status,
     placedAt: o.placedAt,
     tx: o.transactionHash,
@@ -349,7 +352,7 @@ export async function zenexAccount(address: string, id?: string) {
     const m = await marketCfg(id);
     const dec = m.collateralDecimals;
     const sdk = await import("@stellar/stellar-sdk");
-    const [state, tickers, long, short, credit, indexed, fills, lifecycles] = await Promise.all([
+    const [state, tickers, long, short, credit, indexed, fills, lifecycles, latest] = await Promise.all([
       marketState(m),
       zenexTickers(),
       readPosition(m, address, true),
@@ -358,12 +361,13 @@ export async function zenexAccount(address: string, id?: string) {
       getJson<{ data: { orders?: ApiOrder[]; orderHistory?: ApiOrder[] } }>(`/v1/accounts/${address}/state`).catch(() => null),
       getJson<{ data: { items: Record<string, unknown>[] } }>(`/v1/accounts/${address}/trade/fills?limit=50`).catch(() => null),
       getJson<{ data: { items: Record<string, unknown>[] } }>(`/v1/accounts/${address}/trade/lifecycles?limit=30`).catch(() => null),
+      import("./rpc.js").then(({ withRpc }) => withRpc((r) => r.getLatestLedger()).then((l) => l.sequence)).catch(() => 0),
     ]);
     const t = tickers.find((x) => x.marketId === m.id);
     const bid = big(t?.bid);
     const ask = big(t?.ask);
     const positions = [long && estimate(long, true, state, bid, ask, dec), short && estimate(short, false, state, bid, ask, dec)].filter(Boolean);
-    const openOrders = (indexed?.data.orders ?? []).map((o) => orderRow(o, dec));
+    const openOrders = (indexed?.data.orders ?? []).map((o) => orderRow(o, dec, latest));
     const orderHistory = (indexed?.data.orderHistory ?? []).map((o) => orderRow(o, dec));
     return {
       status: 200,
@@ -509,6 +513,18 @@ export async function zenexBuild(b: ZenexBuildBody | null) {
     const MARKET_TTL = 120; // ~10 min for keepers to fill
     // Resting orders (limit / stop / TP / SL): the chosen lifetime, 5s ledgers, at most ~31 days.
     const RESTING_TTL = Math.min(535_680, Math.max(60, Math.round((Number(b?.expirySec) || 7 * 86400) / 5)));
+    // Orders that act on a position can only fill if there is one: Zenex accepts them when placed and only
+    // checks at fill time, so the user would pay the keeper fee for an order that can never fill.
+    if (["close", "decrease", "add-margin", "withdraw-margin", "take-profit", "stop-loss"].includes(action)) {
+      const pos = await readPosition(m, from, isLong);
+      if (!pos || big(pos.notional) <= 0n) return { status: 200, body: { ok: false, error: `You have no ${isLong ? "long" : "short"} position on this market.` } };
+    }
+    // Margin moves below the market's per-order minimum are refused by the contract with a generic error.
+    if (action === "add-margin" || action === "withdraw-margin") {
+      const min = big((await marketState(m)).config.min_order_margin ?? 0n);
+      const amount = parseAtomic(b?.amount, dec);
+      if (amount != null && min > 0n && amount < min) return { status: 200, body: { ok: false, error: `The minimum margin change is ${toNum(min, dec)} USDC.` } };
+    }
     let op: unknown;
     let label = "";
     let authMode: "record_allow_nonroot" | undefined;
