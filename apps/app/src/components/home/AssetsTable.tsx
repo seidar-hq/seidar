@@ -170,7 +170,7 @@ export default function AssetsTable() {
         pageSize={15}
         defaultSort={{ id: "mcap", dir: "desc" }}
       />
-      <SourceNote text="Data: Stellar Expert (prices, supply, holders, DEX volume), CoinGecko (XLM market cap). Categories and issuers are verified by Seidar." />
+      <SourceNote text="Data: Stellar Expert (prices, supply, holders, DEX volume), Stellar Index (registered assets outside its lists), CoinGecko (XLM market cap). Categories and issuers are verified by Seidar." />
     </Box>
   );
 }

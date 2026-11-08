@@ -2,8 +2,10 @@
 // activity. Public data only (no wallet), cached and refreshed by the cron.
 //
 // Sources
-//   Stellar Expert  api.stellar.expert/explorer/public   assets (USD price, supply, holders =
-//                   funded trustlines, 7d DEX volume, 7d daily prices) and daily network stats
+//   Stellar Expert  api.stellar.expert/explorer/public   asset lists (USD price, supply, holders =
+//                   funded trustlines, 7d DEX volume, 7d daily prices)
+//   Stellar Index   api.stellarindex.io                   registered assets outside those lists, and
+//                   daily network throughput (Stellar Expert now charges for single assets and stats)
 //   DefiLlama       api.llama.fi                          Stellar DeFi TVL history, protocols
 //                   stablecoins.llama.fi                  stablecoin market cap on Stellar
 //   CoinGecko       XLM market cap only (Stellar Expert's XLM supply is the total, not circulating)
@@ -200,6 +202,29 @@ async function getJson<T>(url: string, ms = 20_000): Promise<T> {
 
 type SeList = { _embedded?: { records?: SeAsset[] } };
 
+/** One classic asset from Stellar Index, in Stellar Expert's record shape (no market price: the
+ *  registered assets looked up this way are priced at their NAV). */
+async function indexAsset(code: string, issuer: string | null): Promise<SeAsset | null> {
+  if (!issuer) return null;
+  const { stellarIndex } = await import("./stellar-index.js");
+  const id = `${code}-${issuer}`;
+  const [a, supply, holders] = await Promise.all([
+    stellarIndex(`/assets/${id}`),
+    stellarIndex(`/assets/${id}/supply`),
+    stellarIndex(`/assets/${id}/holders?limit=1`),
+  ]);
+  const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return {
+    asset: id,
+    code,
+    domain: text(a.home_domain),
+    price: null,
+    supply: text(supply.total_supply) ?? null,
+    trustlines: { funded: Number(holders.holder_count) || 0 },
+    toml_info: { name: text(a.name), image: text(a.image) },
+  };
+}
+
 async function xlmMarketCap(): Promise<number | null> {
   const j = await getJson<{ stellar?: { usd_market_cap?: number } }>(
     "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd&include_market_cap=true",
@@ -257,9 +282,7 @@ async function loadAssets(): Promise<{ assets: MarketAsset[]; counts: Record<str
   const missing = REGISTRY.filter((r) => !have.has(idOf(r.code, r.issuer)));
   for (let i = 0; i < missing.length; i += 4) {
     const batch = await Promise.all(
-      missing.slice(i, i + 4).map((r) =>
-        getJson<SeAsset>(`${SE}/asset/${r.issuer ? `${r.code}-${r.issuer}` : "XLM"}`, 12_000).catch(() => null),
-      ),
+      missing.slice(i, i + 4).map((r) => indexAsset(r.code, r.issuer).catch(() => null)),
     );
     for (const a of batch) if (a?.asset) records.push(a);
   }
@@ -310,9 +333,11 @@ export type Protocol = {
   seidar: string | null;
 };
 
-type Day = { ts: number; transactions: number; payments: number; trades: number; active_accounts: number; operations: number };
+/** A UTC day of Stellar Index's network throughput; `partial` marks today so far. */
+type Bucket = { day: string; txs: number; ops: number; events: number; partial?: boolean };
 
-export type ActivityPoint = { t: number; transactions: number; payments: number; trades: number; activeAccounts: number };
+/** Payments, DEX trades and active accounts went with Stellar Expert's paid stats; Stellar Index has these. */
+export type ActivityPoint = { t: number; transactions: number; operations: number; events: number };
 
 async function loadOverview() {
   const [tvlHist, protocols, stables, stats] = await Promise.all([
@@ -321,7 +346,10 @@ async function loadOverview() {
     getJson<{ name: string; totalCirculatingUSD?: Record<string, number> }[]>("https://stablecoins.llama.fi/stablecoinchains").catch(
       () => null,
     ),
-    getJson<Day[]>(`${SE}/ledger/ledger-stats`, 30_000).catch(() => null),
+    import("./stellar-index.js")
+      .then(({ stellarIndex }) => stellarIndex("/network/throughput?window_days=365"))
+      .then((d) => (Array.isArray(d.buckets) ? (d.buckets as Bucket[]) : null))
+      .catch(() => null),
   ]);
   if (!tvlHist && !protocols && !stats) throw new Error("no overview data");
 
@@ -346,16 +374,10 @@ async function loadOverview() {
   // Pegged EUR/JPY/… are already USD-valued by DefiLlama.
   const stablecoinsUsd = pegged ? Object.values(pegged).reduce((s, v) => s + (Number(v) || 0), 0) : null;
 
-  // Daily network stats: the last row is today so far; KPIs use the last complete day.
-  const days = (stats ?? []).slice(-366);
-  const activity: ActivityPoint[] = days.map((d) => ({
-    t: d.ts * 1000,
-    transactions: d.transactions,
-    payments: d.payments,
-    trades: d.trades,
-    activeAccounts: d.active_accounts,
-  }));
-  const full = activity.slice(0, -1);
+  // Daily network throughput, complete UTC days only (today so far is marked partial).
+  const full: ActivityPoint[] = (stats ?? [])
+    .filter((d) => !d.partial && Number.isFinite(Date.parse(`${d.day}T00:00:00Z`)))
+    .map((d) => ({ t: Date.parse(`${d.day}T00:00:00Z`), transactions: d.txs, operations: d.ops, events: d.events }));
   const day = full[full.length - 1] ?? null;
   const prev = full[full.length - 2] ?? null;
 
@@ -366,18 +388,18 @@ async function loadOverview() {
     activity: full,
     day: day && {
       t: day.t,
-      payments: day.payments,
-      paymentsPrev: prev?.payments ?? null,
-      activeAccounts: day.activeAccounts,
-      activeAccountsPrev: prev?.activeAccounts ?? null,
       transactions: day.transactions,
       transactionsPrev: prev?.transactions ?? null,
+      operations: day.operations,
+      operationsPrev: prev?.operations ?? null,
+      events: day.events,
+      eventsPrev: prev?.events ?? null,
     },
   };
 }
 
 export async function getMarketOverview() {
-  const out = await withCache("market:overview:v1", 15 * 60_000, loadOverview, { swr: true });
+  const out = await withCache("market:overview:v2", 15 * 60_000, loadOverview, { swr: true });
   if (!out.value) return { status: 502, body: { ok: false, error: "Market data is unavailable right now." } };
   return { status: 200, body: { ok: true, ...out.value, source: "DefiLlama, Stellar Expert" } };
 }

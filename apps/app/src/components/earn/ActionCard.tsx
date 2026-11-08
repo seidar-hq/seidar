@@ -254,7 +254,6 @@ export function DetailRows({ rows }: { rows: DetailRow[] }) {
 }
 
 export default function ActionCard({
-  title,
   tabs,
   active,
   onTab,
@@ -265,7 +264,6 @@ export default function ActionCard({
   busy,
   openSignal,
 }: {
-  title: string;
   tabs: ActionTab[];
   active: string;
   onTab: (id: string) => void;
@@ -316,13 +314,6 @@ export default function ActionCard({
             }),
       }}
     >
-      {!docked && (
-        <Typography
-          sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black" }}
-        >
-          {title}
-        </Typography>
-      )}
       {tabs.length > 1 && (
         <Tabs
           tabs={tabs.map((t) => ({

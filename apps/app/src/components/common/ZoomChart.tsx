@@ -13,9 +13,10 @@ import type { IChartApi, ISeriesApi, MouseEventParams, SeriesType, UTCTimestamp 
 // drag the price axis to stretch or compress it, drag or wheel the time axis (or the plot) to zoom
 // and pan, pinch on touch; double-click an axis or press the reset button to fit everything again.
 //
-// Several series can share the chart: in "price" mode the first sits on the right axis and the
-// others on the left one (two currencies stay readable together); in "percent" mode every series
-// shares the right axis as % change from the first visible point.
+// Several series can share the chart: in "price" mode the first sits on the right axis and each
+// other one on its own hidden scale (two currencies stay readable together), its price tag shown on
+// the right beside the first's; in "percent" mode every series shares the right axis as % change
+// from the first visible point.
 
 export type ZoomPoint = { t: number; v: number };
 export type ZoomSeries = {
@@ -36,7 +37,7 @@ type Props = {
   intraday?: boolean;
   /** Fit the view again when this changes (e.g. a new period); otherwise the user's zoom is kept. */
   fitKey?: string;
-  /** "dual": extra series on the left axis (different currencies); "shared": one axis for all (same unit). */
+  /** "dual": each extra series on its own scale (different currencies); "shared": one axis for all (same unit). */
   scales?: "dual" | "shared";
 };
 
@@ -118,7 +119,8 @@ export default function ZoomChart({ series, mode = "price", height = "18rem", fo
     const live = seriesRef.current;
     let added = false;
     series.forEach((s, i) => {
-      const scale = percent || scales === "shared" || i === 0 ? "right" : "left";
+      // An overlay scale per extra series: own range, no axis of its own, price tag on the right.
+      const scale = percent || scales === "shared" || i === 0 ? "right" : `overlay:${s.id}`;
       // Unless told otherwise, the first series is an area and the others are lines.
       const kind = s.kind ?? (i === 0 ? "area" : "line");
       const prev = live.get(s.id);
@@ -134,6 +136,7 @@ export default function ZoomChart({ series, mode = "price", height = "18rem", fo
             : kind === "line"
               ? chart.addSeries(lc.LineSeries, { ...opts, color: s.color, lineWidth: 2 })
               : chart.addSeries(lc.AreaSeries, { ...opts, lineColor: s.color, lineWidth: 2, topColor: alpha(s.color, 0.33), bottomColor: alpha(s.color, 0) });
+        if (scale !== "right") chart.priceScale(scale).applyOptions({ scaleMargins: { top: 0.1, bottom: 0.08 } });
         live.set(s.id, { api, kind, scale });
         added = true;
       }
@@ -154,7 +157,7 @@ export default function ZoomChart({ series, mode = "price", height = "18rem", fo
       }
     const mode_ = percent ? lc.PriceScaleMode.Percentage : lc.PriceScaleMode.Normal;
     chart.priceScale("right").applyOptions({ mode: mode_ });
-    chart.priceScale("left").applyOptions({ mode: mode_, visible: !percent && scales === "dual" && series.length > 1 });
+    chart.priceScale("left").applyOptions({ visible: false });
     if (added || fittedRef.current !== fitKey) {
       chart.timeScale().fitContent();
       fittedRef.current = fitKey;

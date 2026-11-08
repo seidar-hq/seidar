@@ -28,13 +28,18 @@ function PerpsTrading() {
         display: "grid",
         gap: "1rem",
         gridTemplateColumns: "minmax(0, 1fr) 27.875rem",
-        alignItems: "start",
         "@media (max-width: 75rem)": { gridTemplateColumns: "minmax(0, 1fr)" },
       }}
     >
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
         <PerpsChart market={market} />
-        <PerpsTables account={acct} market={market} loading={!!me && loading} />
+        {/* Out of flow, so its rows can't stretch the page: the card ends level with the Account card
+            and scrolls inside. The column stacks on small screens, so it needs its own height there. */}
+        <Box sx={{ position: "relative", flex: "1 1 0", minHeight: "22rem", "@media (max-width: 75rem)": { flex: "none", height: "32rem" } }}>
+          <Box sx={{ position: "absolute", inset: 0 }}>
+            <PerpsTables account={acct} market={market} loading={!!me && loading} />
+          </Box>
+        </Box>
       </Box>
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
         <OrderEntry market={market} account={acct} />

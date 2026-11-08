@@ -20,9 +20,23 @@ import { usePortfolio, useTokenCatalogue } from "@/portfolio/usePortfolio";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import ActionCard, { AmountBox, DetailRows, type DetailRow } from "./ActionCard";
-import { Breadcrumbs, ContractRow, ProtocolBadge, StatCard } from "./EarnUI";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
+import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
+import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
+import DateRangeOutlinedIcon from "@mui/icons-material/DateRangeOutlined";
+import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
+import PercentRoundedIcon from "@mui/icons-material/PercentRounded";
+import PieChartOutlineRoundedIcon from "@mui/icons-material/PieChartOutlineRounded";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
+import SellOutlinedIcon from "@mui/icons-material/SellOutlined";
+import { Breadcrumbs, ContractRow, IconLabel, pinnedColumn, ProtocolBadge, StatCard, usePinnedColumn } from "./EarnUI";
 import { compactUsd, pct } from "./lendData";
 import { apyText, useVaultList, vaultProtocol, withdrawalText, type VaultDetailInfo } from "./vaultData";
+import VaultProjection from "./VaultProjection";
 
 const Layout = styled(Box)({
   display: "grid",
@@ -35,9 +49,17 @@ const Layout = styled(Box)({
 const Main = styled(PlainCard)({ display: "flex", flexDirection: "column", gap: "1.75rem", padding: "1.5rem", minWidth: 0 });
 const Inset = styled(Box)(({ theme }) => ({ borderRadius: "1rem", backgroundColor: theme.palette.grey[400], border: `0.0625rem solid ${theme.palette.overlay.white08}`, padding: "1.25rem" }));
 
-const Figure = ({ label, value, sub, color }: { label: string; value: React.ReactNode; sub?: React.ReactNode; color?: string }) => (
+const SectionTitle = ({ icon, children, mb }: { icon?: React.ReactNode; children: React.ReactNode; mb?: string }) => (
+  <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb, "& svg": { color: "grey.200", fontSize: "1.25rem !important" } }}>
+    {icon ? <IconLabel icon={icon}>{children}</IconLabel> : children}
+  </Typography>
+);
+
+const Figure = ({ label, icon, value, sub, color }: { label: string; icon: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; color?: string }) => (
   <Box sx={{ display: "flex", flexDirection: "column", gap: "0.375rem", minWidth: 0 }}>
-    <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>{label}</Typography>
+    <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>
+      <IconLabel icon={icon}>{label}</IconLabel>
+    </Typography>
     <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: color ?? "common.black" }} noWrap>
       {value}
     </Typography>
@@ -49,6 +71,7 @@ type Mode = "deposit" | "withdraw";
 
 export default function VaultDetail() {
   const theme = useTheme();
+  const pinnedColumnProps = usePinnedColumn();
   const params = useSearchParams();
   const router = useRouter();
   const address = params.get("address") ?? "";
@@ -89,7 +112,7 @@ export default function VaultDetail() {
   if (!vault) {
     return (
       <Main sx={{ mt: "0.4rem" }}>
-        <Breadcrumbs trail={[{ label: "Earn", href: "/earn" }, { label: "Vaults", href: "/earn/vaults" }, { label: "Vault" }]} />
+        <Breadcrumbs backTo="/earn/vaults" trail={[{ label: "Earn", href: "/earn" }, { label: "Vaults", href: "/earn/vaults" }, { label: "Vault" }]} />
         <Typography color="grey.200">{loading ? "Loading vault…" : "Vault not found. Pick one from Vaults."}</Typography>
       </Main>
     );
@@ -101,9 +124,14 @@ export default function VaultDetail() {
   const n = Number(amount || 0);
   const available = tab === "deposit" ? walletBal : deposited;
   const atMax = n > 0 && Math.abs(n - available) < 1e-9;
-  const yearly = vault.apyPct != null && mine ? (mine.usd * vault.apyPct) / 100 : null;
-  const sharePct = mine && vault.tvlUsd > 0 ? (mine.usd / vault.tvlUsd) * 100 : null;
+  // No deposit is a real zero; "—" only when it can't be worked out (a vault with no APY).
+  const yearly = vault.apyPct != null ? ((mine?.usd ?? 0) * vault.apyPct) / 100 : null;
+  const sharePct = vault.tvlUsd > 0 ? ((mine?.usd ?? 0) / vault.tvlUsd) * 100 : 0;
   const history = detail?.history ?? [];
+  // "N/A": the figure doesn't exist for this vault. "—": it should, but couldn't be read just now.
+  const flatShares = detail?.rewardsPaidSeparately === true;
+  // Upshift's vaultFee is its platform fee and performanceFee is separate; DeFindex only has vaultFee.
+  const perfFeeBps = detail?.feesBps?.performanceFee ?? detail?.feesBps?.vaultFee;
 
   const blocker = (() => {
     if (!isConnected) return null;
@@ -141,7 +169,7 @@ export default function VaultDetail() {
     { label: "Withdrawals", value: withdrawalText(vault) },
   ];
   if (tab === "deposit" && n > 0 && vault.apyPct != null && price != null) details.push({ label: "Est. yearly earnings", value: formatUsd((n * price * vault.apyPct) / 100) });
-  if (detail?.feesBps?.vaultFee != null) details.push({ label: "Performance fee", value: `${(detail.feesBps.vaultFee / 100).toFixed(1)}%` });
+  if (perfFeeBps != null) details.push({ label: "Performance fee", value: `${(perfFeeBps / 100).toFixed(1)}%` });
   if (mine || posLoading)
     details.push({ label: "Your deposit", value: <Shimmer on={posLoading} width="4.5rem">{`${formatAmount(deposited, 4)} ${vault.assetCode}`}</Shimmer> });
 
@@ -151,12 +179,12 @@ export default function VaultDetail() {
     <Layout>
       <Main>
         <Breadcrumbs
+          backTo="/earn/vaults"
           trail={[
             { label: "Earn", href: "/earn" },
             { label: "Vaults", href: "/earn/vaults" },
             { label: meta.name, href: "/earn/vaults" },
             { label: vault.name },
-            { label: tab === "deposit" ? "Deposit" : "Withdraw" },
           ]}
         />
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.875rem", flexWrap: "wrap" }}>
@@ -170,21 +198,24 @@ export default function VaultDetail() {
         </Box>
 
         <Box>
-          <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "1rem" }}>My Position</Typography>
+          <SectionTitle mb="1rem">My Position</SectionTitle>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "1.25rem" }}>
             <Figure
               label="Deposited"
+              icon={<AccountBalanceWalletOutlinedIcon />}
               value={<Shimmer on={posLoading} width="7rem" height="1.5rem">{`${formatAmount(deposited, 4)} ${vault.assetCode}`}</Shimmer>}
               sub={<Shimmer on={posLoading} width="4rem" height="0.875rem">{formatUsd(mine?.usd ?? 0)}</Shimmer>}
             />
             <Figure
               label="Est. Yearly Earnings"
+              icon={<PaymentsOutlinedIcon />}
               value={<Shimmer on={posLoading} width="5rem" height="1.5rem">{yearly != null ? formatUsd(yearly) : "—"}</Shimmer>}
               color={yearly && !posLoading ? "green.main" : undefined}
             />
-            <Figure label="Share of Vault" value={<Shimmer on={posLoading} width="4rem" height="1.5rem">{sharePct != null ? pct(sharePct, sharePct < 0.01 ? 4 : 2) : "—"}</Shimmer>} />
+            <Figure label="Share of Vault" icon={<PieChartOutlineRoundedIcon />} value={<Shimmer on={posLoading} width="4rem" height="1.5rem">{pct(sharePct, sharePct > 0 && sharePct < 0.01 ? 4 : 2)}</Shimmer>} />
             <Figure
               label="Share Price"
+              icon={<SellOutlinedIcon />}
               value={
                 <Shimmer on={detailLoading && vault.sharePrice == null} width="5.5rem" height="1.5rem">
                   {detail?.sharePrice != null ? detail.sharePrice.toFixed(6) : vault.sharePrice != null ? vault.sharePrice.toFixed(6) : "—"}
@@ -195,18 +226,18 @@ export default function VaultDetail() {
         </Box>
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-          <StatCard label="TVL" value={compactUsd(vault.tvlUsd)} />
-          <StatCard label="APY" value={apyText(vault)} color="green.main" sub={vault.apySource === "advertised" ? "Advertised by the curator" : "Measured on-chain"} />
-          <StatCard label="Realized APY (7d)" value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{pct(detail?.ownApy7d)}</Shimmer>} color={detail?.ownApy7d != null ? "green.main" : undefined} />
-          <StatCard label="Realized APY (30d)" value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{pct(detail?.ownApy30d)}</Shimmer>} color={detail?.ownApy30d != null ? "green.main" : undefined} />
-          <StatCard label="Depositors" value={<Shimmer on={detailLoading} width="3rem" height="1.5rem">{detail?.depositors != null ? formatAmount(detail.depositors, 0) : "—"}</Shimmer>} />
-          <StatCard label="Withdrawals" value={withdrawalText(vault)} />
+          <StatCard label="TVL" icon={<LockOutlinedIcon />} value={compactUsd(vault.tvlUsd)} />
+          <StatCard label="APY" icon={<PercentRoundedIcon />} value={apyText(vault)} color="green.main" sub={vault.apySource === "advertised" ? "Advertised by the curator" : "Measured on-chain"} />
+          <StatCard label="Realized APY (7d)" icon={<DateRangeOutlinedIcon />} value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{flatShares ? "N/A" : pct(detail?.ownApy7d)}</Shimmer>} color={detail?.ownApy7d != null ? "green.main" : undefined} />
+          <StatCard label="Realized APY (30d)" icon={<CalendarMonthOutlinedIcon />} value={<Shimmer on={detailLoading} width="4rem" height="1.5rem">{flatShares ? "N/A" : pct(detail?.ownApy30d)}</Shimmer>} color={detail?.ownApy30d != null ? "green.main" : undefined} />
+          <StatCard label="Depositors" icon={<GroupOutlinedIcon />} value={<Shimmer on={detailLoading} width="3rem" height="1.5rem">{detail?.depositors != null ? formatAmount(detail.depositors, 0) : "—"}</Shimmer>} />
+          <StatCard label="Withdrawals" icon={<ScheduleRoundedIcon />} value={withdrawalText(vault)} />
         </Box>
 
         {history.length > 1 && (
           <Inset sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <Box>
-              <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black" }}>Share price</Typography>
+              <SectionTitle icon={<SellOutlinedIcon />}>Share price</SectionTitle>
               <Typography sx={{ fontSize: "0.8125rem", color: "grey.200" }}>Value of one vault share in {vault.assetCode}; it rises as the vault earns.</Typography>
             </Box>
             <Box sx={{ height: "14rem" }}>
@@ -219,10 +250,17 @@ export default function VaultDetail() {
             </Box>
           </Inset>
         )}
+        {flatShares && (
+          <Inset sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <SectionTitle icon={<SellOutlinedIcon />}>Share price</SectionTitle>
+            <Typography sx={{ fontSize: "0.875rem", color: "grey.200", lineHeight: 1.6 }}>Rewards are paid separately, so the share price stays at 1.</Typography>
+          </Inset>
+        )}
 
         <Inset sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black" }}>About this vault</Typography>
+          <SectionTitle icon={<AccountTreeOutlinedIcon />}>About this vault</SectionTitle>
           <Typography sx={{ fontSize: "0.875rem", color: "grey.200", lineHeight: 1.6 }}>{meta.about}</Typography>
+          {perfFeeBps != null && <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>Performance fee: {(perfFeeBps / 100).toFixed(1)}%</Typography>}
           {strategies.length > 0 && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: "0.5rem", mt: "0.25rem" }}>
               <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "common.black" }}>Strategies</Typography>
@@ -236,15 +274,21 @@ export default function VaultDetail() {
           )}
         </Inset>
 
+        {vault.apyPct != null && vault.apyPct > 0 && (
+          <Inset sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <SectionTitle icon={<CalculateOutlinedIcon />}>Projection</SectionTitle>
+            <VaultProjection apyPct={vault.apyPct} startUsd={mine?.usd} />
+          </Inset>
+        )}
+
         <Box>
-          <Typography sx={{ fontSize: "1.125rem", fontWeight: 600, color: "common.black", mb: "0.5rem" }}>Transactions</Typography>
+          <SectionTitle icon={<ReceiptLongOutlinedIcon />} mb="0.5rem">Transactions</SectionTitle>
           <ActivityTable items={vaultActivity} loading={activity.loading && vaultActivity.length === 0} multi={false} />
         </Box>
       </Main>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", position: { lg: "sticky" }, top: { lg: "6.5rem" } }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", ...pinnedColumn }} {...pinnedColumnProps}>
         <ActionCard
-          title={tab === "deposit" ? "Deposit" : "Withdraw"}
           tabs={[
             { id: "deposit", label: "Deposit", blocked: vault.paused ? "Vault paused" : null },
             { id: "withdraw", label: "Withdraw" },

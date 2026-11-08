@@ -360,15 +360,15 @@ export default function PerpsTables({ account, market, loading }: { account: Per
   const busy = loading && !a;
 
   return (
-    <Box sx={cardSx}>
-      <Box sx={{ alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>
+    <Box sx={{ ...cardSx, height: "100%", minHeight: 0, boxSizing: "border-box" }}>
+      <Box sx={{ alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto", flexShrink: 0 }}>
         <Tabs tabs={tabs.map((t) => ({ ...t, padding: "0 0.75rem" }))} activeTab={tab} setActiveTab={setTab} isPathProvided={false} />
       </Box>
-      {tab === "positions" && <DataTable columns={posCols} rows={a?.positions ?? []} isLoading={busy} emptyDataText={empty ?? "No open positions"} emptyMinHeight="12rem" getRowId={(p) => p.side} />}
-      {tab === "open" && <DataTable columns={orderCols(true)} rows={a?.openOrders ?? []} isLoading={busy} emptyDataText={empty ?? "No open orders"} emptyMinHeight="12rem" getRowId={(o) => String(o.id)} />}
-      {tab === "history" && <DataTable columns={orderCols(false)} rows={a?.orderHistory ?? []} isLoading={busy} emptyDataText={empty ?? "No orders yet"} emptyMinHeight="12rem" getRowId={(o) => String(o.id)} pageSize={10} />}
-      {tab === "fills" && <DataTable columns={fillCols} rows={a?.fills ?? []} isLoading={busy} emptyDataText={empty ?? "No trades yet"} emptyMinHeight="12rem" getRowId={(f) => f.id} pageSize={10} />}
-      {tab === "closed" && <DataTable columns={closedCols} rows={a?.closed ?? []} isLoading={busy} emptyDataText={empty ?? "No closed positions yet"} emptyMinHeight="12rem" getRowId={(c) => c.id} pageSize={10} />}
+      {tab === "positions" && <DataTable columns={posCols} rows={a?.positions ?? []} isLoading={busy} emptyDataText={empty ?? "No open positions"} emptyMinHeight="12rem" fill getRowId={(p) => p.side} />}
+      {tab === "open" && <DataTable columns={orderCols(true)} rows={a?.openOrders ?? []} isLoading={busy} emptyDataText={empty ?? "No open orders"} emptyMinHeight="12rem" fill getRowId={(o) => String(o.id)} />}
+      {tab === "history" && <DataTable columns={orderCols(false)} rows={a?.orderHistory ?? []} isLoading={busy} emptyDataText={empty ?? "No orders yet"} emptyMinHeight="12rem" fill getRowId={(o) => String(o.id)} pageSize={10} />}
+      {tab === "fills" && <DataTable columns={fillCols} rows={a?.fills ?? []} isLoading={busy} emptyDataText={empty ?? "No trades yet"} emptyMinHeight="12rem" fill getRowId={(f) => f.id} pageSize={10} />}
+      {tab === "closed" && <DataTable columns={closedCols} rows={a?.closed ?? []} isLoading={busy} emptyDataText={empty ?? "No closed positions yet"} emptyMinHeight="12rem" fill getRowId={(c) => c.id} pageSize={10} />}
       {a && !a.indexed && <Typography sx={{ fontSize: "0.75rem", color: "orange.main" }}>Zenex&apos;s history index is unreachable right now; positions are read on-chain.</Typography>}
       {managing && <PositionDialog position={managing.position} market={market} initialMode={managing.mode} onClose={() => setManaging(null)} />}
       {dialog}

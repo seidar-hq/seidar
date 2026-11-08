@@ -2,7 +2,7 @@
 // Soroswap, Sushi), resolved per CONTRACT so a copycat sharing a ticker
 // never borrows the real token's logo:
 //   1. Soroswap's token list entry for that contract;
-//   2. the exact asset's stellar.toml image, as indexed by Stellar Expert
+//   2. the exact asset's stellar.toml image, as indexed by Stellar Index
 //      (asset lookup by contract address).
 // Results persist in token_icons (icon, checked_at): each contract is
 // looked up once; misses are re-checked weekly. Unknown contracts are filled
@@ -34,15 +34,16 @@ async function soroswapIcons(): Promise<Record<string, string>> {
   return listIcons;
 }
 
-/** The asset's own published image (stellar.toml via Stellar Expert), or null. */
-async function expertIcon(contract: string): Promise<string | null> {
-  const r = await fetch(`https://api.stellar.expert/explorer/public/asset/${contract}`, {
+/** The asset's own published image (stellar.toml via Stellar Index), or null. */
+async function indexIcon(contract: string): Promise<string | null> {
+  const r = await fetch(`https://api.stellarindex.io/v1/assets/${contract}`, {
     signal: AbortSignal.timeout(12000),
+    headers: { accept: "application/json" },
   });
   if (r.status === 404 || r.status === 400) return null;
-  if (!r.ok) throw new Error(`stellar.expert ${r.status}`);
-  const d = (await r.json()) as { toml_info?: { image?: string; orgLogo?: string } };
-  const img = d.toml_info?.image || null;
+  if (!r.ok) throw new Error(`stellar index ${r.status}`);
+  const d = (await r.json()) as { data?: { image?: string } };
+  const img = d.data?.image || null;
   return img && /^https:\/\//.test(img) ? img : null;
 }
 
@@ -80,7 +81,7 @@ async function fill(contracts: string[]) {
         const c = contracts[i++];
         let icon: string | null = list[c] ?? null;
         try {
-          if (!icon) icon = await expertIcon(c);
+          if (!icon) icon = await indexIcon(c);
         } catch {
           continue; // rate-limited / offline: retried on a later request
         }

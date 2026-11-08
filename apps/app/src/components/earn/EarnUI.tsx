@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
@@ -223,14 +225,14 @@ export function LabeledSwitch({ label, tip, checked, onChange }: { label: string
 }
 
 /** Round back button + "Earn › Lend & Borrow › …" trail. */
-export function Breadcrumbs({ trail }: { trail: { label: string; href?: string }[] }) {
+export function Breadcrumbs({ trail, backTo }: { trail: { label: string; href?: string }[]; /** Where the arrow goes; without it, the previous page. */ backTo?: string }) {
   const router = useRouter();
   const theme = useTheme();
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", flexWrap: "wrap" }}>
       <IconButton
         aria-label="Back"
-        onClick={() => (window.history.length > 1 ? router.back() : router.push(trail[1]?.href ?? "/earn"))}
+        onClick={() => (backTo ? router.push(backTo) : window.history.length > 1 ? router.back() : router.push(trail[1]?.href ?? "/earn"))}
         sx={{
           width: "2.25rem",
           height: "2.25rem",
@@ -261,8 +263,57 @@ export function Breadcrumbs({ trail }: { trail: { label: string; href?: string }
   );
 }
 
+const SPLIT_QUERY = "(min-width: calc(75rem + 0.0625rem))";
+
+/**
+ * Right column of a two-column detail page (a grid with marginTop 0.4rem under AppShell's 6.5rem padding).
+ * The page scrolls the left card and the footer, as one motion. This column is a pinned, screen-tall scroll
+ * area of its own that starts behind the header, so its cards slide up under the header like the left card
+ * does. It ends where the screen ends, so the left card's end lifts it along as the footer comes up.
+ */
+export const pinnedColumn = {
+  [`@media ${SPLIT_QUERY}`]: {
+    position: "sticky",
+    top: 0,
+    height: "100dvh",
+    marginTop: "-6.9rem",
+    paddingTop: "6.9rem",
+    paddingBottom: "1rem",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    scrollbarWidth: "none",
+    "&::-webkit-scrollbar": { display: "none" },
+    "& > *": { flexShrink: 0 },
+  },
+};
+
+/** Sets a page up for `pinnedColumn`; returns the props that column needs. */
+export function usePinnedColumn(): object {
+  // globals.css gives body overflow-x: hidden, which makes it a scroll container that never scrolls,
+  // so sticky never pins. clip cuts the sideways overflow the same way without that side effect.
+  useEffect(() => {
+    const prev = document.body.style.overflowX;
+    document.body.style.overflowX = "clip";
+    return () => {
+      document.body.style.overflowX = prev;
+    };
+  }, []);
+  // Out of the page's smooth scroll, which would carry on into the page at the column's end.
+  return useMediaQuery(SPLIT_QUERY, { noSsr: true }) ? { "data-lenis-prevent": true } : {};
+}
+
+/** A small icon in front of a label. */
+export function IconLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", "& svg": { fontSize: "1rem", flexShrink: 0 } }}>
+      {icon}
+      {children}
+    </Box>
+  );
+}
+
 /** Bordered stat card (label on top, value below). */
-export function StatCard({ label, value, color, sub }: { label: string; value: React.ReactNode; color?: string; sub?: React.ReactNode }) {
+export function StatCard({ label, icon, value, color, sub }: { label: string; icon?: React.ReactNode; value: React.ReactNode; color?: string; sub?: React.ReactNode }) {
   return (
     <Box
       sx={{
@@ -277,7 +328,7 @@ export function StatCard({ label, value, color, sub }: { label: string; value: R
         gap: "0.875rem",
       }}
     >
-      <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>{label}</Typography>
+      <Typography sx={{ fontSize: "0.875rem", color: "grey.200" }}>{icon ? <IconLabel icon={icon}>{label}</IconLabel> : label}</Typography>
       <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: color ?? "common.black" }} noWrap>
         {value}
       </Typography>

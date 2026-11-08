@@ -27,7 +27,7 @@ import { useShared } from "@/lib/useShared";
 import { useBalances } from "@/wallet/useBalances";
 import { useWallet } from "@/wallet/WalletContext";
 import ActionCard, { AmountBox, DetailRows, sheetOnly, type DetailRow } from "./ActionCard";
-import { AssetStack, Breadcrumbs, MarketLogo, ContractRow, ProtocolBadge, StatCard, StatusPill } from "./EarnUI";
+import { AssetStack, Breadcrumbs, MarketLogo, ContractRow, pinnedColumn, ProtocolBadge, StatCard, StatusPill, usePinnedColumn } from "./EarnUI";
 import { Chip, LeverageFields, SLIPPAGE_BPS, SpokeLtv, canLeverage, leverageSpokes, useLeverage, type LevSide } from "./leverage";
 import {
   LEND_PROTOCOLS,
@@ -511,6 +511,7 @@ export default function LendPool() {
   const router = useRouter();
   const protocol = params.get("protocol") === "xoxno" ? "xoxno" : "blend";
   const poolId = params.get("pool") ?? "";
+  const pinnedColumnProps = usePinnedColumn();
   const assetParam = params.get("asset");
   const modeParam = params.get("mode") as LendAction | null;
   const accountParam = params.get("account");
@@ -1784,9 +1785,8 @@ export default function LendPool() {
         </Box>
       </Main>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", position: { lg: "sticky" }, top: { lg: "6.5rem" } }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem", ...pinnedColumn }} {...pinnedColumnProps}>
         <ActionCard
-          title={tabLabel}
           tabs={tabs.map((t) => ({ ...t, blocked: actionBlock(m, t.id) }))}
           active={tab}
           openSignal={openSignal}

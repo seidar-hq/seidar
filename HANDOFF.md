@@ -154,7 +154,7 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
   - `portfolio/usePortfolio.ts`, `useSeries.ts` — portfolio aggregation and chart series.
   - `components/home/*` — **Home** (market overview, public): NetworkHero (DefiLlama Stellar TVL + chart),
     PortfolioCard, MarketKpis, Leaderboards (reuses Earn `TopList`), AssetsTable (category chips, search, sparklines,
-    Swap → `?buy=`), ActivityChart (Stellar Expert daily ledger stats), Protocols (DefiLlama, links to our Earn
+    Swap → `?buy=`), ActivityChart (Stellar Index daily throughput: transactions, operations, Soroban contract events), Protocols (DefiLlama, links to our Earn
     pages or out); hooks in `marketData.tsx`. Data from `services/api/src/market.ts`: **categories come from
     `REGISTRY` (verified issuers, home domains checked 2026-10-30)** — codes are not unique and look-alikes
     abound (USDC, BTC, SOL, SHX…), so add new RWA/stable/yield tokens there by issuer; unregistered assets
@@ -163,7 +163,8 @@ docker-compose.yml  local Postgres :5434 and Redis :6380
     other assets = issued supply × price (can overstate, e.g. SHX). Stellar Expert `volume7d` is USD × 1e7.
   - Home layout = Portfolio's two-column grid (`minmax(12.5rem,1fr) 27.375rem`): market on the left; Your
     portfolio, Protocols, News on the right. **Markets** card (`Markets.tsx`): watchlist + `CompareChart`
-    (up to 3 compared assets, Price = dual axis / % change = shared axis). All Home/asset charts use
+    (up to 3 compared assets, Price = each on its own hidden scale with every price tag on the right /
+    % change = shared axis). All Home/asset charts use
     `components/common/ZoomChart.tsx` (Lightweight Charts: drag either axis to stretch/compress, wheel/drag
     to zoom/pan, double-click or reset button to fit; `fitKey` refits on period change, otherwise the user's
     zoom survives data refreshes). Soroban-only tokens (`SOROBAN` in `market.ts`: Centrifuge deJTRSY/deJAAA)
@@ -496,6 +497,20 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
   Reference: `docs.zenex.trade` (llms.txt), contract interfaces via
   `stellar contract info interface --id <contract> --network mainnet`; the contract calls in
   `services/api/src/zenex.ts` mirror zenex-sdk-js (not installed: it's a git dependency).
+- **Data sources (checked 2026-11-08)**: Stellar Expert now answers **402 Payment Required** for single
+  assets, contract events, accounts and ledger stats; only its asset lists/search stay free (Home's asset
+  table still uses them). Those callers moved to **Stellar Index** (`api.stellarindex.io/v1`, keyless,
+  `services/api/src/stellar-index.ts`): Blend factory `deploy` events (pool ids decoded), token images,
+  BENJI's row, daily network throughput. Its `/assets/{id}/holders` only sees trustlines (0 for vault
+  shares) and `balance_entries` keeps wallets that withdrew, so **vault depositors** are replayed from the
+  vault's events and shown only if they sum exactly to total supply (Gami, Evergreen) or `TotalPrincipal`
+  (Sentora deposit vaults). Share-price history and realized APY for Gami/Evergreen come from August
+  (`api.augustdigital.io`, `august.ts`). Gami's performance fee is 10% (`performanceFeeBps`; its `vaultFee`
+  is the platform fee). The News card reads **Lumen Loop** (RSS + the `/news` page's JSON-LD list, dated
+  from its sitemap, filtered to financial headlines); fetched one at a time because the sitemap hung when
+  fetched in parallel in the Workers runtime. BENJI has never traded on the DEX: no price chart exists.
+- **Asset page Buy/Sell card** (`asset/AssetTrade.tsx`): market orders only, through the Swap page's quote
+  hook (`swap/useSwapQuote.ts`). The owner asked for no Limit/DCA UI until those exist.
 - **Blend**: isolated pools (Fixed, Fixed v2.1, YieldBlox, Orbit, Etherfuse, Solv…). Seidar supplies
   as collateral (`SupplyCollateral`). Pool status → On ice / Frozen / In setup pills. BLND claims are
   per pool; **Fixed v2.1's claim fails** (its backstop `CCS4AZ…` holds 0 BLND) — not our bug.
@@ -582,10 +597,10 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
 
 ---
 
-## 9c. Discover (dev-only, built 2026-11-02, not deployed)
+## 9c. Discover (built 2026-11-02, not deployed; owner removed it from the app 2026-11-07, code kept)
 
 Browse any wallet, read its risk and P&L, copy its positions. Flag `NEXT_PUBLIC_ENABLE_DISCOVER`
-(`1` in `.env.development`, `0` in `.env.production`; `lib/features.ts` `DISCOVER_ENABLED`); with it off
+(`0` in both `.env.development` and `.env.production`; `lib/features.ts` `DISCOVER_ENABLED`); with it off
 the production bundle contains none of its code (checked: no Discover strings in the export) and `/discover`
 redirects to `/`. Nav entry "Discover" and page search entry appear only with the flag on.
 - Route `/discover` (landing) and `/discover?address=G…` (profile), one page: `app/discover/page.tsx`.

@@ -15,7 +15,7 @@ import { InsetCard, SectionCard } from "@/components/common/SectionCard";
 import Shimmer from "@/components/common/Shimmer";
 import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
 import type { TokenRef } from "@/lib/tokens";
-import { Breadcrumbs } from "@/components/earn/EarnUI";
+import { Breadcrumbs, pinnedColumn, usePinnedColumn } from "@/components/earn/EarnUI";
 import { LEND_PROTOCOLS, marketHref, useLendMarkets } from "@/components/earn/lendData";
 import { poolHref, usePools, venueMeta } from "@/components/earn/poolData";
 import { useVaultList, vaultHref, vaultProtocol } from "@/components/earn/vaultData";
@@ -26,7 +26,6 @@ import {
   compactUsd,
   pctText,
   priceText,
-  swapHref,
   useMarketAssets,
 } from "@/components/home/marketData";
 import { apiJson } from "@/lib/api";
@@ -35,6 +34,7 @@ import { useShared } from "@/lib/useShared";
 import { usePortfolio, useTokenCatalogue } from "@/portfolio/usePortfolio";
 import { useWallet } from "@/wallet/WalletContext";
 import CompareChart from "@/components/home/CompareChart";
+import AssetTrade from "./AssetTrade";
 import { StatCard } from "./AssetParts";
 
 type Range = "30d";
@@ -241,13 +241,12 @@ function EarnWith({ code, issuer, contract }: { code: string; issuer: string | n
 
 /** One Stellar asset: price, chart, market stats, the user's holding and where to earn with it. */
 export default function Asset() {
-  const router = useRouter();
+  // Right column scrolls on its own beside the page (as on vault and lending pages).
+  const pinnedColumnProps = usePinnedColumn();
   const { code, issuer, contract, id, chartKey } = useAssetParam();
   const { assets, loading } = useMarketAssets();
-  const { tokens } = useTokenCatalogue();
   const a = assets.find((x) => x.id === id) ?? null;
   const month = useChart(chartKey, "30d");
-  const tradable = tokens.some((t) => (contract ? t.contract === contract : t.code === code && (t.issuer ?? null) === issuer));
   const busy = loading && !a;
   const expert = contract
     ? `https://stellar.expert/explorer/public/contract/${contract}`
@@ -265,7 +264,7 @@ export default function Asset() {
   ];
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "grid", gap: "1rem", gridTemplateColumns: "minmax(12.500rem, 1fr) 27.375rem", "@media (max-width: 54.250rem)": { gridTemplateColumns: "1fr" } }}>
+    <Box sx={{ minHeight: "100vh", display: "grid", gap: "1rem", alignItems: "start", gridTemplateColumns: "minmax(12.500rem, 1fr) 27.375rem", "@media (max-width: 54.250rem)": { gridTemplateColumns: "1fr" } }}>
       <SectionCard sx={{ minWidth: 0, gap: "1.25rem", p: { xs: "1rem", sm: "1.5rem" } }}>
         <Breadcrumbs trail={[{ label: "Home", href: "/" }, { label: code }]} />
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
@@ -294,17 +293,8 @@ export default function Asset() {
             </Box>
           </Box>
           <Box sx={{ display: "flex", gap: "0.5rem" }}>
-            <Button variant="outlined" color="cancel" href={expert} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewIcon />} sx={{ borderRadius: "999rem", textTransform: "none", whiteSpace: "nowrap" }}>
+            <Button variant="outlined" color="cancel" href={expert} target="_blank" rel="noopener noreferrer" endIcon={<OpenInNewIcon />} sx={{ borderRadius: "999rem", textTransform: "none", whiteSpace: "nowrap", "&, &:hover, &:focus-visible": { boxShadow: "none" } }}>
               Stellar Expert
-            </Button>
-            <Button
-              variant="solid"
-              color="primary"
-              disabled={tokens.length > 0 && !tradable}
-              onClick={() => router.push(swapHref({ code, issuer, contract }))}
-              sx={{ textTransform: "none", whiteSpace: "nowrap", px: "1.25rem" }}
-            >
-              {tokens.length > 0 && !tradable ? "Not swappable yet" : `Swap ${code}`}
             </Button>
           </Box>
         </Box>
@@ -329,8 +319,9 @@ export default function Asset() {
         )}
         <SourceNote text="Data: Stellar Expert (market figures), Seidar price feed (chart)." />
       </SectionCard>
-      <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "1rem", ...pinnedColumn }} {...pinnedColumnProps}>
         <YourHolding code={code} issuer={issuer} contract={contract} />
+        <AssetTrade code={code} issuer={issuer} contract={contract} />
         <EarnWith code={code} issuer={issuer} contract={contract} />
       </Box>
     </Box>

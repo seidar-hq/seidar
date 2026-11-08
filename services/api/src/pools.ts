@@ -152,44 +152,18 @@ async function listPools(): Promise<string[]> {
   if (isTestnet()) return [TESTNET.blendPool];
   const out = new Set<string>([...PINNED_POOLS]);
   try {
-    const recs: { topics?: string[]; bodyXdr?: string }[] = [];
+    // Each factory's deploy events (Stellar Index; Stellar Expert now charges for contract events).
+    // The event's data is the new pool's contract id.
+    const { stellarIndex } = await import("./stellar-index.js");
     for (const factory of [FACTORY_V2, FACTORY_V2_1]) {
-      const body = (await fetchJson(
-        `https://api.stellar.expert/explorer/public/contract/${factory}/events?order=asc&limit=200`,
-      )) as { _embedded?: { records?: { topics?: string[]; bodyXdr?: string }[] } };
-      recs.push(...(body?._embedded?.records ?? []));
-    }
-    const { xdr, StrKey } = await import("@stellar/stellar-sdk");
-    const walk = (v: unknown, depth: number): void => {
-      if (v == null || depth > 4) return;
-      const sv = v as {
-        switch?: () => { name?: string };
-        address?: () => { switch?: () => { name?: string }; contractId?: () => Buffer };
-        vec?: () => unknown[];
-        map?: () => { key?: () => unknown; val?: () => unknown }[];
-      };
-      try {
-        if (sv.switch?.().name === "scvAddress" && sv.address?.().switch?.().name === "scAddressTypeContract") {
-          const id = sv.address?.().contractId?.();
-          if (id) out.add(StrKey.encodeContract(id));
-          return;
-        }
-      } catch { /* keep walking */ }
-      try {
-        for (const item of sv.vec?.() ?? []) walk(item, depth + 1);
-      } catch { /* not a vec */ }
-      try {
-        for (const e of sv.map?.() ?? []) {
-          walk(e.key?.(), depth + 1);
-          walk(e.val?.(), depth + 1);
-        }
-      } catch { /* not a map */ }
-    };
-    for (const r of recs) {
-      if (r.topics?.[0] !== "deploy" || !r.bodyXdr) continue;
-      try {
-        walk(xdr.ScVal.fromXDR(r.bodyXdr, "base64"), 0);
-      } catch { /* skip record */ }
+      let cursor: unknown;
+      let page = 0;
+      do {
+        const d = await stellarIndex(`/contracts/${factory}?limit=500${cursor ? `&cursor=${encodeURIComponent(String(cursor))}` : ""}`);
+        for (const e of (d.events as { topic_0?: unknown; data?: unknown }[] | undefined) ?? [])
+          if (e.topic_0 === "deploy" && typeof e.data === "string" && /^C[A-Z2-7]{55}$/.test(e.data)) out.add(e.data);
+        cursor = d.next_cursor;
+      } while (cursor && ++page < 10);
     }
   } catch { /* events failed; pinned floor stands */ }
   return [...out];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
@@ -34,6 +34,7 @@ import { useWallet } from "@/wallet/WalletContext";
 import { SWAP_TABS, SwapAccordion, SwapDetails, SwapSummary } from "./SwapLockedWidget";
 import TokenSelectDialog, { type SwapToken } from "./TokenSelectDialog";
 import { useSwapTokens } from "./useSwapTokens";
+import { fromBase, useSwapQuote, useTrustline } from "./useSwapQuote";
 
 // ---------- DEX venues ----------
 
@@ -206,20 +207,6 @@ function TokenButton({ token, onClick }: { token: SwapToken | null; onClick: () 
 
 // ---------- quote ----------
 
-type Quote = {
-  amountIn: string;
-  amountOut: string;
-  otherAmountThreshold: string;
-  priceImpactPct: string | null;
-  platform: string;
-  routePlan?: { swapInfo?: { protocol?: string; path?: string[] }; percent?: string }[];
-};
-
-const fromBase = (v: string, decimals: number) => Number(v) / 10 ** decimals;
-
-const QUOTE_DEBOUNCE_MS = 700;
-const QUOTE_MIN_INTERVAL_MS = 1_500;
-const QUOTE_CACHE_MS = 15_000;
 
 function usePrices(codes: string[]) {
   const key = codes.length ? `px:${[...codes].sort().join(",")}` : null;
@@ -256,18 +243,7 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const [dexAnchor, setDexAnchor] = useState<HTMLElement | null>(null);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
   const [details, setDetails] = useState(false);
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [quoting, setQuoting] = useState(false);
-  const [quotePaused, setQuotePaused] = useState(false);
-  const [trust, setTrust] = useState<boolean | null>(true);
-  const [checkingTrust, setCheckingTrust] = useState(false);
   const [addingTrust, setAddingTrust] = useState(false);
-  const seq = useRef(0);
-  const quoteCache = useRef(new Map<string, { at: number; quote: Quote }>());
-  const lastQuoteAt = useRef(0);
-  const retryAt = useRef(0);
-  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Default pair once the catalogue loads: XLM -> USDC, or XLM / USDC -> the token in ?buy=CODE:ISSUER
   // (Home's Swap buttons) when the catalogue has it.
@@ -299,116 +275,8 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   // Receiving a classic asset needs a trustline on this wallet. XLM and
   // Soroban-only tokens have no issuer, so they never need one.
   const walletAddress = activeWallet?.address ?? null;
-  useEffect(() => {
-    if (!walletAddress || !to?.issuer) {
-      setTrust(true);
-      setCheckingTrust(false);
-      return;
-    }
-    let live = true;
-    setTrust(null);
-    setCheckingTrust(true);
-    void hasTrustline(walletAddress, to.code, to.issuer).then((v) => {
-      if (!live) return;
-      setTrust(v);
-      setCheckingTrust(false);
-    });
-    return () => {
-      live = false;
-    };
-  }, [walletAddress, to?.code, to?.issuer]);
-
-  // Debounced quote; refreshes every 30s while visible, and immediately when
-  // the tab comes back. Hidden tabs do not poll the aggregator. Requests are
-  // throttled and cached so typing does not hammer the aggregator's shared key.
-  useEffect(() => {
-    const id = ++seq.current;
-    if (retryTimer.current) {
-      clearTimeout(retryTimer.current);
-      retryTimer.current = null;
-    }
-    if (!from || !to || !base || from.contract === to.contract || slipBad) {
-      setQuote(null);
-      setQuoteError(null);
-      setQuoting(false);
-      setQuotePaused(false);
-      return;
-    }
-    const key = `${from.contract}|${to.contract}|${base}|${Math.round(slipNum * 100)}|${[...dexes].sort().join("+")}`;
-    const cached = quoteCache.current.get(key);
-    if (cached && Date.now() - cached.at < QUOTE_CACHE_MS) {
-      setQuote(cached.quote);
-      setQuoteError(null);
-      setQuoting(false);
-      setQuotePaused(false);
-      return;
-    }
-    setQuote(null);
-    setQuoteError(null);
-    setQuotePaused(false);
-    const run = async () => {
-      if (id !== seq.current) return;
-      const wait = Math.max(retryAt.current - Date.now(), QUOTE_MIN_INTERVAL_MS - (Date.now() - lastQuoteAt.current));
-      if (wait > 0) {
-        if (retryTimer.current) clearTimeout(retryTimer.current);
-        retryTimer.current = setTimeout(() => void run(), wait);
-        return;
-      }
-      setQuoting(true);
-      setQuotePaused(false);
-      type QuoteResp = { ok?: boolean; quote?: Quote; error?: string; reason?: string; retryAfter?: number };
-      lastQuoteAt.current = Date.now();
-      const r: QuoteResp = await postJson<QuoteResp>("/api/swap/quote", {
-        assetIn: from.contract,
-        assetOut: to.contract,
-        amount: base,
-        slippageBps: String(Math.round(slipNum * 100)),
-        ...(dexes.length ? { protocols: dexes } : {}),
-      }).catch((e): QuoteResp => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-      if (id !== seq.current) return;
-      if (r.ok && r.quote) {
-        quoteCache.current.set(key, { at: Date.now(), quote: r.quote });
-        setQuote(r.quote);
-        setQuoteError(null);
-        setQuotePaused(false);
-        setQuoting(false);
-        return;
-      }
-      const message = r.reason === "no-api-key" ? "Swaps are not configured on this server." : (r.error ?? "No route found.");
-      if (r.retryAfter != null || /rate.?limit|too many|429/i.test(message)) {
-        const waitMs = Math.max(3_000, Number(r.retryAfter ?? 8) * 1_000);
-        retryAt.current = Date.now() + waitMs;
-        setQuoteError("Quote service is busy. Retrying shortly…");
-        setQuotePaused(true);
-        setQuoting(false);
-        if (retryTimer.current) clearTimeout(retryTimer.current);
-        retryTimer.current = setTimeout(() => void run(), waitMs);
-        return;
-      }
-      setQuoting(false);
-      setQuoteError(message);
-    };
-    const delay = Math.max(QUOTE_DEBOUNCE_MS, lastQuoteAt.current + QUOTE_MIN_INTERVAL_MS - Date.now());
-    const t = setTimeout(() => void run(), delay);
-    const tick = () => {
-      if (document.visibilityState === "visible") void run();
-    };
-    const iv = setInterval(tick, 30_000);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void run();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      clearTimeout(t);
-      clearInterval(iv);
-      document.removeEventListener("visibilitychange", onVisibility);
-      if (retryTimer.current) {
-        clearTimeout(retryTimer.current);
-        retryTimer.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from?.contract, to?.contract, base, slippage, dexes.join(",")]);
+  const { trust, setTrust, checkingTrust } = useTrustline(walletAddress, to);
+  const { quote, quoteError, quoting, quotePaused } = useSwapQuote(from, to, base, slipNum, dexes);
 
   const outAmount = quote && to ? fromBase(quote.amountOut, to.decimals) : 0;
   const minOut = quote && to ? fromBase(quote.otherAmountThreshold, to.decimals) : 0;
@@ -439,14 +307,13 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       });
       if (!b.ok || !b.xdr) throw new Error(b.error ?? "Could not build the swap.");
       return b.xdr;
-    }, { kind: "swap", protocol: "soroswap" });
+    }, { kind: "swap", protocol: quote.provider ?? "soroswap" });
     if (ok) setAmount("");
   };
 
   const watchOnly = activeWallet?.walletId === "watch";
   const checkingNeededTrust = !!activeWallet && !!to?.issuer && checkingTrust;
   const needsTrust = !!to?.issuer && trust === false;
-  const trustUnknown = !!activeWallet && !!to?.issuer && trust === null && !checkingTrust;
 
   const addTrustline = async () => {
     const issuer = to?.issuer;
@@ -466,10 +333,17 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
     }
   };
 
-  const primaryAction = () => {
+  const primaryAction = async () => {
     if (needsTrust) {
       if (!watchOnly) void addTrustline();
       return;
+    }
+    // The background check hasn't got an answer yet: ask once more before signing, so a wallet that
+    // really lacks the trustline gets the Add button rather than a failed swap.
+    if (activeWallet && to?.issuer && trust === null) {
+      const v = await hasTrustline(activeWallet.address, to.code, to.issuer);
+      if (v !== null) setTrust(v);
+      if (v === false) return;
     }
     void execute();
   };
@@ -669,11 +543,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       {needsTrust && !watchOnly && !addingTrust && (
         <Typography variant="subtitle3" color="grey.200" sx={{ textAlign: "center", mt: "-0.5rem" }}>
           One-time trustline; locks 0.5 XLM as reserve.
-        </Typography>
-      )}
-      {trustUnknown && (
-        <Typography variant="subtitle3" color="warning.main" sx={{ textAlign: "center" }}>
-          Could not verify this trustline; the swap may fail if it is missing.
         </Typography>
       )}
 

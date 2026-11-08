@@ -153,6 +153,47 @@ export async function sentoraRows(prices: Record<string, number | null | undefin
   return [...rows, ...shares].filter((r): r is NonNullable<typeof r> => r != null);
 }
 
+/**
+ * The vault page's detail. Evergreen's shares grow in value, so it has a share-price history. A deposit
+ * vault's position is worth its principal and its rewards are paid separately, so its share price never
+ * moves: it has no chart and no realized APY by nature. Neither has a free source for a depositor count.
+ */
+export async function sentoraDetail(address: string) {
+  const sv = isShareVault(address);
+  if (sv) {
+    const [s, { vaultHistory }, { vaultDepositors }] = await Promise.all([retry(() => shareState(sv)), import("./august.js"), import("./stellar-index.js")]);
+    const [history, depositors] = await Promise.all([vaultHistory(address), vaultDepositors(address)]);
+    return {
+      protocol: "sentora" as const,
+      address,
+      name: sv.name,
+      symbol: sv.symbol,
+      assets: [{ address: sv.asset, code: sv.code, strategies: [] }],
+      sharePrice: s.supply > 0n ? Number(s.assets) / 10 ** sv.assetDecimals / (Number(s.supply) / 1e13) : 1,
+      depositors,
+      ...history,
+    };
+  }
+  const v = SENTORA_VAULTS.find((x) => x.address === address);
+  if (!v) return null;
+  const { principalDepositors } = await import("./stellar-index.js");
+  const depositors = await principalDepositors(address, async () => (await sentoraState(address)).totalBase);
+  return {
+    protocol: "sentora" as const,
+    address,
+    name: `Sentora ${v.code}`,
+    symbol: `s${v.code}`,
+    assets: [{ address: v.asset, code: v.code, strategies: [] }],
+    sharePrice: 1,
+    // Principal stays 1:1 and rewards are paid out, so there's no share-price growth to measure.
+    rewardsPaidSeparately: true,
+    depositors,
+    history: [],
+    ownApy7d: null,
+    ownApy30d: null,
+  };
+}
+
 /** Positions for an owner in the EarnPosition shape. */
 export async function sentoraPositions(owner: string, prices: Record<string, number | null | undefined>) {
   const out = await Promise.all(

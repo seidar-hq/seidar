@@ -670,6 +670,15 @@ export async function buildVaultTx(body: {
 
 export async function getVaultDetail(protocolRaw: string, address: string) {
   const protocol = protocolRaw.toLowerCase();
+  if (protocol === "sentora") {
+    try {
+      const { sentoraDetail } = await import("./sentora.js");
+      const detail = await sentoraDetail(address);
+      return detail ? { status: 200, body: { ok: true, detail } } : { status: 404, body: { error: "unknown sentora vault" } };
+    } catch (e) {
+      return { status: 200, body: { ok: false, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) } };
+    }
+  }
   if (!isProto(protocol) || !isContract(address)) {
     return { status: 400, body: { error: "protocol + vault address required" } };
   }
@@ -827,6 +836,8 @@ export async function getVaultDetail(protocolRaw: string, address: string) {
       }
       const apy = opp && Number((opp as { totalApr?: unknown }).totalApr) > 0 ? Number((opp as { totalApr?: unknown }).totalApr) : null;
       await recordSnapshot(protocol, address, sharePrice, tvl, apy);
+      const [{ vaultHistory }, { vaultDepositors }] = await Promise.all([import("./august.js"), import("./stellar-index.js")]);
+      const [history, depositors] = await Promise.all([vaultHistory(address), vaultDepositors(address)]);
       return {
         status: 200,
         body: {
@@ -842,8 +853,8 @@ export async function getVaultDetail(protocolRaw: string, address: string) {
             tvlUsd: tvl,
             apyPct: apy,
             apySource: "advertised" as const,
-            ownApy7d: null,
-            ownApy30d: null,
+            ...history,
+            depositors,
             curator: meta.curator,
             withdrawalDays: meta.withdrawalDays,
             rewardApr: opp && Number((opp as { apr?: unknown }).apr) > 0 ? Number((opp as { apr?: unknown }).apr) : null,

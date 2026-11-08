@@ -101,7 +101,7 @@ const StatShell = styled(Box, { shouldForwardProp: (p) => p !== "glass" && p !==
         : dark && glass
           ? `0.0625rem solid ${theme.palette.overlay.white08}`
           : `0.0625rem solid ${theme.palette.border.main1000}`,
-      boxShadow: noBg ? "none" : dark ? `0 0.25rem 2.5rem 0 ${theme.palette.shadow.exchange}` : "none",
+      boxShadow: "none",
     };
   },
 );

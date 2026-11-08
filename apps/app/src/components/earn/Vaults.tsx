@@ -11,7 +11,11 @@ import { formatAmount, formatUsd } from "@/lib/format";
 import { usePortfolio, useTokenCatalogue, type VaultRow } from "@/portfolio/usePortfolio";
 import { useWallet, walletLabel } from "@/wallet/WalletContext";
 import { EarnGrid } from "./EarnParts";
-import { LabeledSwitch, ProtocolChips, RowAction, SearchBox, TopList } from "./EarnUI";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import ShowChartRoundedIcon from "@mui/icons-material/ShowChartRounded";
+import { LabeledSwitch, ProtocolChips, RowAction, SearchBox, StatCard, TopList } from "./EarnUI";
 import { compactUsd } from "./lendData";
 import { VAULT_PROTOCOLS, apyText, useVaultList, vaultHref, vaultProtocol, withdrawalText, type VaultListRow } from "./vaultData";
 
@@ -129,8 +133,20 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
   const list = rows.filter((r) => inProto(r.protocol) && (!query || `${r.name} ${r.assetCode} ${r.curator ?? ""}`.toLowerCase().includes(query)) && (!hideSmall || r.tvlUsd >= MIN_TVL));
   const mine = portfolio.vaults.filter((v) => inProto(v.protocol) && (!query || v.name.toLowerCase().includes(query)));
 
+  const top = useMemo(() => [...rows].filter((r) => r.tvlUsd >= 25_000 && r.apyPct != null && !r.paused).sort((a, b) => (b.apyPct ?? 0) - (a.apyPct ?? 0)).slice(0, 7), [rows]);
+  const totalTvl = rows.reduce((sum, r) => sum + r.tvlUsd, 0);
+  const myDepositsUsd = portfolio.vaults.reduce((sum, v) => sum + v.usd, 0);
+
   const main = (
     <>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: "1rem", mb: "1.25rem" }}>
+        <StatCard label="Total deposits" icon={<LockOutlinedIcon />} value={<Shimmer on={loading} width="5rem" height="1.5rem">{compactUsd(totalTvl)}</Shimmer>} />
+        <StatCard label="Vaults" icon={<HubOutlinedIcon />} value={<Shimmer on={loading} width="3rem" height="1.5rem">{formatAmount(rows.length, 0)}</Shimmer>} />
+        <StatCard label="Best APY" icon={<ShowChartRoundedIcon />} color="green.main" value={<Shimmer on={loading} width="4rem" height="1.5rem">{top[0] ? apyText(top[0]) : "—"}</Shimmer>} />
+        {portfolio.addresses.length > 0 && (
+          <StatCard label="Your deposits" icon={<AccountBalanceWalletOutlinedIcon />} value={<Shimmer on={portfolio.vaultsLoading || posBusy} width="4rem" height="1.5rem">{formatUsd(myDepositsUsd)}</Shimmer>} />
+        )}
+      </Box>
       <ProtocolChips items={PROTOCOL_IDS.map((id) => ({ id, label: VAULT_PROTOCOLS[id].name, logo: VAULT_PROTOCOLS[id].logo }))} value={proto} onChange={setProto} />
       <Box sx={{ display: "flex", justifyContent: "flex-end", mt: "1.25rem", mb: "0.75rem" }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search vault or asset" />
@@ -165,8 +181,6 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       </Box>
     </>
   );
-
-  const top = useMemo(() => [...rows].filter((r) => r.tvlUsd >= 25_000 && r.apyPct != null && !r.paused).sort((a, b) => (b.apyPct ?? 0) - (a.apyPct ?? 0)).slice(0, 7), [rows]);
 
   const side = (
     <TopList

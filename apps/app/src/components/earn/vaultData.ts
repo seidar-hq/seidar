@@ -34,6 +34,8 @@ export type VaultDetailInfo = {
   ownApy7d?: number | null;
   ownApy30d?: number | null;
   depositors?: number | null;
+  /** Sentora deposit vaults: the share price stays at 1, so realized APY and its chart don't apply. */
+  rewardsPaidSeparately?: boolean;
   manager?: string | null;
   history?: { t: number; pps: number }[];
 };

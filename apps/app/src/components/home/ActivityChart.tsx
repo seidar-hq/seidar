@@ -11,14 +11,13 @@ import Tabs, { type TabItem } from "@/components/common/Tabs";
 import ZoomChart from "@/components/common/ZoomChart";
 import { SourceNote, changeOf, compactNum, pctText, useMarketOverview, type ActivityPoint } from "./marketData";
 
-type Metric = "transactions" | "payments" | "trades" | "activeAccounts";
+type Metric = "transactions" | "operations" | "events";
 const METRICS: TabItem[] = [
   { id: "transactions", label: "Transactions" },
-  { id: "payments", label: "Payments" },
-  { id: "trades", label: "DEX trades" },
-  { id: "activeAccounts", label: "Active accounts" },
+  { id: "operations", label: "Operations" },
+  { id: "events", label: "Contract events" },
 ];
-const LABEL: Record<Metric, string> = { transactions: "Transactions", payments: "Payments", trades: "DEX trades", activeAccounts: "Active accounts" };
+const LABEL: Record<Metric, string> = { transactions: "Transactions", operations: "Operations", events: "Contract events" };
 
 type Range = "30d" | "90d" | "1y";
 const PERIODS: Period<Range>[] = [
@@ -28,7 +27,7 @@ const PERIODS: Period<Range>[] = [
 ];
 const DAYS: Record<Range, number> = { "30d": 30, "90d": 90, "1y": 365 };
 
-/** Daily Stellar network activity (Stellar Expert), one metric at a time, zoomable. */
+/** Daily Stellar network activity (Stellar Index), one metric at a time, zoomable. */
 export default function ActivityChart() {
   const theme = useTheme();
   const { overview, loading } = useMarketOverview();
@@ -84,7 +83,7 @@ export default function ActivityChart() {
           series={[{ id: metric, label: LABEL[metric], color: theme.palette.graph.yieldLine, points, kind: "histogram" }]}
         />
       )}
-      <SourceNote text="Data: Stellar Expert (daily network statistics, UTC days)." />
+      <SourceNote text="Data: Stellar Index (daily network throughput, UTC days; contract events are Soroban events)." />
     </InsetCard>
   );
 }

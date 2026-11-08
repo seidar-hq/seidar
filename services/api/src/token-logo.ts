@@ -1,5 +1,5 @@
 // Logo URL for a classic asset (CODE:ISSUER): Soroswap's token list first, then the issuer's
-// stellar.toml image as indexed by Stellar Expert. Matched on code AND issuer so a copycat ticker
+// stellar.toml image as indexed by Stellar Index. Matched on code AND issuer so a copycat ticker
 // never borrows a real token's logo. Memory-cached; misses are retried after a day.
 
 const LIST_URL = "https://raw.githubusercontent.com/soroswap/token-list/main/tokenList.json";
@@ -25,14 +25,16 @@ async function soroswapList(): Promise<Map<string, string>> {
   return map;
 }
 
-async function expertImage(code: string, issuer: string): Promise<string | null> {
+async function indexImage(code: string, issuer: string): Promise<string | null> {
   try {
-    const r = await fetch(`https://api.stellar.expert/explorer/public/asset/${code}-${issuer}`, {
+    const r = await fetch(`https://api.stellarindex.io/v1/assets/${code}-${issuer}/metadata`, {
       signal: AbortSignal.timeout(12_000),
+      headers: { accept: "application/json" },
     });
     if (!r.ok) return null;
-    const j = (await r.json()) as { toml_info?: { image?: string; orgLogo?: string } };
-    return j.toml_info?.image ?? j.toml_info?.orgLogo ?? null;
+    // The token's own image only: an org logo is the issuer's company logo, not the token's.
+    const j = (await r.json()) as { data?: { image?: string } };
+    return j.data?.image || null;
   } catch {
     return null;
   }
@@ -43,7 +45,7 @@ export async function tokenLogo(code: string, issuer: string): Promise<string | 
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < (hit.url ? HIT_TTL : MISS_TTL)) return hit.url;
   // Stellar Expert serves images from its CDN; Soroswap list entries are often slow IPFS links.
-  const url = (await expertImage(code, issuer)) ?? (await soroswapList()).get(key) ?? null;
+  const url = (await indexImage(code, issuer)) ?? (await soroswapList()).get(key) ?? null;
   cache.set(key, { at: Date.now(), url: url && /^https:\/\//.test(url) ? url : null });
   return cache.get(key)!.url;
 }

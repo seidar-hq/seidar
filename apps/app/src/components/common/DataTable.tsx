@@ -162,6 +162,8 @@ type Props<Row> = {
   defaultSort?: { id: string; dir: "asc" | "desc" };
   /** Compact empty state (for small "your positions" tables). */
   emptyMinHeight?: string;
+  /** Fills its parent's height and scrolls the rows inside it; the header and pager stay put. */
+  fill?: boolean;
 };
 
 // Table styled after the material-react-table setup the original app used.
@@ -179,6 +181,7 @@ export default function DataTable<Row>({
   pageSize,
   defaultSort,
   emptyMinHeight,
+  fill = false,
 }: Props<Row>) {
   const theme = useTheme();
   const { isDarkMode } = useThemeMode();
@@ -234,7 +237,7 @@ export default function DataTable<Row>({
   let body: React.ReactNode;
   if (isLoading) {
     body = (
-      <Box sx={{ width: "100%", padding: inset ? 0 : "1rem" }}>
+      <Box sx={{ width: "100%", padding: inset ? 0 : "1rem", ...(fill ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}) }}>
         <Box sx={{ display: "table", width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <Box sx={{ display: "table-header-group", backgroundColor: isDarkMode ? "transparent" : theme.palette.common.white }}>
             <Box sx={{ display: "table-row" }}>
@@ -281,6 +284,7 @@ export default function DataTable<Row>({
             backgroundColor: "transparent",
             backgroundImage: "none",
             border: "0px",
+            ...(fill ? { flex: "0 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : {}),
           }}
         >
           <TableContainer
@@ -288,11 +292,12 @@ export default function DataTable<Row>({
               border: "none",
               borderRadius: "1rem",
               maxHeight: "none",
-              overflowY: "visible",
+              overflowY: fill ? "auto" : "visible",
               overflowX: "auto",
               position: "relative",
               width: "100%",
               backgroundColor: "transparent",
+              ...(fill ? { flex: "1 1 auto", minHeight: 0, scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } } : {}),
             }}
           >
             <Table sx={{ border: "none", borderRadius: "1rem", width: "100%", tableLayout: "auto", backgroundColor: "transparent" }}>
@@ -313,7 +318,8 @@ export default function DataTable<Row>({
                           color: theme.palette.common.black,
                           height: "3.5rem",
                           padding: "1rem 0.75rem",
-                          backgroundColor: "transparent",
+                          backgroundColor: fill ? theme.palette.surfaceBg.section : "transparent",
+                          ...(fill ? { position: "sticky", top: 0, zIndex: 1 } : {}),
                           whiteSpace: "nowrap",
                           width: c.width,
                           cursor: c.sortValue ? "pointer" : "default",
@@ -369,6 +375,7 @@ export default function DataTable<Row>({
         minWidth: 0,
         display: "flex",
         flexDirection: "column",
+        ...(fill ? { flex: 1, minHeight: 0 } : {}),
         ...(empty && !inset && !emptyMinHeight ? { minHeight: { xs: "18rem", md: "30rem" } } : {}),
         ...(inset
           ? {

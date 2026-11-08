@@ -55,7 +55,7 @@ export type Protocol = {
   seidar: string | null;
 };
 
-export type ActivityPoint = { t: number; transactions: number; payments: number; trades: number; activeAccounts: number };
+export type ActivityPoint = { t: number; transactions: number; operations: number; events: number };
 
 type AssetsResp = { ok?: boolean; assets?: MarketAsset[]; counts?: Record<string, number> };
 type OverviewResp = {
@@ -66,12 +66,12 @@ type OverviewResp = {
   activity: ActivityPoint[];
   day: {
     t: number;
-    payments: number;
-    paymentsPrev: number | null;
-    activeAccounts: number;
-    activeAccountsPrev: number | null;
     transactions: number;
     transactionsPrev: number | null;
+    operations: number;
+    operationsPrev: number | null;
+    events: number;
+    eventsPrev: number | null;
   } | null;
 };
 
