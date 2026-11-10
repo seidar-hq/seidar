@@ -166,8 +166,12 @@ export async function xoxnoQuote(input: {
     amountIn: input.amount,
     amountOut: amountOut.toString(),
     otherAmountThreshold: minOut.toString(),
+    // XOXNO reports impact as a fraction (0.0178 = 1.78%), measured live on 2026-11-10: USDC->XLM
+    // gave 0.0004 at $10, 0.0178 at $100k and 0.2886 at $2M. Seidar's field is a percent.
     priceImpactPct:
-      typeof raw.priceImpact === "number" && Number.isFinite(raw.priceImpact) ? raw.priceImpact.toFixed(2) : null,
+      typeof raw.priceImpact === "number" && Number.isFinite(raw.priceImpact)
+        ? Math.max(0, raw.priceImpact * 100).toFixed(2)
+        : null,
     routePlan,
     feeBps,
     xoxno: {

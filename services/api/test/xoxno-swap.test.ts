@@ -29,7 +29,7 @@ function response(
     amountIn,
     amountOut,
     amountOutMin,
-    priceImpact: 0.12,
+    priceImpact: 0.0012, // a fraction: 0.12%
     routeXdr,
     feeBps: 0,
     paths: [
@@ -96,7 +96,7 @@ describe("XOXNO quote normalization", () => {
         assert.equal(q.provider, "xoxno");
         assert.equal(q.amountOut, "1000000");
         assert.equal(q.otherAmountThreshold, "990000");
-        assert.equal(q.priceImpactPct, "0.12");
+        assert.equal(q.priceImpactPct, "0.12"); // fraction 0.0012 -> percent
         assert.deepEqual(q.routePlan, [
           { swapInfo: { protocol: "sushi", path: [XLM, USDC] }, percent: "100.00" },
         ]);
