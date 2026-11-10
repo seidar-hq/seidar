@@ -136,6 +136,7 @@ export default function ActivityTable({ items, loading, multi }: { items: Activi
   ];
   return (
     <DataTable
+      skeletonId="activity"
       columns={columns}
       rows={items}
       isLoading={loading && items.length === 0}

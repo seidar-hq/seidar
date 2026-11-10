@@ -585,7 +585,7 @@ export default function PoolPage() {
       )}
 
       {tab === "transactions" && (
-        <DataTable columns={tradeCols} rows={trades.value?.trades ?? []} isLoading={trades.loading} emptyDataText="No recent trades in this pool" getRowId={(t, i) => `${t.tx}:${i}`} pageSize={10} />
+        <DataTable skeletonId="pool-trades" columns={tradeCols} rows={trades.value?.trades ?? []} isLoading={trades.loading} emptyDataText="No recent trades in this pool" getRowId={(t, i) => `${t.tx}:${i}`} pageSize={10} />
       )}
 
       <Inset sx={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>

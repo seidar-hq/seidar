@@ -8,13 +8,11 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { styled, useTheme } from "@mui/material/styles";
+import { LOOK, TINT, lookInset, lookPanel } from "@/theme/exploreLook";
+import { styled } from "@mui/material/styles";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
 import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
 import QRCode from "qrcode";
@@ -23,7 +21,7 @@ import TokenLogo from "@/components/common/TokenLogo";
 import Shimmer from "@/components/common/Shimmer";
 import TxDialog from "@/components/tx/TxDialog";
 import { useTxRunner } from "@/components/tx/useTxRunner";
-import { CopyButton, glassMenuPaperSx } from "@/components/wallet/WalletParts";
+import { CopyButton } from "@/components/wallet/WalletParts";
 import { apiJson } from "@/lib/api";
 import { formatAmount, formatUsd, shortAddress } from "@/lib/format";
 import { buildPayment, buildTrustline, cleanAmount, hasTrustline } from "@/lib/payment";
@@ -36,7 +34,7 @@ import TokenSelectDialog, { type SwapToken } from "./TokenSelectDialog";
 import { useSwapTokens } from "./useSwapTokens";
 import { fromBase, useSwapQuote, useTrustline } from "./useSwapQuote";
 
-// ---------- DEX venues ----------
+// ---------- DEX venues (swaps always route across all of them: Auto) ----------
 
 export const DEXES = [
   { id: "soroswap", name: "Soroswap", logo: "/protocols/soroswap.png" },
@@ -45,26 +43,7 @@ export const DEXES = [
   { id: "sdex", name: "Stellar DEX", logo: "/tokens/xlm.png" },
   { id: "sushi", name: "Sushi", logo: "/protocols/sushi.png" },
 ] as const;
-type DexId = (typeof DEXES)[number]["id"];
 const dexName = (id: string) => DEXES.find((d) => d.id === id)?.name ?? id;
-const dexLogo = (id: string) => DEXES.find((d) => d.id === id)?.logo ?? "";
-
-/** Round logo (fills its circle). */
-const Mark = ({ src, size = "1.75rem", bg }: { src: string; size?: string; bg?: string }) => (
-  <Box sx={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0, backgroundColor: bg ?? "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-    <Box component="img" src={src} alt="" sx={{ width: bg ? "70%" : "100%", height: bg ? "70%" : "100%", objectFit: "cover" }} />
-  </Box>
-);
-
-/** Green round check (selected) or an empty ring, at the right end of a menu row. */
-const Check = ({ on }: { on: boolean }) =>
-  on ? (
-    <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", backgroundColor: "green.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-      <CheckRoundedIcon sx={{ fontSize: "0.875rem", color: "common.white" }} />
-    </Box>
-  ) : (
-    <Box sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", border: (t) => `0.125rem solid ${t.palette.overlay.white20}`, flexShrink: 0 }} />
-  );
 
 // ---------- styles ----------
 
@@ -76,6 +55,7 @@ const Root = styled(Box)(({ theme }) => ({
   borderRadius: "1.5rem",
   backgroundColor: theme.palette.surfaceBg.section,
   overflow: "hidden",
+  [LOOK]: lookPanel(TINT.violet),
 }));
 
 const Panel = styled(Box)(({ theme }) => {
@@ -89,6 +69,7 @@ const Panel = styled(Box)(({ theme }) => {
     borderRadius: "0.75rem",
     backgroundColor: dark ? theme.palette.surfaceBg.softInset : theme.palette.grey[400],
     border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main600}`,
+    [LOOK]: lookInset,
   };
 });
 
@@ -139,22 +120,6 @@ const FlipButton = styled(IconButton)(({ theme }) => ({
   border: `0.25rem solid ${theme.palette.surfaceBg.section}`,
   "&:hover": { backgroundColor: theme.palette.sidebar.primary, opacity: 0.9 },
 }));
-
-const SelectRow = styled(ButtonBase)(({ theme }) => {
-  const line = theme.palette.mode === "dark" ? theme.palette.overlay.white08 : theme.palette.border.main600;
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    height: "3rem",
-    padding: "0.375rem 1rem",
-    borderRadius: "999rem",
-    backgroundColor: theme.palette.grey[400],
-    borderTop: `0.0625rem solid ${line}`,
-    borderBottom: `0.0625rem solid ${line}`,
-  };
-});
 
 const SlippageBox = styled(Box)(({ theme }) => ({
   display: "flex",
@@ -231,7 +196,6 @@ function useBalanceBusy() {
 }
 
 function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange?: PairListener }) {
-  const theme = useTheme();
   const balBusy = useBalanceBusy();
   const { activeWallet } = useWallet();
   const tx = useTxRunner();
@@ -239,8 +203,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   const [toC, setToC] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [slippage, setSlippage] = useState("0.5");
-  const [dexes, setDexes] = useState<DexId[]>([]); // [] = Auto (all venues)
-  const [dexAnchor, setDexAnchor] = useState<HTMLElement | null>(null);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
   const [details, setDetails] = useState(false);
   const [addingTrust, setAddingTrust] = useState(false);
@@ -276,7 +238,7 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
   // Soroban-only tokens have no issuer, so they never need one.
   const walletAddress = activeWallet?.address ?? null;
   const { trust, setTrust, checkingTrust } = useTrustline(walletAddress, to);
-  const { quote, quoteError, quoting, quotePaused } = useSwapQuote(from, to, base, slipNum, dexes);
+  const { quote, quoteError, quoting, quotePaused } = useSwapQuote(from, to, base, slipNum);
 
   const outAmount = quote && to ? fromBase(quote.amountOut, to.decimals) : 0;
   const minOut = quote && to ? fromBase(quote.otherAmountThreshold, to.decimals) : 0;
@@ -291,12 +253,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
     setToC(fromC);
     setAmount(quote && to ? String(Number(outAmount.toFixed(to.decimals))) : amount);
   };
-
-  const toggleDex = (id: DexId) =>
-    setDexes((cur) => {
-      const next = cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id];
-      return next.length === DEXES.length ? [] : next;
-    });
 
   const execute = async () => {
     if (!activeWallet || !quote || !from || !to) return;
@@ -348,7 +304,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
     void execute();
   };
 
-  const dexLabel = dexes.length === 0 ? "Auto — best route across all DEXs" : dexes.map(dexName).join(", ");
   let cta = "EXCHANGE";
   let disabled = true;
   if (!from || !to) cta = "SELECT TOKENS";
@@ -368,66 +323,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: "0.875rem", p: "1.25rem 1rem 1rem" }}>
-      <SelectRow onClick={(e) => setDexAnchor(e.currentTarget)} aria-label={dexLabel}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
-          {dexes.length === 0 ? (
-            <>
-              <Mark src="/tokens/xlm.png" />
-              <Typography variant="subtitle3" color="sidebar.heading" noWrap>
-                Auto · best route across all DEXs
-              </Typography>
-            </>
-          ) : dexes.length === 1 ? (
-            <>
-              <Mark src={dexLogo(dexes[0])} />
-              <Typography variant="subtitle3" color="sidebar.heading" noWrap>
-                {dexName(dexes[0])}
-              </Typography>
-            </>
-          ) : (
-            <Box sx={{ display: "flex" }}>
-              {dexes.map((d, i) => (
-                <Box key={d} sx={{ ml: i ? "-0.5rem" : 0, borderRadius: "50%", border: (t) => `0.125rem solid ${t.palette.grey[400]}` }}>
-                  <Mark src={dexLogo(d)} />
-                </Box>
-              ))}
-            </Box>
-          )}
-        </Box>
-        <KeyboardArrowDown sx={{ fontSize: "1.25rem", color: "grey.200" }} />
-      </SelectRow>
-      <Menu
-        anchorEl={dexAnchor}
-        open={!!dexAnchor}
-        onClose={() => setDexAnchor(null)}
-        slotProps={{
-          paper: { elevation: 0, sx: { ...glassMenuPaperSx(theme, "18rem"), width: dexAnchor?.clientWidth, maxHeight: "none" } },
-          list: { sx: { p: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" } },
-        }}
-      >
-        <MenuItem onClick={() => setDexes([])} sx={{ borderRadius: "0.75rem", gap: "0.75rem", py: "0.625rem" }}>
-          <Mark src="/assets/favicon.svg" size="2rem" bg="#FFFFFF" />
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" color="common.black">
-              Auto
-            </Typography>
-            <Typography variant="caption" color="grey.200">
-              Aggregates every DEX for the best price
-            </Typography>
-          </Box>
-          <Check on={dexes.length === 0} />
-        </MenuItem>
-        {DEXES.map((d) => (
-          <MenuItem key={d.id} onClick={() => toggleDex(d.id)} sx={{ borderRadius: "0.75rem", gap: "0.75rem", py: "0.625rem" }}>
-            <Mark src={d.logo} size="2rem" />
-            <Typography variant="subtitle1" color="common.black" sx={{ flex: 1 }}>
-              {d.name}
-            </Typography>
-            <Check on={dexes.includes(d.id)} />
-          </MenuItem>
-        ))}
-      </Menu>
-
       <Box sx={{ position: "relative", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <Panel>
           <SpaceRow>
@@ -532,7 +427,6 @@ function SwapPanel({ tokens, onPairChange }: { tokens: SwapToken[]; onPairChange
       {quoteError && base && (
         <Typography variant="subtitle3" color="error.main" sx={{ textAlign: "center" }}>
           {quoteError}
-          {!quotePaused && dexes.length ? " Try Auto or another DEX." : ""}
         </Typography>
       )}
       {impact != null && impact >= 3 && (

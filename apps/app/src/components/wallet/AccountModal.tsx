@@ -2,7 +2,7 @@
 
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled } from "@mui/material/styles";
@@ -91,9 +91,7 @@ export default function AccountModal({
         </AddressButton>
       </Tooltip>
 
-      {!bal || bal.loading ? (
-        <Skeleton variant="rounded" width="9rem" height="3rem" />
-      ) : (
+      <Measured loading={!bal || bal.loading} id="account-balance">
         <Box sx={{ display: "flex", alignItems: "baseline", gap: "0.375rem" }}>
           <Typography component="span" sx={{ fontSize: "3rem", fontWeight: 500, lineHeight: 1, color: "#E3E3E3" }}>
             {Number(whole).toLocaleString("en-US")}
@@ -105,7 +103,7 @@ export default function AccountModal({
             XLM
           </Typography>
         </Box>
-      )}
+      </Measured>
 
       <DisconnectRow
         onClick={() => {

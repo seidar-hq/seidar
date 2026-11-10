@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import Skeleton from "@mui/material/Skeleton";
+import Shimmer from "@/components/common/Shimmer";
+import { MeasuredBlock } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
@@ -41,20 +42,20 @@ export default function NetworkHero() {
             Stellar DeFi · total value locked
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-            {loading || !tvl ? (
-              <Skeleton variant="rounded" animation="wave" width="12rem" height="2.75rem" />
-            ) : (
-              <Typography sx={{ fontSize: { xs: "2rem", sm: "2.5rem" }, fontWeight: 600, color: "common.black", lineHeight: 1.1 }}>
-                {compactUsd(tvl.current)}
-              </Typography>
-            )}
+            <Typography sx={{ fontSize: { xs: "2rem", sm: "2.5rem" }, fontWeight: 600, color: "common.black", lineHeight: 1.1 }}>
+              <Shimmer on={loading || !tvl} width="6rem">
+                {tvl ? compactUsd(tvl.current) : null}
+              </Shimmer>
+            </Typography>
             {tvl?.change1d != null && <Chip variant="mini" color={tvl.change1d >= 0 ? "success" : "error"} label={`${pctText(tvl.change1d)} 24h`} />}
             {tvl?.change7d != null && <Chip variant="mini" color={tvl.change7d >= 0 ? "success" : "error"} label={`${pctText(tvl.change7d)} 7d`} />}
           </Box>
           <Typography variant="subtitle3" color="grey.200">
             Stablecoins on Stellar:{" "}
             <Box component="span" sx={{ color: "common.black", fontWeight: 500 }}>
-              {overview?.stablecoinsUsd != null ? compactUsd(overview.stablecoinsUsd) : "—"}
+              <Shimmer on={loading && overview?.stablecoinsUsd == null} width="2.5rem">
+                {overview?.stablecoinsUsd != null ? compactUsd(overview.stablecoinsUsd) : "—"}
+              </Shimmer>
             </Box>
             {ranged != null && (
               <>
@@ -68,22 +69,22 @@ export default function NetworkHero() {
         </Box>
         <PeriodButtons periods={PERIODS} value={range} onChange={setRange} noTopMargin />
       </Box>
-      {loading ? (
-        <Skeleton variant="rectangular" animation="wave" sx={{ height: "17rem", borderRadius: "0.5rem" }} />
-      ) : series.length < 2 ? (
-        <Box sx={{ height: "17rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography variant="subtitle2" color="grey.200">
-            TVL history is unavailable right now.
-          </Typography>
-        </Box>
-      ) : (
-        <ZoomChart
-          fitKey={range}
-          height="17rem"
-          format={compactUsd}
-          series={[{ id: "tvl", label: "TVL", color: theme.palette.sidebar.primary, points: series }]}
-        />
-      )}
+      <MeasuredBlock loading={loading} height="17rem">
+        {series.length < 2 ? (
+          <Box sx={{ height: "17rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography variant="subtitle2" color="grey.200">
+              TVL history is unavailable right now.
+            </Typography>
+          </Box>
+        ) : (
+          <ZoomChart
+            fitKey={range}
+            height="17rem"
+            format={compactUsd}
+            series={[{ id: "tvl", label: "TVL", color: theme.palette.sidebar.primary, points: series }]}
+          />
+        )}
+      </MeasuredBlock>
       <SourceNote text="Data: DefiLlama (Stellar chain TVL, excluding centralised exchanges)." />
     </InsetCard>
   );

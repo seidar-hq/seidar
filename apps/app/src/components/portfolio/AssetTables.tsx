@@ -398,6 +398,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       </Box>
       {tab === "all" && (
         <DataTable
+          skeletonId="portfolio-all"
           columns={allCols}
           rows={allRows}
           isLoading={allLoading}
@@ -410,6 +411,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       )}
       {tab === "assets" && (
         <DataTable
+          skeletonId="portfolio-assets"
           columns={assetCols}
           rows={assetRows}
           isLoading={portfolio.assetsLoading}
@@ -420,6 +422,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       )}
       {tab === "supplied" && (
         <DataTable
+          skeletonId="portfolio-supplied"
           columns={supplyCols}
           rows={portfolio.supplied}
           isLoading={portfolio.positionsLoading && portfolio.supplied.length === 0}
@@ -431,6 +434,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       )}
       {tab === "borrowed" && (
         <DataTable
+          skeletonId="portfolio-borrowed"
           columns={borrowCols}
           rows={portfolio.borrowed}
           isLoading={portfolio.lendingLoading && portfolio.borrowed.length === 0}
@@ -442,6 +446,7 @@ export default function AssetTables({ portfolio }: { portfolio: Portfolio }) {
       )}
       {tab === "vaults" && (
         <DataTable
+          skeletonId="portfolio-vaults"
           columns={vaultCols}
           rows={portfolio.vaults}
           isLoading={portfolio.vaultsLoading && portfolio.vaults.length === 0}

@@ -1,7 +1,6 @@
 "use client";
 
 import Grid from "@mui/material/Grid";
-import Skeleton from "@mui/material/Skeleton";
 import { useRouter } from "next/navigation";
 import TokenLogo from "@/components/common/TokenLogo";
 import { TopList } from "@/components/earn/EarnUI";
@@ -23,24 +22,21 @@ export default function Leaderboards() {
         const top = [...assets].filter((a) => (b.rank(a) ?? 0) > 0).sort((x, y) => (b.rank(y) ?? 0) - (b.rank(x) ?? 0)).slice(0, 5);
         return (
           <Grid key={b.title} size={{ xs: 12, md: 4 }}>
-            {loading ? (
-              <Skeleton variant="rounded" animation="wave" sx={{ height: "29rem", borderRadius: "1.25rem" }} />
-            ) : (
-              <TopList
-                title={b.title}
-                nameLabel="Asset"
-                valueLabel={b.valueLabel}
-                emptyText="Market data is unavailable right now."
-                items={top.map((a) => ({
-                  key: a.id,
-                  icon: <TokenLogo code={a.code} issuer={a.issuer} contract={a.contract} src={a.icon} size="2.5rem" />,
-                  title: a.code,
-                  subtitle: a.domain ?? a.name,
-                  value: b.value(a),
-                  onClick: () => router.push(assetHref(a)),
-                }))}
-              />
-            )}
+            <TopList
+              loading={loading}
+              title={b.title}
+              nameLabel="Asset"
+              valueLabel={b.valueLabel}
+              emptyText="Market data is unavailable right now."
+              items={top.map((a) => ({
+                key: a.id,
+                icon: <TokenLogo code={a.code} issuer={a.issuer} contract={a.contract} src={a.icon} size="2.5rem" />,
+                title: a.code,
+                subtitle: a.domain ?? a.name,
+                value: b.value(a),
+                onClick: () => router.push(assetHref(a)),
+              }))}
+            />
           </Grid>
         );
       })}

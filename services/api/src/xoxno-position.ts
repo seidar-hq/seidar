@@ -9,6 +9,7 @@
 import type { Leg, Position } from "./blend-position.js";
 import { XOXNO_CONTROLLER } from "./lending.js";
 import { sorobanView, sorobanViewRaw } from "./rpc.js";
+import { routeUsesCurve } from "./xoxno-route.js";
 
 export { XOXNO_CONTROLLER };
 const WAD = 10n ** 18n;
@@ -179,6 +180,8 @@ export async function xoxnoQuote(
   const r = await fetch(`${QUOTE_URL}?${qs}`, { signal: AbortSignal.timeout(20_000) });
   const d = (await r.json()) as { routeXdr?: string; amountIn?: string; amountOut?: string; amountOutMin?: string; error?: string };
   if (!r.ok || !d.routeXdr) throw new Error(`XOXNO has no route ${from.slice(0, 4)}→${to.slice(0, 4)}${d.error ? `: ${d.error}` : ""}`);
+  if (await routeUsesCurve(d.routeXdr))
+    throw new Error(`XOXNO's router is rejecting Curve routes right now (error #13) for ${from.slice(0, 4)}→${to.slice(0, 4)}; try again later or use a different pair`);
   return {
     routeXdr: d.routeXdr,
     amountIn: BigInt(d.amountIn ?? "0"),

@@ -6,7 +6,7 @@ import ButtonBase from "@mui/material/ButtonBase";
 import InputBase from "@mui/material/InputBase";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
-import Skeleton from "@mui/material/Skeleton";
+import { MeasuredBlock } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -130,17 +130,17 @@ export default function CompareChart({ primary, candidates, height = "22rem" }: 
         <PeriodButtons periods={PERIODS} value={range} onChange={setRange} noTopMargin />
       </Box>
 
-      {loading && series.length === 0 ? (
-        <Skeleton variant="rectangular" animation="wave" sx={{ height, borderRadius: "0.5rem" }} />
-      ) : series.length === 0 ? (
-        <Box sx={{ height, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", px: "2rem" }}>
-          <Typography variant="subtitle2" color="grey.200">
-            No price history for {primary.code} on the Stellar DEX over this period.
-          </Typography>
-        </Box>
-      ) : (
-        <ZoomChart series={series} mode={mode} height={height} format={priceText} intraday={range === "1d" || range === "7d"} fitKey={`${range}:${primary.id}`} />
-      )}
+      <MeasuredBlock loading={loading && series.length === 0} height={height}>
+        {series.length === 0 ? (
+          <Box sx={{ height, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", px: "2rem" }}>
+            <Typography variant="subtitle2" color="grey.200">
+              No price history for {primary.code} on the Stellar DEX over this period.
+            </Typography>
+          </Box>
+        ) : (
+          <ZoomChart series={series} mode={mode} height={height} format={priceText} intraday={range === "1d" || range === "7d"} fitKey={`${range}:${primary.id}`} />
+        )}
+      </MeasuredBlock>
       {missing.length > 0 && series.length > 0 && (
         <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>No DEX price history for {missing.join(", ")} over this period.</Typography>
       )}

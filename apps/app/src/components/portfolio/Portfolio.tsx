@@ -14,6 +14,7 @@ import PortfolioLocked from "./PortfolioLocked";
 import WalletTableLocked from "./WalletTableLocked";
 import SwapWidget from "@/components/swap/SwapWidget";
 import { useAgent } from "@/components/agent/AgentContext";
+import { HOME_ENABLED } from "@/lib/features";
 
 const PortfolioCard = styled(SectionCard)(({ theme }) => ({ ...fadedBorder(theme), minHeight: "38.5rem" }));
 
@@ -35,7 +36,9 @@ export default function Portfolio() {
   // While the agent is open it sits over the right-hand column (see AppShell), so leave it empty.
   const { open: agentOpen } = useAgent();
   return (
-    <Box sx={{ minHeight: "100vh" }}>
+    // data-look: the Explore page's card styling for everything inside (theme/exploreLook.ts). On trial
+    // with Home and Explore, so production builds (Home off) keep the current Portfolio look.
+    <Box data-look={HOME_ENABLED ? "explore" : undefined} sx={{ minHeight: "100vh" }}>
       <Box
         sx={{
           display: "grid",

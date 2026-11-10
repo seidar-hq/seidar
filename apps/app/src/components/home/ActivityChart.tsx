@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
+import { MeasuredBlock } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
@@ -67,22 +67,22 @@ export default function ActivityChart() {
         </Typography>
         <PeriodButtons periods={PERIODS} value={range} onChange={setRange} noTopMargin />
       </Box>
-      {loading ? (
-        <Skeleton variant="rectangular" animation="wave" sx={{ height: "18rem", borderRadius: "0.5rem" }} />
-      ) : points.length === 0 ? (
-        <Box sx={{ height: "18rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography variant="subtitle2" color="grey.200">
-            Network activity is unavailable right now.
-          </Typography>
-        </Box>
-      ) : (
-        <ZoomChart
-          height="18rem"
-          format={compactNum}
-          fitKey={`${range}:${metric}`}
-          series={[{ id: metric, label: LABEL[metric], color: theme.palette.graph.yieldLine, points, kind: "histogram" }]}
-        />
-      )}
+      <MeasuredBlock loading={loading} height="18rem">
+        {points.length === 0 ? (
+          <Box sx={{ height: "18rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography variant="subtitle2" color="grey.200">
+              Network activity is unavailable right now.
+            </Typography>
+          </Box>
+        ) : (
+          <ZoomChart
+            height="18rem"
+            format={compactNum}
+            fitKey={`${range}:${metric}`}
+            series={[{ id: metric, label: LABEL[metric], color: theme.palette.graph.yieldLine, points, kind: "histogram" }]}
+          />
+        )}
+      </MeasuredBlock>
       <SourceNote text="Data: Stellar Index (daily network throughput, UTC days; contract events are Soroban events)." />
     </InsetCard>
   );

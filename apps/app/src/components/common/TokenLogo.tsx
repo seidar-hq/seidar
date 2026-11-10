@@ -99,7 +99,7 @@ export default function TokenLogo({
       alt={code}
       loading="lazy"
       onError={icon.onError}
-      sx={{ width: size, height: size, flexShrink: 0, borderRadius: "50%", objectFit: "cover", display: "block" }}
+      sx={{ width: size, height: size, aspectRatio: "1", flexShrink: 0, borderRadius: "50%", objectFit: "cover", display: "block" }}
     />
   );
 }

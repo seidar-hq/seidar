@@ -3,7 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
+import Skeleton from "@/components/common/Skeleton";
 import { styled } from "@mui/material/styles";
 import Footer from "./Footer";
 import Header from "./Header";

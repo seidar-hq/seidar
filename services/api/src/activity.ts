@@ -112,6 +112,8 @@ async function protocolNames(): Promise<Map<string, string>> {
   try {
     const { XOXNO_CONTROLLER } = await import("./lending.js");
     map.set(XOXNO_CONTROLLER, "XOXNO");
+    const { XOXNO_ROUTER } = await import("./swap.js");
+    map.set(XOXNO_ROUTER, "XOXNO");
     const { SOROSWAP_ROUTER } = await import("./dex-onchain.js");
     map.set(SOROSWAP_ROUTER, "Soroswap");
     const { UPSHIFT_VAULTS } = await import("./vaults.js");

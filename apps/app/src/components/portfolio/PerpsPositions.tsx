@@ -70,5 +70,5 @@ export default function PerpsPositions({ addresses }: { addresses: string[] }) {
     },
     { id: "pnl", header: "Net PnL", cell: (r) => <T color={pnlColor(r.netPnl)}>{formatUsd(r.netPnl)} ({r.netPnlPct.toFixed(2)}%)</T>, sortValue: (r) => r.netPnl },
   ];
-  return <DataTable from="portfolio" columns={cols} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No open perps positions" getRowId={(r) => `${r.wallet}:${r.side}`} />;
+  return <DataTable skeletonId="portfolio-perps" from="portfolio" columns={cols} rows={rows} isLoading={loading && rows.length === 0} emptyDataText="No open perps positions" getRowId={(r) => `${r.wallet}:${r.side}`} />;
 }

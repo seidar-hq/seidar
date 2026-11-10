@@ -43,6 +43,9 @@ export const getComponents = (d: AppColors, g: PaletteMode): Components<Omit<The
     MuiMenu: { defaultProps: { disableScrollLock: true } },
     MuiPopover: { defaultProps: { disableScrollLock: true } },
     MuiTypography: {
+      // Paragraph variants render as <div>: loading skeletons (skullet) wrap values in a <div>, which a <p>
+      // can't hold. Typography sets its own margins, so nothing looks different.
+      defaultProps: { variantMapping: { body1: "div", body2: "div", inherit: "div" } },
       variants: [
         {
           props: { variant: "body2" },

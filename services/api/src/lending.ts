@@ -20,15 +20,20 @@
 import { PoolContract, RequestType } from "@blend-capital/blend-sdk";
 import { isTestnet, networkPassphrase } from "./net.js";
 import { sorobanView } from "./rpc.js";
-import { invokeFor, retargetOp } from "./invoke.js";
+import { invokeFor } from "./invoke.js";
+import { routeUsesCurve } from "./xoxno-route.js";
 
 /** Build for the position owner (wallet, or smart account via `signer`). */
 const invokeAs = (from: string, signer: string | undefined, op: unknown) => invokeFor({ from, signer, op });
 
-/** XOXNO's SDK only knows G callers: build as the owner, then re-point to the account. */
-async function xoxnoOp(from: string, signer: string | undefined, opXdr: string): Promise<string> {
-  return isContract(from) ? retargetOp(opXdr, signer!, from) : opXdr;
-}
+/** XOXNO builder options: a smart account is the caller, its owner wallet the source (SDK >= 1.0.234). */
+const xoxnoOpts = (from: string, signer: string | undefined) => ({
+  network: "mainnet" as const,
+  caller: from,
+  ...(isContract(from) ? { sourceAccount: signer! } : {}),
+  sourceSequence: "0",
+  controllerAddress: XOXNO_CONTROLLER,
+});
 
 export type LendingProtocol = "blend" | "xoxno";
 /** lend / unlend: plain supply that is never collateral (Blend Supply /
@@ -210,12 +215,7 @@ async function buildXoxno(
     action: first0.action === "lend" ? "supply" : first0.action === "unlend" ? "withdraw" : first0.action,
   };
   if (isContract(from) && !(signer && isAccount(signer))) throw new Error("signer (owner wallet) required for a smart account");
-  const opts = {
-    network: "mainnet" as const,
-    caller: isContract(from) ? signer! : from,
-    sourceSequence: "0",
-    controllerAddress: XOXNO_CONTROLLER,
-  };
+  const opts = xoxnoOpts(from, signer);
   const base = { hubId, asset: first.asset };
   let built: { xdr: string };
   if (first.action === "supply") {
@@ -257,7 +257,7 @@ async function buildXoxno(
   }
   // Re-assemble from the SDK's op with a fresh sequence + simulation.
   const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
-  const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
+  const opXdr = env.toEnvelope().v1().tx().operations()[0].toXDR("base64");
   const { xdr } = await invokeAs(from, signer, opXdr);
   const next: LendingBuildBody | null =
     rest.length > 0 ? { protocol: "xoxno", from, signer, actions: rest, xoxno: x } : null;
@@ -328,7 +328,7 @@ export async function buildBlendToXoxno(body: {
     ]).catch(() => false);
     if (approved !== true) return fail("XOXNO does not accept migrations from this Blend pool.");
     const built = lend.buildStellarMigrateFromBlendTx(
-      { network: "mainnet", caller: isContract(from) ? signer : from, sourceSequence: "0", controllerAddress: XOXNO_CONTROLLER } as never,
+      xoxnoOpts(from, signer) as never,
       {
         accountId: body?.accountId && /^\d+$/.test(body.accountId) ? body.accountId : "0",
         spokeId,
@@ -343,7 +343,7 @@ export async function buildBlendToXoxno(body: {
       },
     );
     const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
-    const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
+    const opXdr = env.toEnvelope().v1().tx().operations()[0].toXDR("base64");
     const { xdr } = await invokeAs(from, signer, opXdr);
     return { status: 200, body: { ok: true, xdr, label: "Move Blend position to XOXNO", next: null } };
   } catch (e) {
@@ -474,12 +474,14 @@ export async function buildXoxnoMultiply(body: {
       );
       const q = quote as unknown as Q;
       if (!q.routeXdr || !q.amountOutMin) throw new Refused("No swap route between these assets right now. Try a smaller amount.");
+      if (await routeUsesCurve(q.routeXdr))
+        throw new Refused("XOXNO's router is rejecting Curve routes right now (error #13). Try again later.");
       // Health right after opening, at the route's minimum output (the worst case the chain accepts).
       const collUsd = (units(deposit, c.decimals) + units(q.amountOutMin, c.decimals)) * c.priceUsd!;
       const health = ((cs.ltvBps / 10_000) * collUsd) / debtUsd;
       if (!(health >= LEVERAGE_MIN_HEALTH))
         throw new Refused(`That leverage would open at health ${health.toFixed(2)}; Seidar keeps leveraged positions at ${LEVERAGE_MIN_HEALTH} or above. Lower the leverage.`);
-      const opts = { network: "mainnet" as const, caller: isContract(from) ? signer! : from, sourceSequence: "0", controllerAddress: XOXNO_CONTROLLER };
+      const opts = xoxnoOpts(from, signer);
       const built = lend.buildStellarMultiplyTx(opts as never, {
         accountNonce: "0",
         spokeId,
@@ -491,7 +493,7 @@ export async function buildXoxnoMultiply(body: {
         initialPayment: { hubId: c.hubId, asset: collateral, amount: deposit },
       });
       const env = sdk.TransactionBuilder.fromXDR(built.xdr, networkPassphrase()) as InstanceType<typeof sdk.Transaction>;
-      const opXdr = await xoxnoOp(from, signer, env.toEnvelope().v1().tx().operations()[0].toXDR("base64"));
+      const opXdr = env.toEnvelope().v1().tx().operations()[0].toXDR("base64");
       const { xdr } = await invokeAs(from, signer, opXdr);
       const minOut: string = q.amountOutMin;
       return { q: { ...q, amountOut: q.amountOut ?? minOut, amountOutMin: minOut }, health, xdr };

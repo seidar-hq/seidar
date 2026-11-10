@@ -55,6 +55,38 @@ export type Protocol = {
   seidar: string | null;
 };
 
+/** Stand-in rows drawn while the market list loads, so its skeleton has the list's real shape. */
+export const SAMPLE_ASSETS: MarketAsset[] = Array.from({ length: 8 }, (_, i) => ({
+  id: `sample-${i}`,
+  code: "SAMPLE",
+  issuer: null,
+  contract: null,
+  name: "Sample asset",
+  domain: null,
+  icon: null,
+  cats: [],
+  price: 0.1234,
+  priceSource: "market",
+  change24h: 1.23,
+  change7d: 1.23,
+  spark: [1, 2, 1, 3, 2, 3],
+  supply: 100_000_000,
+  marketCap: 123_400_000,
+  volume7d: 12_340_000,
+  holders: 12_345,
+}));
+
+/** Stand-in rows drawn while the protocol list loads. */
+export const SAMPLE_PROTOCOLS: Protocol[] = Array.from({ length: 6 }, (_, i) => ({
+  name: "Sample protocol " + i,
+  category: "Lending",
+  tvl: 12_340_000,
+  change7d: 1.23,
+  logo: null,
+  url: null,
+  seidar: null,
+}));
+
 export type ActivityPoint = { t: number; transactions: number; operations: number; events: number };
 
 type AssetsResp = { ok?: boolean; assets?: MarketAsset[]; counts?: Record<string, number> };

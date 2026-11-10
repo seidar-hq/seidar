@@ -7,6 +7,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { createAppTheme } from "./theme";
 import { ThemeModeProvider, useThemeMode } from "./ThemeModeContext";
 import { AlertProvider } from "@/components/common/Alerts";
+import SkulletTheme from "./SkulletTheme";
 
 function ThemeLayer({ children }: { children: React.ReactNode }) {
   const { mode } = useThemeMode();
@@ -20,7 +21,9 @@ function ThemeLayer({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AlertProvider>{children}</AlertProvider>
+      <SkulletTheme>
+        <AlertProvider>{children}</AlertProvider>
+      </SkulletTheme>
     </ThemeProvider>
   );
 }

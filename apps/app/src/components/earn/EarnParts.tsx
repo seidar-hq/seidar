@@ -2,6 +2,7 @@
 
 import Box from "@mui/material/Box";
 import { styled } from "@mui/material/styles";
+import { pinnedColumn, usePinnedColumn } from "./EarnUI";
 
 const MainCard = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.surfaceBg.section,
@@ -16,8 +17,19 @@ const MainCard = styled(Box)(({ theme }) => ({
 
 const Side = styled(Box)({ display: "flex", flexDirection: "column", gap: "1rem", alignSelf: "start", minWidth: 0 });
 
-/** Earn page layout: tab bar + main content on the left, summary cards on the right (full width without them). */
-export function EarnGrid({ tabs, main, side }: { tabs: React.ReactNode; main: React.ReactNode; side?: React.ReactNode }) {
+/** Side column pinned to the viewport on wide screens, scrolling on its own (the dual-scroll layout). */
+function PinnedSide({ children }: { children: React.ReactNode }) {
+  const props = usePinnedColumn();
+  return (
+    <Side sx={pinnedColumn} {...props}>
+      {children}
+    </Side>
+  );
+}
+
+/** Earn page layout: tab bar + main content on the left, summary cards on the right (full width without them).
+ *  `pinned`: the right column stays in view and scrolls by itself while the page scrolls the left. */
+export function EarnGrid({ tabs, main, side, pinned }: { tabs: React.ReactNode; main: React.ReactNode; side?: React.ReactNode; pinned?: boolean }) {
   return (
     <Box
       sx={{
@@ -33,7 +45,7 @@ export function EarnGrid({ tabs, main, side }: { tabs: React.ReactNode; main: Re
         <Box sx={{ mb: "1rem" }}>{tabs}</Box>
         {main}
       </MainCard>
-      {side && <Side>{side}</Side>}
+      {side && (pinned ? <PinnedSide>{side}</PinnedSide> : <Side>{side}</Side>)}
     </Box>
   );
 }

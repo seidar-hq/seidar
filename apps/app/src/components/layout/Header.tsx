@@ -21,6 +21,7 @@ import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownR
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
 import { DISCOVER_ENABLED, HOME_ENABLED } from "@/lib/features";
 import TravelExploreOutlinedIcon from "@mui/icons-material/TravelExploreOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
@@ -190,6 +191,13 @@ const ALL_NAV: NavEntry[] = [
     lightIcon: "/assets/nav/dashboardIcon.svg",
     darkIcon: "/assets/nav/dashboardDarkIcon.svg",
     IconComponent: HomeOutlinedIcon,
+  },
+  {
+    title: "Explore",
+    value: "/explore",
+    lightIcon: "/assets/nav/dashboardIcon.svg",
+    darkIcon: "/assets/nav/dashboardDarkIcon.svg",
+    IconComponent: PublicOutlinedIcon,
   },
   { title: "Portfolio", value: "/portfolio", lightIcon: "/assets/nav/dashboardIcon.svg", darkIcon: "/assets/nav/dashboardDarkIcon.svg" },
   {

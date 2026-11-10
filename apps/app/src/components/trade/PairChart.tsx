@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
+import { MeasuredBlock } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme } from "@mui/material/styles";
 import PeriodButtons, { type Period } from "@/components/common/PeriodButtons";
@@ -89,31 +89,31 @@ export default function PairChart({ base, quote }: { base: SwapToken | null; quo
         </Box>
         <PeriodButtons periods={PERIODS} value={range} onChange={setRange} noTopMargin />
       </Box>
-      <Box sx={{ height: "22rem", position: "relative" }}>
-        {!key ? (
-          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography variant="subtitle2" color="grey.200">
-              {base && quote && (!a || !b) ? "No Stellar market history for this token yet." : "Pick two different tokens to see their chart."}
-            </Typography>
-          </Box>
-        ) : loading && !pts.length ? (
-          <Skeleton variant="rectangular" animation="wave" sx={{ height: "100%", borderRadius: "0.75rem" }} />
-        ) : pts.length < 2 ? (
-          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography variant="subtitle2" color="grey.200">
-              No trades for this pair in this period.
-            </Typography>
-          </Box>
-        ) : (
-          <ZoomChart
-            height="100%"
-            format={(v) => formatAmount(v, 7)}
-            intraday={range === "1h" || range === "1d" || range === "7d"}
-            fitKey={`${key}`}
-            series={[{ id: "px", label: `${base?.code ?? ""}/${quote?.code ?? ""}`, color, points: pts.map((p) => ({ t: p.t, v: p.px })) }]}
-          />
-        )}
-      </Box>
+      <MeasuredBlock loading={!!key && loading && !pts.length} height="22rem" radius="0.75rem" sx={{ height: "22rem", "& > [skullet-pane]": { height: "100%" } }}>
+        <Box sx={{ height: "22rem", position: "relative" }}>
+          {!key ? (
+            <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Typography variant="subtitle2" color="grey.200">
+                {base && quote && (!a || !b) ? "No Stellar market history for this token yet." : "Pick two different tokens to see their chart."}
+              </Typography>
+            </Box>
+          ) : pts.length < 2 ? (
+            <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Typography variant="subtitle2" color="grey.200">
+                No trades for this pair in this period.
+              </Typography>
+            </Box>
+          ) : (
+            <ZoomChart
+              height="100%"
+              format={(v) => formatAmount(v, 7)}
+              intraday={range === "1h" || range === "1d" || range === "7d"}
+              fitKey={`${key}`}
+              series={[{ id: "px", label: `${base?.code ?? ""}/${quote?.code ?? ""}`, color, points: pts.map((p) => ({ t: p.t, v: p.px })) }]}
+            />
+          )}
+        </Box>
+      </MeasuredBlock>
     </Card>
   );
 }

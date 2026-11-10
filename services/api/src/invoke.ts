@@ -2,10 +2,15 @@
 // is the source and signs its own transaction.
 
 /** Build an unsigned, simulated transaction for `from` running `op` (Operation or base64 XDR). */
-export async function invokeFor(o: { from: string; signer?: string; op: unknown }): Promise<{ xdr: string }> {
+export async function invokeFor(o: {
+  from: string;
+  signer?: string;
+  op: unknown;
+  authMode?: "record" | "record_allow_nonroot";
+}): Promise<{ xdr: string }> {
   if (!/^G[A-Z2-7]{55}$/.test(o.from)) throw new Error("from must be a Stellar wallet address (G...)");
   const { buildInvoke } = await import("./rpc.js");
-  return buildInvoke({ from: o.from, op: o.op });
+  return buildInvoke({ from: o.from, op: o.op, authMode: o.authMode });
 }
 
 /** First operation of a (third-party built) envelope, as base64 XDR. */

@@ -2,13 +2,13 @@
 
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { useRouter } from "next/navigation";
 import { InsetCard } from "@/components/common/SectionCard";
-import { SourceNote, compactUsd, pctColor, pctText, useMarketOverview } from "./marketData";
+import { SAMPLE_PROTOCOLS, SourceNote, compactUsd, pctColor, pctText, useMarketOverview } from "./marketData";
 
 const SHOWN = 10;
 
@@ -27,15 +27,14 @@ export default function Protocols() {
         </Typography>
       </Box>
       <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        {loading
-          ? Array.from({ length: 6 }, (_, i) => <Skeleton key={i} variant="rounded" animation="wave" sx={{ height: "3.25rem", borderRadius: "0.75rem" }} />)
-          : list.length === 0 && (
-              <Typography variant="subtitle2" color="grey.200" sx={{ py: "2rem", textAlign: "center" }}>
-                Protocol data is unavailable right now.
-              </Typography>
-            )}
-        {!loading &&
-          list.map((p) => {
+        {!loading && list.length === 0 && (
+          <Typography variant="subtitle2" color="grey.200" sx={{ py: "2rem", textAlign: "center" }}>
+            Protocol data is unavailable right now.
+          </Typography>
+        )}
+        <Measured loading={loading} id="home-protocols">
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        {(loading ? SAMPLE_PROTOCOLS : list).map((p) => {
             const open = () => (p.seidar ? router.push(p.seidar) : p.url && window.open(p.url, "_blank", "noopener,noreferrer"));
             return (
               <Tooltip key={p.name} placement="left" arrow title={p.seidar ? "Open in Seidar" : p.url ? `Not in Seidar yet: opens ${new URL(p.url).host}` : ""}>
@@ -56,7 +55,7 @@ export default function Protocols() {
                 >
                   <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
                     {p.logo ? (
-                      <Box component="img" src={p.logo} alt="" loading="lazy" sx={{ width: "2.25rem", height: "2.25rem", borderRadius: "0.625rem", objectFit: "cover", flexShrink: 0 }} />
+                      <Box component="img" src={p.logo} alt="" loading="lazy" sx={{ width: "2.25rem", height: "2.25rem", aspectRatio: "1", borderRadius: "0.625rem", objectFit: "cover", flexShrink: 0 }} />
                     ) : (
                       <Box sx={{ width: "2.25rem", height: "2.25rem", borderRadius: "0.625rem", backgroundColor: "overlay.white08", flexShrink: 0 }} />
                     )}
@@ -82,6 +81,8 @@ export default function Protocols() {
               </Tooltip>
             );
           })}
+        </Box>
+        </Measured>
       </Box>
       <SourceNote text="Data: DefiLlama (TVL on Stellar; 7d change shown for Stellar-only protocols)." />
     </InsetCard>

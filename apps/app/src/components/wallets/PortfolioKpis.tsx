@@ -3,10 +3,12 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
-import Skeleton from "@mui/material/Skeleton";
+import Shimmer from "@/components/common/Shimmer";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
+import { ThemeIcon, type IconKind } from "@/components/common/ChromeIcons";
+import { LOOK } from "@/theme/exploreLook";
 import { KpiCard, KpiFooterRow, KpiHeader, KpiSection, KpiTop, KpiValueRow } from "@/components/common/SectionCard";
 import PortfolioSelect from "@/components/wallet/PortfolioSelect";
 import { formatAmount, formatUsd } from "@/lib/format";
@@ -52,8 +54,9 @@ export default function PortfolioKpis() {
   const { pct: perf, delta, base, loading: changesLoading } = usePerformance24h(p.exposures);
 
   const t = p.totals;
-  const sk = <Skeleton variant="rounded" animation="wave" width="7rem" height="1.75rem" />;
-  const skSmall = <Skeleton variant="rounded" animation="wave" width="4rem" height="1rem" />;
+  // A value that shimmers (measured from its own text) while it loads or updates.
+  const sk = (on: boolean, v: string) => <Shimmer on={on} width="7rem">{v}</Shimmer>;
+  const skSmall = (on: boolean, v: string) => <Shimmer on={on} width="4rem">{v}</Shimmer>;
   const totalsLoading = p.assetsLoading || p.positionsLoading;
   // Updating after a transaction: shimmer until the new totals land (no jump from the old figure).
   const totalsBusy = p.assetsRefreshing || p.positionsRefreshing;
@@ -62,35 +65,36 @@ export default function PortfolioKpis() {
   const perfBusy = ((totalsLoading || changesLoading) && !base) || totalsBusy;
   const utilisation = t.assetsUsd + t.utilisedUsd > 0 ? (t.utilisedUsd / (t.assetsUsd + t.utilisedUsd)) * 100 : 0;
 
+  const KPI_ICON: Record<string, IconKind> = { "Total Balance": "coins", "Performance %": "growth", "Total Utilised": "cube", "Total Rewards": "star" };
   const kpis: Kpi[] = [
     {
       heading: "Total Balance",
       infoTooltip: "Wallet assets plus your positions in Stellar protocols, net of anything borrowed.",
-      value: (totalsLoading && !t.totalUsd) || totalsBusy ? sk : formatUsd(t.totalUsd),
+      value: sk((totalsLoading && !t.totalUsd) || totalsBusy, formatUsd(t.totalUsd)),
       valueTooltip: totalsLoading ? "Positions are still loading" : undefined,
     },
     {
       heading: "Performance %",
       infoTooltip: "How the value of everything you hold moved in the last 24 hours.",
-      value: perfBusy ? sk : pct(perf),
+      value: sk(perfBusy, pct(perf)),
       chip: perfBusy ? undefined : { label: pct(perf), positive: perf >= 0 },
       subtext: "Change 24h",
-      subValue: perfBusy ? skSmall : signedUsd(delta),
+      subValue: skSmall(perfBusy, signedUsd(delta)),
       subTone: delta > 0 ? "positive" : delta < 0 ? "negative" : undefined,
     },
     {
       heading: "Total Utilised",
       infoTooltip: "Capital deployed into lending markets, liquidity pools and vaults.",
-      value: (p.positionsLoading && !t.utilisedUsd) || totalsBusy ? sk : formatUsd(t.utilisedUsd),
+      value: sk((p.positionsLoading && !t.utilisedUsd) || totalsBusy, formatUsd(t.utilisedUsd)),
       subtext: "Utilisation %",
-      subValue: (p.positionsLoading && !t.utilisedUsd) || totalsBusy ? skSmall : `${utilisation.toFixed(2)}%`,
+      subValue: skSmall((p.positionsLoading && !t.utilisedUsd) || totalsBusy, `${utilisation.toFixed(2)}%`),
     },
     {
       heading: "Total Rewards",
       infoTooltip: "Unclaimed rewards: Blend BLND emissions and Aquarius LP rewards.",
-      value: (p.positionsLoading && !t.rewardsUsd) || p.positionsRefreshing ? sk : formatUsd(t.rewardsUsd),
+      value: sk((p.positionsLoading && !t.rewardsUsd) || p.positionsRefreshing, formatUsd(t.rewardsUsd)),
       subtext: "Claimable BLND",
-      subValue: p.lendingLoading || p.lendingRefreshing ? skSmall : formatAmount(t.claimableBlnd, 2),
+      subValue: skSmall(p.lendingLoading || p.lendingRefreshing, formatAmount(t.claimableBlnd, 2)),
     },
   ];
 
@@ -103,6 +107,14 @@ export default function PortfolioKpis() {
       <Grid size={12} spacing="1rem" container>
         {kpis.map((k) => (
           <KpiCard key={k.heading} size={{ xs: 12, sm: 6, md: 3 }}>
+            {/* Chrome object in the corner, shown only with the Explore look (Portfolio). */}
+            <Box
+              className="look-decor"
+              aria-hidden
+              sx={{ display: "none", position: "absolute", right: "-2.25rem", bottom: "-2.25rem", width: "7rem", height: "7rem", opacity: 0.55, pointerEvents: "none", [LOOK]: { display: "block" } }}
+            >
+              <ThemeIcon kind={KPI_ICON[k.heading] ?? "coins"} size="100%" />
+            </Box>
             <KpiTop>
               <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
                 <Typography variant={small}>{k.heading}</Typography>

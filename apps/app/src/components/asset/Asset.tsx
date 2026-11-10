@@ -7,7 +7,6 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
-import Skeleton from "@mui/material/Skeleton";
 import Typography from "@mui/material/Typography";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ConnectWalletButton from "@/components/common/ConnectWalletButton";
@@ -86,7 +85,13 @@ const Line = ({ label, value, sub, busy }: { label: string; value: string; sub?:
           {value}
         </Shimmer>
       </Typography>
-      {sub && !busy && <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>{sub}</Typography>}
+      {sub && (
+        <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>
+          <Shimmer on={!!busy} width="3rem">
+            {sub}
+          </Shimmer>
+        </Typography>
+      )}
     </Box>
   </Box>
 );
@@ -264,7 +269,7 @@ export default function Asset() {
   ];
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "grid", gap: "1rem", alignItems: "start", gridTemplateColumns: "minmax(12.500rem, 1fr) 27.375rem", "@media (max-width: 54.250rem)": { gridTemplateColumns: "1fr" } }}>
+    <Box sx={{ minHeight: "100vh", display: "grid", gap: "1rem", alignItems: "start", mt: "0.4rem", gridTemplateColumns: "minmax(12.500rem, 1fr) 27.375rem", "@media (max-width: 54.250rem)": { gridTemplateColumns: "1fr" } }}>
       <SectionCard sx={{ minWidth: 0, gap: "1.25rem", p: { xs: "1rem", sm: "1.5rem" } }}>
         <Breadcrumbs trail={[{ label: "Home", href: "/" }, { label: code }]} />
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
@@ -304,11 +309,12 @@ export default function Asset() {
         <Grid container spacing="1rem">
           {stats.map((s) => (
             <Grid key={s.label} size={{ xs: 6, sm: 4, lg: 3 }}>
-              {busy ? (
-                <Skeleton variant="rounded" animation="wave" sx={{ height: "8rem", borderRadius: "0.5rem" }} />
-              ) : (
-                <StatCard label={s.label} value={s.value} showChange={s.change != null} changeValue={s.change ?? 0} />
-              )}
+              <StatCard
+                label={s.label}
+                value={<Shimmer on={busy} width="4.5rem">{busy ? null : s.value}</Shimmer>}
+                showChange={!busy && s.change != null}
+                changeValue={s.change ?? 0}
+              />
             </Grid>
           ))}
         </Grid>

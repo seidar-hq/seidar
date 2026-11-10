@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Box from "@mui/material/Box";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured, MeasuredBlock } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -72,28 +72,24 @@ export function PerformanceCard({ pnl, range, onRange }: { pnl: PnlResult; range
         Profit &amp; loss
       </CardTitle>
 
-      <Box sx={{ display: "grid", gap: "1rem", gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }, px: "0.25rem" }}>
-        {busy ? (
-          Array.from({ length: 4 }, (_, i) => <Skeleton key={i} variant="rounded" animation="wave" height="3.25rem" />)
-        ) : (
-          <>
-            <Stat label={`P&L · ${rangeLabel}`} value={signed(pnl.pnl)} color={up ? "green.main" : "error.main"} sub={pctSigned(pnl.pnlPct)} />
-            <Stat label="Value" value={formatUsd(pnl.endValue)} sub={`from ${formatUsd(pnl.startValue)}`} />
-            <Stat label="Deposited" value={formatUsd(pnl.deposits)} sub="transfers in" />
-            <Stat label="Withdrawn" value={formatUsd(pnl.withdrawals)} sub="transfers out" />
-          </>
-        )}
-      </Box>
-
-      {busy ? (
-        <Skeleton variant="rounded" animation="wave" sx={{ height: "17rem", borderRadius: "0.75rem" }} />
-      ) : pnl.series.length < 2 ? (
-        <Box sx={{ height: "17rem", display: "grid", placeItems: "center" }}>
-          <Typography color="grey.200">No price history for this wallet&apos;s holdings.</Typography>
+      <Measured loading={busy}>
+        <Box sx={{ display: "grid", gap: "1rem", gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }, px: "0.25rem" }}>
+          <Stat label={`P&L · ${rangeLabel}`} value={signed(pnl.pnl)} color={up ? "green.main" : "error.main"} sub={pctSigned(pnl.pnlPct)} />
+          <Stat label="Value" value={formatUsd(pnl.endValue)} sub={`from ${formatUsd(pnl.startValue)}`} />
+          <Stat label="Deposited" value={formatUsd(pnl.deposits)} sub="transfers in" />
+          <Stat label="Withdrawn" value={formatUsd(pnl.withdrawals)} sub="transfers out" />
         </Box>
-      ) : (
-        <ZoomChart series={series} height="17rem" format={(v) => (mode === "pnl" ? signed(v) : formatUsd(v))} intraday={range === "1d" || range === "7d"} fitKey={`${range}:${mode}`} />
-      )}
+      </Measured>
+
+      <MeasuredBlock loading={busy} height="17rem">
+        {pnl.series.length < 2 ? (
+          <Box sx={{ height: "17rem", display: "grid", placeItems: "center" }}>
+            <Typography color="grey.200">No price history for this wallet&apos;s holdings.</Typography>
+          </Box>
+        ) : (
+          <ZoomChart series={series} height="17rem" format={(v) => (mode === "pnl" ? signed(v) : formatUsd(v))} intraday={range === "1d" || range === "7d"} fitKey={`${range}:${mode}`} />
+        )}
+      </MeasuredBlock>
 
       {!pnl.loading && !pnl.complete && (
         <Typography variant="caption" sx={{ color: "#F5B83D", px: "0.25rem" }}>
@@ -157,7 +153,9 @@ export function RiskCard({ report, loading }: { report: RiskReport | null; loadi
       </CardTitle>
       {!report ? (
         loading ? (
-          <Skeleton variant="rounded" animation="wave" sx={{ height: "16rem" }} />
+          <MeasuredBlock loading height="16rem">
+            {null}
+          </MeasuredBlock>
         ) : (
           <Typography color="grey.200" sx={{ py: "2rem", textAlign: "center" }}>
             Nothing held to score.
@@ -246,7 +244,9 @@ export function AllocationCard({ portfolio, items, loading }: { portfolio: Portf
       </CardTitle>
       {loading || slices.length === 0 ? (
         loading ? (
-          <Skeleton variant="rounded" animation="wave" sx={{ height: "16rem" }} />
+          <MeasuredBlock loading height="16rem">
+            {null}
+          </MeasuredBlock>
         ) : (
           <Typography color="grey.200" sx={{ py: "2rem", textAlign: "center" }}>
             Nothing held.

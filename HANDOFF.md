@@ -299,7 +299,8 @@ laptop show as `ENTERPRISE-BENIN`, NG. The 504s with `requestSource: earlyHintsC
 - Worker secrets (set via `wrangler secret bulk`, values live only in `services/api/.env.local` /
   `.dev.vars`): `SOROSWAP_API_KEY`, `DEFINDEX_API_KEY`, `RPC_URL`.
 - Worker vars: `CORS_ORIGINS` = app.seidar.xyz, seidar-app.pages.dev, analytics.seidar.xyz,
-  seidar-analytics.pages.dev, http://localhost:3014; rate limits (`API_RL_LIMIT` 120/min/IP, quotes 600).
+  seidar-analytics.pages.dev, http://localhost:3014; rate limits (`API_RL_LIMIT` 120/min/IP, quotes 600);
+  `XOXNO_REFERRAL_ID=2` (issued by XOXNO).
 - Feedback (`POST /feedback`, header Feedback button): emailed through the `FEEDBACK_EMAIL` send_email
   binding to `FEEDBACK_TO = feedback@seidar.xyz` (wrangler.toml `[vars]`; the binding only allows that
   address). Email Routing rule `feedback@seidar.xyz` -> owner's Gmail was created 2026-10-29, next to the
@@ -521,7 +522,11 @@ Session of 2026-10-29/30 (all pushed, app + API deployed):
   Certora work). Their swap aggregator (`stellar-swap.xoxno.com`, used by our Multiply) supports on-chain
   referral ids (`referral_id` in the route payload; fee set by XOXNO's admin, claimed with
   `claim_referral_fees`): a referral id for Seidar must come from XOXNO. Integrator API is keyless.
-- **Swap**: Soroswap aggregator (`SOROSWAP_API_KEY`) over soroswap/phoenix/aqua/sdex/sushi.
+- **Swap**: best net quote from the Soroswap aggregator (`SOROSWAP_API_KEY`) and XOXNO's aggregator
+  (keyless, `stellar-swap.xoxno.com`; mainnet only; `XOXNO_REFERRAL_ID=2`). `@xoxno/sdk-js` >= 1.0.234
+  takes a C... smart account as caller with its G... owner as `sourceAccount`: XOXNO lending and swap
+  builders pass that directly (no `retargetOp`); end to end it waits on `invokeFor` accepting C... callers.
+  XOXNO quote routes containing Curve are rejected until its router upgrade.
   Phoenix has no XLM→USDC route. Seidar adds no fee to normal swaps.
 - **Vaults**: DeFindex = full factory catalogue read on-chain (listed above a min TVL, ~124 vaults,
   cold build 2.5–5 min); Upshift = Gami earnUSDC/earnXLM (Merkl APR, ~2-day withdrawal queue);

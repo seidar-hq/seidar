@@ -6,7 +6,7 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
-import Skeleton from "@mui/material/Skeleton";
+import Skeleton from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme, type Theme } from "@mui/material/styles";

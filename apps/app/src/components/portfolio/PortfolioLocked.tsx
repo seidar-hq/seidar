@@ -5,6 +5,7 @@ import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
+import { LOOK, lookTile } from "@/theme/exploreLook";
 import { styled } from "@mui/material/styles";
 import Tabs, { type TabItem } from "@/components/common/Tabs";
 import {
@@ -111,6 +112,7 @@ const KpiCard = styled(Box, { shouldForwardProp: (p) => p !== "idx" })<{ idx: nu
   alignItems: "flex-start",
   gap: "1rem",
   overflow: "hidden",
+  [LOOK]: { ...lookTile, position: "absolute" },
 }));
 
 const KpiValueRow = styled(Box)({ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" });

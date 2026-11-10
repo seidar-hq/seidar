@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
@@ -108,6 +108,18 @@ function ActionBar({ a }: { a: FeaturedWallet["actions"] }) {
     </Tooltip>
   );
 }
+
+/** Stand-in wallets drawn while the featured list loads, so its skeleton has the cards' real shape. */
+const SAMPLE_WALLETS: FeaturedWallet[] = Array.from({ length: 6 }, (_, i) => ({
+  address: "SAMPLE" + i,
+  label: null,
+  actions: { supply: 12, withdraw: 3, borrow: 4, repay: 2 },
+  lastActive: 0,
+  pools: [{ id: "sample", name: "Sample pool" }],
+  assets: ["SAMPLE", "SAMPLE"],
+  walletUsd: 12345,
+  topHoldings: [{ asset: "SAMPLE", usd: 1234 }],
+}));
 
 function WalletCard({ w, watched, onOpen, onStar }: { w: FeaturedWallet; watched: boolean; onOpen: () => void; onStar: () => void }) {
   const { byContract } = useTokenCatalogue();
@@ -258,22 +270,18 @@ export default function DiscoverLanding() {
         >
           Active on Stellar DeFi
         </CardTitle>
-        {featured.loading ? (
-          <Box sx={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fill, minmax(16.5rem, 1fr))" }}>
-            {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} variant="rounded" animation="wave" sx={{ height: "11.5rem", borderRadius: "1rem" }} />
-            ))}
-          </Box>
-        ) : wallets.length === 0 ? (
+        {!featured.loading && wallets.length === 0 ? (
           <Box sx={{ py: "3rem", textAlign: "center" }}>
             <Typography color="grey.200">{featured.failed ? "Couldn't load active wallets right now. Paste an address above, or try again in a minute." : "No active wallets found in the last 30 days."}</Typography>
           </Box>
         ) : (
-          <Box sx={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fill, minmax(16.5rem, 1fr))" }}>
-            {wallets.map((w) => (
-              <WalletCard key={w.address} w={w} watched={saved.isWatched(w.address)} onOpen={() => open(w.address)} onStar={() => saved.toggleWatch(w.address, w.label ?? undefined)} />
-            ))}
-          </Box>
+          <Measured loading={featured.loading} id="discover-featured">
+            <Box sx={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fill, minmax(16.5rem, 1fr))" }}>
+              {(featured.loading ? SAMPLE_WALLETS : wallets).map((w) => (
+                <WalletCard key={w.address} w={w} watched={saved.isWatched(w.address)} onOpen={() => open(w.address)} onStar={() => saved.toggleWatch(w.address, w.label ?? undefined)} />
+              ))}
+            </Box>
+          </Measured>
         )}
         {featured.source && (
           <Typography variant="caption" color="grey.200" sx={{ px: "0.25rem" }}>

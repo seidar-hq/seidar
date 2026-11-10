@@ -398,6 +398,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
           </RowsCard>
         ) : (
           <DataTable
+            skeletonId={`lend-positions-${p}`}
             variant="inset"
             columns={posCols}
             rows={rows}
@@ -497,7 +498,8 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
         title="Top Markets"
         nameLabel="Markets"
         valueLabel="Supply APY"
-        emptyText="Loading markets…"
+        emptyText="No market qualifies right now."
+        loading={loading}
         items={top.map((m) => {
           const b = blndApr(m, "supply", blndPx);
           return {
@@ -516,7 +518,7 @@ export default function LendBorrow({ tabs }: { tabs: React.ReactNode }) {
 
   return (
     <>
-      <EarnGrid tabs={tabs} main={main} side={side} />
+      <EarnGrid tabs={tabs} main={main} side={side} pinned />
       <TxDialog open={claim.open} title="Claim rewards" steps={claim.steps} error={claim.error} onClose={() => setClaim((c) => ({ ...c, open: false }))} />
     </>
   );

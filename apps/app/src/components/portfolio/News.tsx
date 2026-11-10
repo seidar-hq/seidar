@@ -7,15 +7,22 @@ import AccordionSummary from "@mui/material/AccordionSummary";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
+import { LOOK, TINT, lookPanel } from "@/theme/exploreLook";
 import { styled } from "@mui/material/styles";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import { useSkeletonBg } from "@/hooks/useSkeletonBg";
 import { NEWS_FEED_URL } from "@/lib/links";
 import { useWallet } from "@/wallet/WalletContext";
 
 type NewsItem = { title: string; link: string; pubDate?: string };
+
+/** Stand-in headlines drawn while the news loads, so its skeleton has the list's real shape. */
+const SAMPLE_NEWS: NewsItem[] = Array.from({ length: 7 }, (_, i) => ({
+  title: "A sample headline about what happened on Stellar today " + i,
+  link: "#",
+  pubDate: "2026-01-01T00:00:00Z",
+}));
 
 const NewsAccordion = styled(Accordion)(({ theme }) => ({
   width: "100%",
@@ -24,6 +31,7 @@ const NewsAccordion = styled(Accordion)(({ theme }) => ({
   borderRadius: "1.5rem !important",
   overflow: "hidden",
   "&:before": { display: "none" },
+  [LOOK]: { ...lookPanel(TINT.teal), borderRadius: "1.75rem !important" },
 }));
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -68,26 +76,6 @@ function useNews() {
   return { items, loading };
 }
 
-function NewsSkeleton() {
-  const bg = useSkeletonBg();
-  return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      {Array.from({ length: 7 }).map((_, i) => (
-        <Box key={i} sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-              <Skeleton variant="rounded" height="1.250rem" width="7.500rem" animation="wave" sx={{ background: bg }} />
-              <Skeleton variant="rounded" height="1.750rem" width="18.750rem" animation="wave" sx={{ background: bg }} />
-            </Box>
-            <Skeleton variant="rounded" width="1rem" height="1rem" animation="wave" sx={{ background: bg }} />
-          </Box>
-          {i < 6 && <Divider />}
-        </Box>
-      ))}
-    </Box>
-  );
-}
-
 export default function News() {
   const { isConnected } = useWallet();
   const { items, loading } = useNews();
@@ -105,29 +93,29 @@ export default function News() {
           </Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ padding: "1.5rem 1rem 1rem", height: isConnected ? "42.5rem" : "26.0625rem", overflowY: "auto" }}>
-          {loading ? (
-            <NewsSkeleton />
-          ) : items?.length ? (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {items.map((item, i) => (
-                <Box key={item.title} sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-                      <Typography variant="caption" color="grey.200">
-                        {formatDate(item.pubDate)}
-                      </Typography>
-                      <Typography variant="body3" color="common.black">
-                        {item.title}
-                      </Typography>
+          {loading || items?.length ? (
+            <Measured loading={loading} id="news">
+              <Box sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {(loading ? SAMPLE_NEWS : (items ?? [])).map((item, i, all) => (
+                  <Box key={item.title} sx={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                        <Typography variant="caption" color="grey.200">
+                          {formatDate(item.pubDate)}
+                        </Typography>
+                        <Typography variant="body3" color="common.black">
+                          {item.title}
+                        </Typography>
+                      </Box>
+                      <Box component="a" href={item.link} target="_blank" rel="noopener noreferrer" sx={{ display: "flex" }}>
+                        <OpenInNewIcon sx={{ color: "primary.main", fontSize: "1rem" }} />
+                      </Box>
                     </Box>
-                    <Box component="a" href={item.link} target="_blank" rel="noopener noreferrer" sx={{ display: "flex" }}>
-                      <OpenInNewIcon sx={{ color: "primary.main", fontSize: "1rem" }} />
-                    </Box>
+                    {i < all.length - 1 && <Divider />}
                   </Box>
-                  {i < items.length - 1 && <Divider />}
-                </Box>
-              ))}
-            </Box>
+                ))}
+              </Box>
+            </Measured>
           ) : (
             <Typography variant="subtitle1" sx={{ color: "grey.200", textAlign: "center", padding: "4rem 0" }}>
               No news found

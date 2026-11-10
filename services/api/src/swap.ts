@@ -1,4 +1,4 @@
-// Swap aggregator (Soroswap) + token registry + XDR submit + icon proxy.
+// Swap aggregators (Soroswap + XOXNO) + token registry + XDR submit + icon proxy.
 // Ported verbatim from apps/app/src/lib/soroswap.ts and
 // app/api/{swap/quote,swap/build,swap/send,swap/tokens,tx/send,icon}/route.ts.
 // SOROSWAP_API_KEY stays server-side (services/api env, never the browser).
@@ -12,10 +12,175 @@ import { submitAndWait } from "./rpc.js";
 import { invokeFor } from "./invoke.js";
 import { aggregator, encodeRoutes, SMART_SWAP_PROTOCOLS, type RawTrade } from "./swap-route.js";
 import { MAX_FEE_BPS, netOf, routerAddress, swapFeeBps } from "./fees.js";
+import { routeUsesCurve } from "./xoxno-route.js";
 
 export const SORO_BASE = "https://api.soroswap.finance";
 export const soroNetwork = () => (isTestnet() ? "testnet" : "mainnet");
 export const SORO_PROTOCOLS = ["soroswap", "phoenix", "aqua", "sdex", "sushi"];
+
+export const XOXNO_BASE = (process.env.XOXNO_QUOTE_URL?.trim() || "https://stellar-swap.xoxno.com").replace(/\/+$/, "");
+export const XOXNO_ROUTER =
+  process.env.XOXNO_ROUTER?.trim() || "CCVENFSVCBYDHVOACFZXMNNYVOZ3LKXPZYU5LUI4N7KTXOKRVYD7F3TR";
+
+export const DEFAULT_XOXNO_REFERRAL_ID = 2;
+
+export function xoxnoReferralId(): number {
+  const raw = process.env.XOXNO_REFERRAL_ID?.trim();
+  if (!raw) return DEFAULT_XOXNO_REFERRAL_ID;
+  if (!/^\d+$/.test(raw)) throw new Error("XOXNO_REFERRAL_ID must be an unsigned integer");
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id < 0 || id > 0xffffffff)
+    throw new Error("XOXNO_REFERRAL_ID must be between 0 and 4294967295");
+  return id;
+}
+
+type XoxnoHop = {
+  dex?: string;
+  address?: string;
+  from?: string;
+  to?: string;
+  amountIn?: string;
+  amountOut?: string;
+};
+
+type XoxnoPath = { splitPpm?: number; swaps?: XoxnoHop[] };
+
+type XoxnoRaw = {
+  platform?: string;
+  amountIn?: string;
+  amountOut?: string;
+  amountOutMin?: string;
+  priceImpact?: number;
+  routeXdr?: string;
+  paths?: XoxnoPath[];
+  hops?: XoxnoHop[];
+  feeBps?: number;
+  feeAmount?: string;
+  feeOnInput?: boolean;
+  snapshot?: unknown;
+};
+
+type RoutePlanEntry = { swapInfo: { protocol: string; path: string[] }; percent?: string };
+
+const XOXNO_DEX: Record<string, string> = {
+  Soroswap: "soroswap",
+  Aquarius: "aqua",
+  Phoenix: "phoenix",
+  Sushi: "sushi",
+  CometDex: "comet",
+  Curve: "curve",
+};
+
+const xoxnoDex = (dex: unknown) => XOXNO_DEX[String(dex)] ?? String(dex ?? "").toLowerCase();
+
+async function xoxnoGet(params: Record<string, unknown>, ms = 12_000): Promise<unknown> {
+  const u = new URL(`${XOXNO_BASE}/api/v1/quote`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(u, {
+      signal: ctrl.signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) {
+      const msg =
+        (data as { error?: string; message?: string } | null)?.error ??
+        (data as { error?: string; message?: string } | null)?.message ??
+        `http ${r.status}`;
+      const err = new Error(String(msg).slice(0, 200)) as Error & { status?: number };
+      err.status = r.status;
+      throw err;
+    }
+    return data;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export async function xoxnoQuote(input: {
+  assetIn: string;
+  assetOut: string;
+  amount: string;
+  slippageBps?: string;
+  referralId: number;
+}): Promise<Record<string, unknown>> {
+  const slip = /^\d+$/.test(String(input.slippageBps ?? "")) ? Number(input.slippageBps) : 50;
+  const raw = (await xoxnoGet({
+    from: input.assetIn,
+    to: input.assetOut,
+    amountIn: input.amount,
+    slippage: Math.min(Math.max(slip, 1), 9_999) / 10_000,
+    includePaths: true,
+    platform: "aggregator",
+    referralId: input.referralId,
+    fresh: true,
+  })) as XoxnoRaw;
+
+  const amountOut = typeof raw.amountOut === "string" && /^\d+$/.test(raw.amountOut) ? BigInt(raw.amountOut) : 0n;
+  const minOut = typeof raw.amountOutMin === "string" && /^\d+$/.test(raw.amountOutMin) ? BigInt(raw.amountOutMin) : 0n;
+  const routeXdr = typeof raw.routeXdr === "string" ? raw.routeXdr : "";
+  if (raw.platform !== "aggregator" || !routeXdr) throw new Error("XOXNO returned an incomplete quote");
+  if (raw.amountIn !== input.amount) throw new Error("XOXNO changed the input amount");
+  if (amountOut <= 0n || minOut <= 0n) throw new Error("XOXNO returned an incomplete quote");
+  if (await routeUsesCurve(routeXdr)) throw new Error("XOXNO route uses Curve, which its router cannot execute yet.");
+
+  const { verifyStellarRouteBytes } = await import("@xoxno/sdk-js/stellar-lending");
+  const route = verifyStellarRouteBytes(routeXdr, {
+    tokenIn: input.assetIn,
+    tokenOut: input.assetOut,
+    minOut: minOut.toString(),
+    amountIn: input.amount,
+  });
+  if (route.referralId !== input.referralId) throw new Error("XOXNO returned an unexpected referral id");
+
+  const routePlan: RoutePlanEntry[] = [];
+  for (const p of Array.isArray(raw.paths) ? raw.paths : []) {
+    const percent = typeof p.splitPpm === "number" ? (p.splitPpm / 10_000).toFixed(2) : undefined;
+    for (const s of Array.isArray(p.swaps) ? p.swaps : []) {
+      routePlan.push({
+        swapInfo: { protocol: xoxnoDex(s.dex), path: [String(s.from ?? ""), String(s.to ?? "")] },
+        ...(percent ? { percent } : {}),
+      });
+    }
+  }
+  if (!routePlan.length && Array.isArray(raw.hops)) {
+    for (const s of raw.hops) {
+      routePlan.push({
+        swapInfo: { protocol: xoxnoDex(s.dex), path: [String(s.from ?? ""), String(s.to ?? "")] },
+      });
+    }
+  }
+
+  const feeBps = Number.isInteger(raw.feeBps) ? Number(raw.feeBps) : 0;
+  return {
+    provider: "xoxno",
+    platform: "aggregator",
+    tradeType: "EXACT_IN",
+    assetIn: input.assetIn,
+    assetOut: input.assetOut,
+    amountIn: input.amount,
+    amountOut: amountOut.toString(),
+    otherAmountThreshold: minOut.toString(),
+    priceImpactPct:
+      typeof raw.priceImpact === "number" && Number.isFinite(raw.priceImpact) ? raw.priceImpact.toFixed(2) : null,
+    routePlan,
+    feeBps,
+    xoxno: {
+      routeXdr,
+      referralId: input.referralId,
+      router: XOXNO_ROUTER,
+      feeBps,
+      feeAmount: typeof raw.feeAmount === "string" && /^\d+$/.test(raw.feeAmount) ? raw.feeAmount : null,
+      feeOnInput: typeof raw.feeOnInput === "boolean" ? raw.feeOnInput : null,
+      snapshot: raw.snapshot ?? null,
+    },
+  };
+}
 
 const RPC_URL = process.env.RPC_URL?.trim() || "https://mainnet.sorobanrpc.com";
 
@@ -107,6 +272,12 @@ async function sanitizeImpact(quote: Record<string, unknown>, assetIn: string, a
   }
 }
 
+const quoteOut = (q: Record<string, unknown> | null): bigint | null => {
+  const v = q?.amountOut;
+  const s = typeof v === "string" ? v : typeof v === "number" && Number.isSafeInteger(v) ? String(v) : "";
+  return /^\d+$/.test(s) ? BigInt(s) : null;
+};
+
 export async function quoteSwap(body: {
   assetIn?: string;
   assetOut?: string;
@@ -118,7 +289,7 @@ export async function quoteSwap(body: {
   /** Quote for a smart account: only routes Seidar can encode itself. */
   smart?: boolean;
 }) {
-  if (!soroKey()) return { status: 409, body: { ok: false, reason: "no-api-key" } };
+  const key = soroKey();
   const assetIn = body?.assetIn ?? "";
   const assetOut = body?.assetOut ?? "";
   const amount = body?.amount ?? "";
@@ -154,7 +325,14 @@ export async function quoteSwap(body: {
     : wantProto.length > 0
       ? wantProto
       : SORO_PROTOCOLS;
-  const quoteKey = `swap:quote:v1:${JSON.stringify([
+  const referralId = xoxnoReferralId();
+  const xoxnoEligible =
+    !isTestnet() &&
+    !body?.smart &&
+    tradeType === "EXACT_IN" &&
+    (rawProto == null || rawProto.length === 0);
+  if (!key && !xoxnoEligible) return { status: 409, body: { ok: false, reason: "no-api-key" } };
+  const quoteKey = `swap:quote:v2:${JSON.stringify([
     soroNetwork(),
     assetIn,
     assetOut,
@@ -164,13 +342,14 @@ export async function quoteSwap(body: {
     [...protocols].sort(),
     feeBps ?? null,
     !!body?.smart,
+    xoxnoEligible ? referralId : null,
   ])}`;
   const cached = await cacheGetEntry<unknown>(quoteKey).catch(() => null);
   if (cached && Date.now() - cached.at < QUOTE_TTL_MS) {
     return { status: 200, body: { ok: true, quote: cached.value } };
   }
   const cooldown = soroCooldownUntil - Date.now();
-  if (cooldown > 0) {
+  if (cooldown > 0 && !xoxnoEligible) {
     return {
       status: 200,
       body: {
@@ -183,32 +362,66 @@ export async function quoteSwap(body: {
 
   try {
     const load = async () => {
-      const quote = await soroPost("/quote", {
-        assetIn,
-        assetOut,
-        amount,
-        tradeType,
-        protocols,
-        ...(body?.slippageBps ? { slippageBps: body.slippageBps } : {}),
-        // The API's feeBps only lowers its quote (the built swap carries no
-        // partner fee), so smart-account quotes leave it out: Seidar's fee is
-        // taken by the Seidar router and reported below.
-        ...(feeBps && !body?.smart ? { feeBps } : {}),
-      });
-      if (body?.smart) {
-        const q = quote as { amountOut?: string; rawTrade?: RawTrade };
-        const bps = swapFeeBps(feeBps);
-        const net = (v: unknown) => (/^\d+$/.test(String(v)) ? netOf(BigInt(String(v)), bps).toString() : null);
-        (quote as Record<string, unknown>).seidar = {
-          feeBps: bps,
-          router: routerAddress(),
-          amountOutNet: net(q.amountOut),
-          amountOutMinNet: net(q.rawTrade?.amountOutMin),
-        };
+      const soroLoad = (async () => {
+        if (!key) throw Object.assign(new Error("no-api-key"), { status: 409 });
+        if (soroCooldownUntil > Date.now())
+          throw Object.assign(new Error("Quote service is busy. Retrying shortly."), {
+            status: 429,
+            cooldown: true,
+          });
+        const quote = (await soroPost("/quote", {
+          assetIn,
+          assetOut,
+          amount,
+          tradeType,
+          protocols,
+          ...(body?.slippageBps ? { slippageBps: body.slippageBps } : {}),
+          // The API's feeBps only lowers its quote (the built swap carries no
+          // partner fee), so smart-account quotes leave it out: Seidar's fee is
+          // taken by the Seidar router and reported below.
+          ...(feeBps && !body?.smart ? { feeBps } : {}),
+        })) as Record<string, unknown>;
+        quote.provider = "soroswap";
+        if (body?.smart) {
+          const q = quote as { amountOut?: string; rawTrade?: RawTrade };
+          const bps = swapFeeBps(feeBps);
+          const net = (v: unknown) => (/^\d+$/.test(String(v)) ? netOf(BigInt(String(v)), bps).toString() : null);
+          quote.seidar = {
+            feeBps: bps,
+            router: routerAddress(),
+            amountOutNet: net(q.amountOut),
+            amountOutMinNet: net(q.rawTrade?.amountOutMin),
+          };
+        }
+        await sanitizeImpact(quote, assetIn, assetOut);
+        return quote;
+      })();
+      const xoxnoLoad = xoxnoEligible
+        ? xoxnoQuote({
+            assetIn,
+            assetOut,
+            amount,
+            slippageBps: body?.slippageBps,
+            referralId,
+          })
+        : Promise.reject(Object.assign(new Error("XOXNO not available for this quote"), { status: 409 }));
+      const [soroRes, xoxnoRes] = await Promise.allSettled([soroLoad, xoxnoLoad]);
+      const soroQuote = soroRes.status === "fulfilled" ? soroRes.value : null;
+      const xoxno = xoxnoRes.status === "fulfilled" ? xoxnoRes.value : null;
+      const soroErr = soroRes.status === "rejected" ? soroRes.reason : null;
+      const xoxnoErr = xoxnoRes.status === "rejected" ? xoxnoRes.reason : null;
+      const soroStatus = (soroErr as { status?: number; cooldown?: boolean } | null)?.status;
+      if (soroStatus === 429 && !(soroErr as { cooldown?: boolean } | null)?.cooldown)
+        soroCooldownUntil = Date.now() + SORO_COOLDOWN_MS;
+      let chosen = soroQuote;
+      if (xoxno && (!soroQuote || (quoteOut(xoxno) ?? 0n) > (quoteOut(soroQuote) ?? 0n))) chosen = xoxno;
+      if (!chosen) {
+        if (soroStatus === 400 || soroStatus === 429) throw soroErr;
+        if (xoxnoEligible && xoxnoErr) throw xoxnoErr;
+        throw soroErr ?? xoxnoErr ?? new Error("No route found for this pair/amount.");
       }
-      await sanitizeImpact(quote as Record<string, unknown>, assetIn, assetOut);
-      await cacheSet(quoteKey, quote, QUOTE_TTL_MS).catch(() => {});
-      return quote;
+      await cacheSet(quoteKey, chosen, QUOTE_TTL_MS).catch(() => {});
+      return chosen;
     };
     const quote = await singleFlight(`flight:${quoteKey}`, load);
     return { status: 200, body: { ok: true, quote } };
@@ -221,13 +434,14 @@ export async function quoteSwap(body: {
       if (q) return { status: 200, body: { ok: true, quote: q } };
     }
     if (status === 429) {
-      soroCooldownUntil = Date.now() + SORO_COOLDOWN_MS;
+      if (!(e as { cooldown?: boolean }).cooldown) soroCooldownUntil = Date.now() + SORO_COOLDOWN_MS;
+      const retryAfter = Math.max(1, Math.ceil((soroCooldownUntil - Date.now()) / 1000));
       return {
         status: 200,
         body: {
           ok: false,
           error: "Quote service is busy. Retrying shortly.",
-          retryAfter: Math.ceil(SORO_COOLDOWN_MS / 1000),
+          retryAfter,
         },
       };
     }
@@ -251,6 +465,7 @@ async function directQuote(assetIn: string, assetOut: string, amount: string, sl
   const min = out - (out * slip) / 10_000n;
   const bps = swapFeeBps(feeBps);
   return {
+    provider: "soroswap",
     assetIn,
     assetOut,
     tradeType: "EXACT_IN",
@@ -318,19 +533,70 @@ async function buildSmartSwap(quote: unknown, account: string, signer: string) {
   return (await invokeFor({ from: account, signer, op })).xdr;
 }
 
+async function buildXoxnoSwap(quote: unknown, from: string, signer?: string) {
+  const q = quote as {
+    tradeType?: string;
+    assetIn?: string;
+    assetOut?: string;
+    amountIn?: string;
+    otherAmountThreshold?: string;
+    xoxno?: { routeXdr?: string };
+  };
+  if (q?.tradeType !== "EXACT_IN") throw new Error("XOXNO swaps sell an exact amount - switch to exact input.");
+  const assetIn = String(q.assetIn ?? "");
+  const assetOut = String(q.assetOut ?? "");
+  const amountIn = String(q.amountIn ?? "");
+  const minOut = String(q.otherAmountThreshold ?? "");
+  const routeXdr = String(q.xoxno?.routeXdr ?? "");
+  if (!isContract(assetIn) || !isContract(assetOut)) throw new Error("malformed XOXNO quote");
+  if (!/^\d+$/.test(amountIn) || BigInt(amountIn) <= 0n) throw new Error("malformed XOXNO quote");
+  if (!/^\d+$/.test(minOut) || BigInt(minOut) <= 0n) throw new Error("malformed XOXNO quote");
+  if (!routeXdr) throw new Error("XOXNO quote has no route");
+  if (await routeUsesCurve(routeXdr)) throw new Error("XOXNO route uses Curve, which its router cannot execute yet.");
+  const { verifyStellarRouteBytes } = await import("@xoxno/sdk-js/stellar-lending");
+  const route = verifyStellarRouteBytes(routeXdr, { tokenIn: assetIn, tokenOut: assetOut, minOut, amountIn });
+  if (route.referralId !== xoxnoReferralId())
+    throw new Error("XOXNO quote is out of date - refresh and try again.");
+  const sdk = await import("@stellar/stellar-sdk");
+  const op = new sdk.Contract(XOXNO_ROUTER).call(
+    "execute_strategy",
+    sdk.Address.fromString(from).toScVal(),
+    sdk.nativeToScVal(BigInt(amountIn), { type: "i128" }),
+    sdk.xdr.ScVal.scvBytes(Buffer.from(routeXdr, "base64")),
+  );
+  return (await invokeFor({ from, signer, op, authMode: "record_allow_nonroot" })).xdr;
+}
+
 export async function buildSwap(body: { quote?: unknown; from?: string; to?: string; signer?: string }) {
-  if (!soroKey()) return { status: 409, body: { ok: false, reason: "no-api-key" } };
-  if (isContract(body?.from ?? "")) {
+  const quote = body?.quote as { provider?: string; xoxno?: { routeXdr?: string } } | null;
+  const from = body?.from ?? "";
+  if (quote?.provider === "xoxno" || quote?.xoxno?.routeXdr) {
+    // A smart account (C...) swaps as itself; its owner wallet (signer) is the source and signs.
+    const signer = body?.signer ? String(body.signer) : undefined;
+    if (!isAccount(from) && !(isContract(from) && signer && isAccount(signer)))
+      return { status: 200, body: { ok: false, error: "XOXNO swaps need a wallet, or a smart account + its owner wallet (signer)" } };
+    if (body?.to && body.to !== from)
+      return { status: 200, body: { ok: false, error: "XOXNO swaps send output to the signing wallet" } };
+    try {
+      return { status: 200, body: { ok: true, xdr: await buildXoxnoSwap(quote, from, signer) } };
+    } catch (e) {
+      return {
+        status: 200,
+        body: { ok: false, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) },
+      };
+    }
+  }
+  if (isContract(from)) {
     const signer = String(body?.signer ?? "");
     if (body?.quote == null || !isAccount(signer))
       return { status: 200, body: { ok: false, error: "quote + owner wallet (signer) required" } };
     try {
-      return { status: 200, body: { ok: true, xdr: await buildSmartSwap(body.quote, body.from!, signer) } };
+      return { status: 200, body: { ok: true, xdr: await buildSmartSwap(body.quote, from, signer) } };
     } catch (e) {
       return { status: 200, body: { ok: false, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) } };
     }
   }
-  const from = body?.from ?? "";
+  if (!soroKey()) return { status: 409, body: { ok: false, reason: "no-api-key" } };
   const to = body?.to && isAccount(body.to) ? body.to : from;
   if (body?.quote == null || !isAccount(from) || !isAccount(to)) {
     return { status: 200, body: { ok: false, error: "quote + valid from/to Stellar addresses required" } };

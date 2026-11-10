@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import Paper from "@mui/material/Paper";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -17,8 +17,6 @@ import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownR
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import { useSkeletonBg } from "@/hooks/useSkeletonBg";
-import { useThemeMode } from "@/theme/ThemeModeContext";
 
 export type Column<Row> = {
   id: string;
@@ -164,7 +162,20 @@ type Props<Row> = {
   emptyMinHeight?: string;
   /** Fills its parent's height and scrolls the rows inside it; the header and pager stay put. */
   fill?: boolean;
+  /** Remembers the table's shape under this key, so the next load's skeleton matches it exactly. */
+  skeletonId?: string;
 };
+
+/** Stands in for a cell while the first rows load: skullet draws a bone over it in the real column. */
+function PlaceholderCell({ first }: { first: boolean }) {
+  if (!first) return <span>000000</span>;
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+      <Box skullet-block="" sx={{ width: "2.5rem", height: "2.5rem", borderRadius: "50%", flexShrink: 0 }} />
+      <span>0000000</span>
+    </Box>
+  );
+}
 
 // Table styled after the material-react-table setup the original app used.
 export default function DataTable<Row>({
@@ -182,10 +193,9 @@ export default function DataTable<Row>({
   defaultSort,
   emptyMinHeight,
   fill = false,
+  skeletonId,
 }: Props<Row>) {
   const theme = useTheme();
-  const { isDarkMode } = useThemeMode();
-  const skeletonBg = useSkeletonBg();
   const line = `0.0625rem solid ${theme.palette.border.table}`;
   const [sort, setSort] = useState<{ id: string; dir: "asc" | "desc" } | null>(defaultSort ?? null);
   const [page, setPage] = useState(1);
@@ -234,44 +244,26 @@ export default function DataTable<Row>({
     </Box>
   );
 
-  let body: React.ReactNode;
-  if (isLoading) {
-    body = (
-      <Box sx={{ width: "100%", padding: inset ? 0 : "1rem", ...(fill ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}) }}>
-        <Box sx={{ display: "table", width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-          <Box sx={{ display: "table-header-group", backgroundColor: isDarkMode ? "transparent" : theme.palette.common.white }}>
-            <Box sx={{ display: "table-row" }}>
-              {columns.map((c) => (
-                <Box key={c.id} sx={{ display: "table-cell", padding: "1rem", borderBottom: `0.0625rem solid ${theme.palette.shadow.border}`, height: "3.500rem" }}>
-                  <Skeleton variant="rounded" height="1.25rem" width="60%" animation="wave" sx={{ background: skeletonBg }} />
-                </Box>
-              ))}
-            </Box>
-          </Box>
-          <Box sx={{ display: "table-row-group" }}>
-            {Array.from({ length: Math.min(perPage || 10, 10) }).map((_, r) => (
-              <Box key={r} sx={{ display: "table-row" }}>
-                {columns.map((c, ci) => (
-                  <Box key={c.id} sx={{ display: "table-cell", padding: "1rem", height: "5rem", verticalAlign: "middle" }}>
-                    {ci === 0 ? (
-                      <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                        <Skeleton variant="circular" width="2.5rem" height="2.5rem" animation="wave" sx={{ background: skeletonBg }} />
-                        <Skeleton variant="rounded" height="1.25rem" width="5rem" animation="wave" sx={{ background: skeletonBg }} />
-                      </Box>
-                    ) : (
-                      <Skeleton variant="rounded" height="1.5rem" width="80%" animation="wave" sx={{ background: skeletonBg }} />
-                    )}
-                  </Box>
-                ))}
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      </Box>
-    );
-  } else {
-    body = (
-      <>
+  // Loading with nothing on screen yet: placeholder rows in the real columns, for skullet to measure.
+  const placeholders = isLoading && rows.length === 0 ? Math.min(perPage || (emptyMinHeight ? 4 : 10), 10) : 0;
+  const body = (
+    <>
+      <Measured
+        loading={isLoading}
+        id={skeletonId ?? (typeof title === "string" ? `table:${title}` : undefined)}
+        sx={
+          fill
+            ? {
+                flex: "0 1 auto",
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                "& > [skullet-pane]": { flex: "0 1 auto", minHeight: 0, display: "flex", flexDirection: "column" },
+              }
+            : undefined
+        }
+      >
         <Paper
           elevation={0}
           sx={{
@@ -334,6 +326,15 @@ export default function DataTable<Row>({
                 </TableRow>
               </TableHead>
               <TableBody>
+                {Array.from({ length: placeholders }, (_, r) => (
+                  <TableRow key={`placeholder-${r}`} sx={{ "& td": { border: "none", borderBottom: line }, "&:last-of-type td": inset ? { borderBottom: "none" } : {} }}>
+                    {columns.map((c, ci) => (
+                      <TableCell key={c.id} align={c.align} sx={{ height: "5.25rem", padding: "0.875rem 0.75rem", whiteSpace: "nowrap", backgroundColor: "transparent" }}>
+                        <PlaceholderCell first={ci === 0} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
                 {visible.map((row, i) => (
                   <TableRow
                     key={getRowId ? getRowId(row, i) : i}
@@ -359,14 +360,14 @@ export default function DataTable<Row>({
             </Table>
           </TableContainer>
         </Paper>
-        {empty && (
-          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <EmptyState message={emptyDataText} minHeight={emptyMinHeight} />
-          </Box>
-        )}
-      </>
-    );
-  }
+      </Measured>
+      {empty && (
+        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <EmptyState message={emptyDataText} minHeight={emptyMinHeight} />
+        </Box>
+      )}
+    </>
+  );
 
   return (
     <Box

@@ -187,7 +187,8 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
       title="Top Vaults"
       nameLabel="Vaults"
       valueLabel="APY"
-      emptyText="Loading vaults…"
+      emptyText="No vault qualifies right now."
+      loading={loading}
       items={top.map((r) => ({
         key: r.address,
         icon: <TokenLogo code={r.assetCode} issuer={issuer(r.asset)} contract={r.asset} size="2.75rem" />,
@@ -200,5 +201,5 @@ export default function Vaults({ tabs }: { tabs: React.ReactNode }) {
     />
   );
 
-  return <EarnGrid tabs={tabs} main={main} side={side} />;
+  return <EarnGrid tabs={tabs} main={main} side={side} pinned />;
 }

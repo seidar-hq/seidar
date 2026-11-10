@@ -3,7 +3,7 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
-import Skeleton from "@mui/material/Skeleton";
+import Shimmer from "@/components/common/Shimmer";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { KpiCard, KpiFooterRow, KpiTop, KpiValueRow } from "@/components/common/SectionCard";
@@ -73,7 +73,7 @@ export default function MarketKpis() {
               </Box>
               <KpiValueRow>
                 <Typography variant="body4" color="common.black" component="div">
-                  {busy(k.value, l) ? <Skeleton variant="rounded" animation="wave" width="7rem" height="1.75rem" /> : (k.value ?? "—")}
+                  <Shimmer on={busy(k.value, l)} width="7rem">{k.value ?? "—"}</Shimmer>
                 </Typography>
                 {k.change != null && <Chip variant="mini" color={k.change >= 0 ? "success" : "error"} label={pctText(k.change)} />}
               </KpiValueRow>
@@ -81,7 +81,7 @@ export default function MarketKpis() {
             <KpiFooterRow>
               <Typography variant="subtitle5">{k.foot}</Typography>
               <Typography variant="subtitle3" component="div">
-                {busy(k.footValue, l) ? <Skeleton variant="rounded" animation="wave" width="4rem" height="1rem" /> : (k.footValue ?? "—")}
+                <Shimmer on={busy(k.footValue, l)} width="4rem">{k.footValue ?? "—"}</Shimmer>
               </Typography>
             </KpiFooterRow>
           </KpiCard>

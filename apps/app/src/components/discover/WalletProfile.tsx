@@ -7,7 +7,7 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
@@ -177,19 +177,15 @@ export default function WalletProfile({ address }: { address: string }) {
               )}
             </Box>
 
-            <Box sx={{ display: "grid", gap: "1rem", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(5, 1fr)" }, pt: "1rem", borderTop: (th) => `0.0625rem solid ${th.palette.overlay.white08}` }}>
-              {totalBusy ? (
-                Array.from({ length: 5 }, (_, i) => <Skeleton key={i} variant="rounded" animation="wave" height="2.75rem" />)
-              ) : (
-                <>
-                  <Stat label="In wallet" value={formatUsd(t.assetsUsd)} />
-                  <Stat label="In DeFi" value={formatUsd(t.utilisedUsd)} sub={`${items.filter((i) => i.kind !== "token").length} positions`} />
-                  <Stat label="Borrowed" value={t.borrowedUsd > 0 ? formatUsd(t.borrowedUsd) : "None"} color={t.borrowedUsd > 0 ? "error.main" : undefined} />
-                  <Stat label="Health factor" value={p.healthFactor != null ? p.healthFactor.toFixed(2) : "—"} sub={p.healthFactor != null ? (p.healthFactor < 1.2 ? "Close to liquidation" : "Blend loans") : "No loans"} color={p.healthFactor != null && p.healthFactor < 1.2 ? "error.main" : undefined} />
-                  <Stat label="Yield on positions" value={yieldApy != null ? `${yieldApy.toFixed(2)}%` : "—"} color={yieldApy ? "green.main" : undefined} sub="weighted APY" />
-                </>
-              )}
-            </Box>
+            <Measured loading={totalBusy}>
+              <Box sx={{ display: "grid", gap: "1rem", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(5, 1fr)" }, pt: "1rem", borderTop: (th) => `0.0625rem solid ${th.palette.overlay.white08}` }}>
+                <Stat label="In wallet" value={formatUsd(t.assetsUsd)} />
+                <Stat label="In DeFi" value={formatUsd(t.utilisedUsd)} sub={`${items.filter((i) => i.kind !== "token").length} positions`} />
+                <Stat label="Borrowed" value={t.borrowedUsd > 0 ? formatUsd(t.borrowedUsd) : "None"} color={t.borrowedUsd > 0 ? "error.main" : undefined} />
+                <Stat label="Health factor" value={p.healthFactor != null ? p.healthFactor.toFixed(2) : "—"} sub={p.healthFactor != null ? (p.healthFactor < 1.2 ? "Close to liquidation" : "Blend loans") : "No loans"} color={p.healthFactor != null && p.healthFactor < 1.2 ? "error.main" : undefined} />
+                <Stat label="Yield on positions" value={yieldApy != null ? `${yieldApy.toFixed(2)}%` : "—"} color={yieldApy ? "green.main" : undefined} sub="weighted APY" />
+              </Box>
+            </Measured>
           </SectionCard>
 
           <PerformanceCard pnl={pnl} range={range} onRange={setRange} />

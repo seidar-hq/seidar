@@ -7,7 +7,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured, MeasuredBlock } from "@/components/common/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha, styled, useTheme } from "@mui/material/styles";
@@ -105,7 +105,7 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
   ];
 
   let body: React.ReactNode;
-  if (busy) body = <Skeleton variant="rectangular" animation="wave" sx={{ height: "18rem", borderRadius: "0.5rem" }} />;
+  if (busy) body = null;
   else if (series.length === 0) body = <Empty text="No price history available for these assets yet." />;
   else
     body = (
@@ -128,7 +128,9 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
     <Box>
       <Legend items={legend} />
       <Box sx={{ position: "relative" }}>
-        {body}
+        <MeasuredBlock loading={busy} height="18rem">
+          {body}
+        </MeasuredBlock>
         {loading && series.length > 0 && (
           <Box sx={{ position: "absolute", top: "0.5rem", right: "0.5rem" }}>
             <CircularProgress size={16} />
@@ -141,6 +143,9 @@ function Timeline({ portfolio, view }: { portfolio: Portfolio; view: View }) {
 }
 
 type Slice = { key: string; name: string; code: string; issuer: string | null; usd: number; pct: number; others?: Slice[] };
+
+/** Stand-in slices drawn while the allocation first loads, so its skeleton has the real layout. */
+const SAMPLE_SLICES: Slice[] = [40, 25, 15, 12, 8].map((pct, i) => ({ key: `sample-${i}`, name: "Sample", code: "SAMPLE", issuer: null, usd: pct * 100, pct }));
 
 function Allocation({ portfolio, view }: { portfolio: Portfolio; view: View }) {
   const theme = useTheme();
@@ -188,107 +193,110 @@ function Allocation({ portfolio, view }: { portfolio: Portfolio; view: View }) {
   }, [portfolio.assets, portfolio.supplied, portfolio.vaults, view]);
 
   const loading = view === "assets" ? portfolio.assetsLoading : portfolio.assetsLoading || portfolio.positionsLoading;
-  if (loading && slices.length === 0)
-    return <Skeleton variant="rectangular" animation="wave" sx={{ height: "19.85rem", borderRadius: "0.5rem", mt: "1rem" }} />;
-  if (slices.length === 0)
+  // First load: the real donut and legend, drawn from stand-in slices for skullet to measure.
+  const first = loading && slices.length === 0;
+  if (!first && slices.length === 0)
     return <Empty text={view === "positions" ? "No open positions in this portfolio." : "No assets available in your wallet."} minHeight="19.85rem" />;
+  const shown = first ? SAMPLE_SLICES : slices;
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: "2rem",
-        mt: "1rem",
-        minHeight: "19.85rem",
-        [theme.breakpoints.down("md")]: { flexDirection: "column" },
-      }}
-    >
-      <Box sx={{ width: "15rem", minWidth: "15rem", height: "15rem" }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="usd"
-              nameKey="name"
-              innerRadius="48%"
-              outerRadius="96%"
-              paddingAngle={0.5}
-              cornerRadius={4}
-              stroke="none"
-              isAnimationActive={false}
-            >
-              {slices.map((s, i) => (
-                <Cell key={s.key} fill={colors[i % colors.length]} />
-              ))}
-            </Pie>
-            <ChartTooltip
-              content={({ active, payload }) => {
-                const s = active ? (payload?.[0]?.payload as Slice | undefined) : undefined;
-                if (!s) return null;
-                return (
-                  <Box sx={{ p: "0.75rem", borderRadius: "0.75rem", backgroundColor: "surfaceBg.main", minWidth: "12rem" }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
-                      <Typography variant="subtitle1" color="common.black">
-                        {s.name}
-                      </Typography>
-                      <Typography variant="subtitle1" color="primary.main">
-                        {s.pct.toFixed(2)}%
-                      </Typography>
-                    </Box>
-                    {s.others?.map((o) => (
-                      <Box key={o.key} sx={{ display: "flex", justifyContent: "space-between", gap: "1rem", mt: "0.25rem" }}>
-                        <Typography variant="caption" color="grey.200">
-                          {o.name}
-                        </Typography>
-                        <Typography variant="caption" color="primary.main">
-                          {o.pct.toFixed(2)}%
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                );
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </Box>
+    <Measured loading={first} id={`portfolio-allocation-${view}`}>
       <Box
         sx={{
-          flex: 1,
-          minWidth: 0,
-          maxHeight: "19rem",
-          overflowY: "auto",
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" },
-          columnGap: "2.5rem",
-          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "2rem",
+          mt: "1rem",
+          minHeight: "19.85rem",
+          [theme.breakpoints.down("md")]: { flexDirection: "column" },
         }}
       >
-        {slices.map((s, i) => (
-          <Box key={s.key}>
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
-                <Box sx={{ width: "0.5rem", height: "0.5rem", borderRadius: "50%", flexShrink: 0, backgroundColor: colors[i % colors.length] }} />
-                {s.key !== "other" && <TokenLogo code={s.code} issuer={s.issuer} size="2.25rem" />}
-                <Typography variant="body3" color="common.black" noWrap>
-                  {s.name}
-                </Typography>
+        <Box skullet-block="" sx={{ width: "15rem", minWidth: "15rem", height: "15rem", borderRadius: "50%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={shown}
+                dataKey="usd"
+                nameKey="name"
+                innerRadius="48%"
+                outerRadius="96%"
+                paddingAngle={0.5}
+                cornerRadius={4}
+                stroke="none"
+                isAnimationActive={false}
+              >
+                {shown.map((s, i) => (
+                  <Cell key={s.key} fill={colors[i % colors.length]} />
+                ))}
+              </Pie>
+              <ChartTooltip
+                content={({ active, payload }) => {
+                  const s = active ? (payload?.[0]?.payload as Slice | undefined) : undefined;
+                  if (!s) return null;
+                  return (
+                    <Box sx={{ p: "0.75rem", borderRadius: "0.75rem", backgroundColor: "surfaceBg.main", minWidth: "12rem" }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+                        <Typography variant="subtitle1" color="common.black">
+                          {s.name}
+                        </Typography>
+                        <Typography variant="subtitle1" color="primary.main">
+                          {s.pct.toFixed(2)}%
+                        </Typography>
+                      </Box>
+                      {s.others?.map((o) => (
+                        <Box key={o.key} sx={{ display: "flex", justifyContent: "space-between", gap: "1rem", mt: "0.25rem" }}>
+                          <Typography variant="caption" color="grey.200">
+                            {o.name}
+                          </Typography>
+                          <Typography variant="caption" color="primary.main">
+                            {o.pct.toFixed(2)}%
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  );
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </Box>
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            maxHeight: "19rem",
+            overflowY: "auto",
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" },
+            columnGap: "2.5rem",
+            width: "100%",
+          }}
+        >
+          {shown.map((s, i) => (
+            <Box key={s.key}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+                  <Box sx={{ width: "0.5rem", height: "0.5rem", borderRadius: "50%", flexShrink: 0, backgroundColor: colors[i % colors.length] }} />
+                  {s.key !== "other" && <TokenLogo code={s.code} issuer={s.issuer} size="2.25rem" />}
+                  <Typography variant="body3" color="common.black" noWrap>
+                    {s.name}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                  <Typography variant="body1" sx={{ fontWeight: 500, color: "primary.main" }}>
+                    {s.pct.toFixed(2)}%
+                  </Typography>
+                  <Typography variant="caption" color="grey.200">
+                    {formatUsd(s.usd)}
+                  </Typography>
+                </Box>
               </Box>
-              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                <Typography variant="body1" sx={{ fontWeight: 500, color: "primary.main" }}>
-                  {s.pct.toFixed(2)}%
-                </Typography>
-                <Typography variant="caption" color="grey.200">
-                  {formatUsd(s.usd)}
-                </Typography>
-              </Box>
+              <Divider sx={{ opacity: 0.5, my: "0.75rem" }} />
             </Box>
-            <Divider sx={{ opacity: 0.5, my: "0.75rem" }} />
-          </Box>
-        ))}
+          ))}
+        </Box>
       </Box>
-    </Box>
+    </Measured>
   );
 }
 
@@ -306,6 +314,9 @@ const Rule = ({ flip }: { flip?: boolean }) => {
 };
 
 type Mover = { key: string; code: string; issuer: string | null; usd: number; change: number; usdChange: number; label: string };
+
+/** Stand-in movers drawn while performance first loads. */
+const SAMPLE_MOVERS: Mover[] = [5, 4, 3, 2, 1].map((v, i) => ({ key: `sample-${i}`, code: "SAMPLE", issuer: null, usd: v * 100, change: v, usdChange: v * 10, label: "+$00.00" }));
 
 function MoverChart({ rows, good }: { rows: Mover[]; good: boolean }) {
   const theme = useTheme();
@@ -393,8 +404,8 @@ function Performer({ portfolio }: { portfolio: Portfolio }) {
     };
   }, [portfolio.exposures, changes]);
 
-  if (portfolio.assetsLoading || (loading && !best.length && !worst.length))
-    return <Skeleton variant="rectangular" animation="wave" sx={{ height: "24rem", borderRadius: "0.5rem", mt: "1rem" }} />;
+  // First load: both columns drawn from stand-in movers for skullet to measure.
+  const first = portfolio.assetsLoading || (loading && !best.length && !worst.length);
 
   const column = (title: string, rows: Mover[], good: boolean) => (
     <Box sx={{ pb: "1.25rem" }}>
@@ -415,10 +426,12 @@ function Performer({ portfolio }: { portfolio: Portfolio }) {
 
   return (
     <Box sx={{ pt: "1rem" }}>
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: "1.5rem", minHeight: "16.75rem" }}>
-        {column("Best Performer", best, true)}
-        {column("Worst Performer", worst, false)}
-      </Box>
+      <Measured loading={first} id="portfolio-performers">
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: "1.5rem", minHeight: "16.75rem" }}>
+          {column("Best Performer", first ? SAMPLE_MOVERS : best, true)}
+          {column("Worst Performer", first ? SAMPLE_MOVERS : worst, false)}
+        </Box>
+      </Measured>
       <PeriodButtons periods={PERFORMER_PERIODS} value={range} onChange={setRange} />
     </Box>
   );

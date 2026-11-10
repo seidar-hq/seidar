@@ -117,7 +117,7 @@ export function StatCard({
   icon,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   valueTooltip?: string;
   showChange?: boolean;
   changeValue?: number;

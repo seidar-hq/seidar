@@ -157,7 +157,8 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
       title="Top Pools"
       nameLabel="Pools"
       valueLabel="APY"
-      emptyText="Loading pools…"
+      emptyText="No pool qualifies right now."
+      loading={pending.size > 0}
       items={top.map((p) => ({
         key: p.key,
         icon: <PairLogos legs={p.legs} size="2.5rem" />,
@@ -170,5 +171,5 @@ export default function Pools({ tabs }: { tabs: React.ReactNode }) {
     />
   );
 
-  return <EarnGrid tabs={tabs} main={main} side={side} />;
+  return <EarnGrid tabs={tabs} main={main} side={side} pinned />;
 }

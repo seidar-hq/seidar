@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import Box from "@mui/material/Box";
@@ -17,6 +17,7 @@ import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useAlerts } from "@/components/common/Alerts";
+import { Measured } from "@/components/common/Skeleton";
 import TokenLogo, { PairLogos } from "@/components/common/TokenLogo";
 import { SearchIcon } from "@/components/icons/HeaderIcons";
 import { shortAddress } from "@/lib/format";
@@ -65,7 +66,7 @@ export function ProtocolChips({ items, value, onChange }: { items: ProtocolChip[
       </Chip>
       {items.map((p) => (
         <Chip key={p.id} active={value === p.id} onClick={() => onChange(p.id)}>
-          {p.logo && <Box component="img" src={p.logo} alt="" sx={{ width: "1.25rem", height: "1.25rem", borderRadius: "50%", objectFit: "cover" }} />}
+          {p.logo && <Box component="img" src={p.logo} alt="" sx={{ width: "1.25rem", height: "1.25rem", aspectRatio: "1", borderRadius: "50%", objectFit: "cover" }} />}
           {p.label}
         </Chip>
       ))}
@@ -89,7 +90,7 @@ export function ProtocolSection({
     <Box sx={{ my: "0.75rem", backgroundColor: "grey.400", padding: "1.25rem", borderRadius: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", ml: "0.5rem" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          {logo && <Box component="img" src={logo} alt="" sx={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", objectFit: "cover" }} />}
+          {logo && <Box component="img" src={logo} alt="" sx={{ width: "2.25rem", height: "2.25rem", aspectRatio: "1", borderRadius: "50%", objectFit: "cover" }} />}
           <Typography variant="h6" sx={{ fontWeight: 500, fontSize: "1.375rem", color: "common.black" }}>
             {name}
           </Typography>
@@ -298,8 +299,32 @@ export function usePinnedColumn(): object {
       document.body.style.overflowX = prev;
     };
   }, []);
-  // Out of the page's smooth scroll, which would carry on into the page at the column's end.
-  return useMediaQuery(SPLIT_QUERY, { noSsr: true }) ? { "data-lenis-prevent": true } : {};
+  const split = useMediaQuery(SPLIT_QUERY, { noSsr: true });
+  // Does the column have more content than fits? Content loads late and grows, so keep watching.
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    if (!el) return;
+    const check = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    const ro = new ResizeObserver(check);
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      for (const c of Array.from(el.children)) ro.observe(c);
+      check();
+    };
+    const mo = new MutationObserver(watch);
+    mo.observe(el, { childList: true });
+    watch();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [el]);
+  // A column with more to show scrolls on its own, out of the page's smooth scroll (which would carry
+  // on into the page at the column's end). One that fits passes the wheel on, so the page still scrolls.
+  if (split && overflows) return { ref: setEl, "data-lenis-prevent": true };
+  return { ref: setEl, style: { overscrollBehavior: "auto" } };
 }
 
 /** A small icon in front of a label. */
@@ -351,7 +376,7 @@ export function ProtocolBadge({ name, logo }: { name: string; logo?: string }) {
         backgroundColor: "overlay.white08",
       }}
     >
-      {logo && <Box component="img" src={logo} alt="" sx={{ width: "1.125rem", height: "1.125rem", borderRadius: "50%" }} />}
+      {logo && <Box component="img" src={logo} alt="" sx={{ width: "1.125rem", height: "1.125rem", aspectRatio: "1", borderRadius: "50%" }} />}
       <Typography sx={{ fontSize: "0.8125rem", fontWeight: 500, color: "common.black" }}>{name}</Typography>
     </Box>
   );
@@ -391,8 +416,36 @@ export function ContractRow({ icon, label, address }: { icon?: React.ReactNode; 
 
 export type TopItem = { key: string; icon: React.ReactNode; title: string; subtitle?: string; badge?: { name: string; logo?: string }; value: string; onClick: () => void };
 
+/** Stand-in rows a loading TopList draws, so its skeleton has the list's real shape. */
+const SAMPLE_TOP: TopItem[] = Array.from({ length: 5 }, (_, i) => ({
+  key: `sample-${i}`,
+  icon: <Box skullet-block="" sx={{ width: "2.75rem", height: "2.75rem", borderRadius: "50%", flexShrink: 0 }} />,
+  title: "Sample name",
+  subtitle: "$00.00M",
+  badge: { name: "Protocol" },
+  value: "00.00%",
+  onClick: () => {},
+}));
+
 /** Right-column "Top …" list: icon, name, venue badge and a green figure per row. */
-export function TopList({ title, items, emptyText, valueLabel, nameLabel }: { title: string; items: TopItem[]; emptyText: string; valueLabel: string; nameLabel: string }) {
+export function TopList({
+  title,
+  items,
+  emptyText,
+  valueLabel,
+  nameLabel,
+  loading = false,
+}: {
+  title: string;
+  items: TopItem[];
+  emptyText: string;
+  valueLabel: string;
+  nameLabel: string;
+  /** First load: stand-in rows, measured into a skeleton. */
+  loading?: boolean;
+}) {
+  const first = loading && items.length === 0;
+  const shown = first ? SAMPLE_TOP : items;
   return (
     <Box
       sx={{
@@ -413,46 +466,50 @@ export function TopList({ title, items, emptyText, valueLabel, nameLabel }: { ti
         <Typography sx={{ fontSize: "1rem", fontWeight: 500, color: "common.black" }}>{nameLabel}</Typography>
         <Typography sx={{ fontSize: "1rem", fontWeight: 500, color: "common.black" }}>{valueLabel}</Typography>
       </Box>
-      {items.length === 0 ? (
+      {shown.length === 0 ? (
         <Typography variant="subtitle3" sx={{ color: "grey.200", px: "1.25rem", py: "1rem" }}>
           {emptyText}
         </Typography>
       ) : (
-        items.map((it) => (
-          <ButtonBase
-            key={it.key}
-            onClick={it.onClick}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              minHeight: "4.75rem",
-              px: "1rem",
-              borderRadius: "1rem",
-              backgroundColor: "overlay.white04",
-              border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
-              textAlign: "left",
-              "&:hover": { backgroundColor: "overlay.white08" },
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-              {it.icon}
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontSize: "1.0625rem", fontWeight: 500, color: "common.black", maxWidth: "8rem" }} noWrap>
-                  {it.title}
-                </Typography>
-                {it.subtitle && (
-                  <Typography sx={{ fontSize: "0.75rem", color: "grey.200", maxWidth: "8rem" }} noWrap>
-                    {it.subtitle}
+        <Measured loading={first} id={`top-${title}`}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {shown.map((it) => (
+            <ButtonBase
+              key={it.key}
+              onClick={it.onClick}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                minHeight: "4.75rem",
+                px: "1rem",
+                borderRadius: "1rem",
+                backgroundColor: "overlay.white04",
+                border: (t) => `0.0625rem solid ${t.palette.overlay.white08}`,
+                textAlign: "left",
+                "&:hover": { backgroundColor: "overlay.white08" },
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
+                {it.icon}
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: "1.0625rem", fontWeight: 500, color: "common.black", maxWidth: "8rem" }} noWrap>
+                    {it.title}
                   </Typography>
-                )}
+                  {it.subtitle && (
+                    <Typography sx={{ fontSize: "0.75rem", color: "grey.200", maxWidth: "8rem" }} noWrap>
+                      {it.subtitle}
+                    </Typography>
+                  )}
+                </Box>
+                {it.badge && <ProtocolBadge name={it.badge.name} logo={it.badge.logo} />}
               </Box>
-              {it.badge && <ProtocolBadge name={it.badge.name} logo={it.badge.logo} />}
-            </Box>
-            <Typography sx={{ fontSize: "1.0625rem", color: "green.main", flexShrink: 0 }}>{it.value}</Typography>
-          </ButtonBase>
-        ))
+              <Typography sx={{ fontSize: "1.0625rem", color: "green.main", flexShrink: 0 }}>{it.value}</Typography>
+            </ButtonBase>
+          ))}
+          </Box>
+        </Measured>
       )}
     </Box>
   );

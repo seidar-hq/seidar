@@ -18,7 +18,7 @@
     "@seidar/cache": "0.1.0",
     "@seidar/vaults": "0.1.0",
     "@stellar/stellar-sdk": "^16.3.0",
-    "@xoxno/sdk-js": "^1.0.228",
+    "@xoxno/sdk-js": "^1.0.236",
     "hono": "^4.0.0",
     "ioredis": "^5.0.0",
     "pg": "^8.23.0"

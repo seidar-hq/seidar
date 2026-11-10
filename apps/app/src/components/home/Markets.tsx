@@ -5,14 +5,14 @@ import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
-import Skeleton from "@mui/material/Skeleton";
+import { Measured, MeasuredBlock } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import TokenLogo from "@/components/common/TokenLogo";
 import { InsetCard } from "@/components/common/SectionCard";
 import { SearchBox } from "@/components/earn/EarnUI";
 import CompareChart from "./CompareChart";
-import { assetHref, compactUsd, pctColor, pctText, priceText, useMarketAssets, type MarketAsset } from "./marketData";
+import { SAMPLE_ASSETS, assetHref, compactUsd, pctColor, pctText, priceText, useMarketAssets, type MarketAsset } from "./marketData";
 
 const SORTS: { id: string; label: string; value: (a: MarketAsset) => number | null; asc?: boolean }[] = [
   { id: "mcap", label: "Top by market cap", value: (a) => a.marketCap },
@@ -65,9 +65,8 @@ export default function Markets() {
           <span style={{ textAlign: "right", minWidth: "4rem" }}>{sort === "volume" ? "7d vol" : sort === "mcap" ? "Mcap" : "24h"}</span>
         </Box>
         <Box sx={{ height: "22.5rem", overflowY: "auto", display: "flex", flexDirection: "column", pr: "0.25rem" }} data-lenis-prevent>
-          {loading
-            ? Array.from({ length: 8 }, (_, i) => <Skeleton key={i} variant="rounded" animation="wave" sx={{ height: "2.75rem", mb: "0.25rem", borderRadius: "0.5rem" }} />)
-            : rows.map((a, i) => {
+          <Measured loading={loading} id="home-markets">
+            {(loading ? SAMPLE_ASSETS : rows).map((a, i) => {
                 const active = a.id === primary?.id;
                 return (
                   <ButtonBase
@@ -106,6 +105,7 @@ export default function Markets() {
                   </ButtonBase>
                 );
               })}
+          </Measured>
           {!loading && rows.length === 0 && (
             <Typography variant="subtitle3" color="grey.200" sx={{ p: "1rem" }}>
               {assets.length ? "No asset matches your search." : "Market data is unavailable right now."}
@@ -115,11 +115,9 @@ export default function Markets() {
         <Typography sx={{ fontSize: "0.75rem", color: "grey.200" }}>Select an asset to chart it; double-click to open its page.</Typography>
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        {primary ? (
-          <CompareChart primary={primary} candidates={assets} height="24rem" />
-        ) : (
-          <Skeleton variant="rectangular" animation="wave" sx={{ height: "27rem", borderRadius: "0.5rem" }} />
-        )}
+        <MeasuredBlock loading={!primary} height="27rem">
+          {primary && <CompareChart primary={primary} candidates={assets} height="24rem" />}
+        </MeasuredBlock>
       </Box>
     </InsetCard>
   );
