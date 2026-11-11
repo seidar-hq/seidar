@@ -7,7 +7,7 @@
 
 import { cacheGet, cacheSet } from "@seidar/cache";
 import { livePrices } from "./prices.js";
-import { soroPost } from "./swap.js";
+import { soroPost, tradedLeg } from "./swap.js";
 import { isListedToken, tokenMetas } from "./token-meta.js";
 import { mapLimit } from "./rpc.js";
 
@@ -27,9 +27,14 @@ async function dexQuoteUsd(contract: string, decimals: number): Promise<number |
       amount,
       tradeType: "EXACT_IN",
       protocols: ["soroswap", "aqua", "phoenix", "sdex"],
-    })) as { amountOut?: unknown; priceImpactPct?: unknown };
-    const out = Number(q?.amountOut) / 1e7;
-    const impact = Math.max(0, Number(q?.priceImpactPct) || 0);
+    })) as Record<string, unknown>;
+    // Per whole token actually swapped: Seidar's Soroswap partner fee comes off the input first.
+    const leg = tradedLeg(q);
+    if (!leg) return null;
+    const out = Number(leg.out) / 1e7 / (Number(leg.inp) / 10 ** decimals);
+    // Soroswap's SDEX impact counts its partner fee (and is sometimes nonsense): one token on the
+    // book is near mid anyway, so only the AMM routes' own figure is used.
+    const impact = q.platform === "sdex" ? 0 : Math.max(0, Number(q.priceImpactPct) || 0);
     if (!(out > 0) || impact > 35) return null;
     const px = out / (1 - impact / 100);
     await cacheSet(key(contract), px, TTL).catch(() => {});

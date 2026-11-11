@@ -243,21 +243,124 @@ export async function soroPost(
 export const isContract = (v: string) => /^C[A-Z2-7]{55}$/.test(v);
 export const isAccount = (v: string) => /^G[A-Z2-7]{55}$/.test(v);
 
+const big = (v: unknown): bigint | null => (/^\d+$/.test(String(v ?? "")) ? BigInt(String(v)) : null);
+
 /**
- * Soroswap's API reports nonsense price impact for some routes (an SDEX
- * route for 50 USDC -> USTRY at the market rate came back as "300.94").
- * For SDEX routes, or any value outside [0, 100), measure it instead: the
- * value lost against market prices, (1 - out$ / in$), floored at 0. Null
- * when either price is unknown.
+ * What a quote really trades: input swapped and output received, with the
+ * integrators' fees put back. Soroswap's partner fee (`platformFee`) is always
+ * taken from the input (EXACT_IN and EXACT_OUT, checked live 2026-11-11);
+ * XOXNO's referral fee says which side it came off. Price impact is about the
+ * market, so it is measured on these amounts, never on the fees.
  */
-async function sanitizeImpact(quote: Record<string, unknown>, assetIn: string, assetOut: string) {
-  const raw = Number(quote.priceImpactPct);
-  if (quote.platform !== "sdex" && Number.isFinite(raw) && raw >= 0 && raw < 100) return;
-  quote.priceImpactPct = null;
+export function tradedLeg(q: Record<string, unknown> | null): { inp: bigint; out: bigint } | null {
+  let inp = big(q?.amountIn);
+  let out = big(q?.amountOut);
+  if (!inp || !out) return null;
+  const pf = big((q?.platformFee as { feeAmount?: unknown } | undefined)?.feeAmount);
+  if (pf) inp -= pf;
+  const x = q?.xoxno as { feeAmount?: unknown; feeOnInput?: unknown } | undefined;
+  const xf = big(x?.feeAmount);
+  if (xf) {
+    if (x?.feeOnInput === false) out += xf;
+    else inp -= xf;
+  }
+  return inp > 0n && out > 0n ? { inp, out } : null;
+}
+
+const rateOf = (l: { inp: bigint; out: bigint }) => Number(l.out) / Number(l.inp);
+
+/** Size of the reference trade that stands for "the market price now". */
+const REF_USD = 20;
+const REF_TTL_MS = 30_000;
+
+/**
+ * Input amount worth about $REF_USD (a tenth of the trade when the token has no
+ * USD price). Not shrunk for small trades: quotes under a few dollars are noisy
+ * (1 XLM -> USDC came back 1.6% better than 10 XLM on 2026-11-11), and a trade
+ * near or under $REF_USD has no real impact; it floors at 0.
+ */
+async function refAmount(assetIn: string, size: bigint): Promise<bigint | null> {
+  let ref = size / 10n;
   try {
-    const amountIn = String(quote.amountIn ?? "");
-    const amountOut = String(quote.amountOut ?? "");
-    if (!/^\d+$/.test(amountIn) || !/^\d+$/.test(amountOut) || isTestnet()) return;
+    const mi = (await tokenMetas([assetIn]))[assetIn];
+    if (mi) {
+      const { livePrices } = await import("./prices.js");
+      const px = (await livePrices([mi.code])).prices[mi.code.toUpperCase()];
+      if (px != null && px > 0) {
+        const units = (REF_USD / px) * 10 ** mi.decimals;
+        // Two significant figures, so the reference stays cacheable as prices tick.
+        const mag = 10 ** Math.max(0, Math.floor(Math.log10(units)) - 1);
+        ref = BigInt(Math.max(1, Math.round(units / mag) * mag));
+      }
+    }
+  } catch {
+    /* a tenth of the trade */
+  }
+  return ref > 0n ? ref : null;
+}
+
+/**
+ * Best rate (output per unit input, fees put back) for a small trade on the
+ * same venues: the price the market gives before this trade moves it.
+ */
+async function marketRate(o: {
+  assetIn: string;
+  assetOut: string;
+  size: bigint;
+  protocols: string[];
+  soro: boolean;
+  xoxno: boolean;
+  referralId: number;
+}): Promise<number | null> {
+  const ref = await refAmount(o.assetIn, o.size);
+  if (!ref) return null;
+  const k = `swap:ref:v1:${JSON.stringify([soroNetwork(), o.assetIn, o.assetOut, ref.toString(), [...o.protocols].sort(), o.soro, o.xoxno])}`;
+  const hit = await cacheGetEntry<number>(k).catch(() => null);
+  if (hit && Date.now() - hit.at < REF_TTL_MS && hit.value > 0) return hit.value;
+  const amount = ref.toString();
+  const [s, x] = await Promise.allSettled([
+    o.soro && soroCooldownUntil <= Date.now()
+      ? soroPost("/quote", { assetIn: o.assetIn, assetOut: o.assetOut, amount, tradeType: "EXACT_IN", protocols: o.protocols }, 12_000)
+      : Promise.reject(new Error("skip")),
+    o.xoxno
+      ? xoxnoQuote({ assetIn: o.assetIn, assetOut: o.assetOut, amount, referralId: o.referralId })
+      : Promise.reject(new Error("skip")),
+  ]);
+  let best = 0;
+  for (const r of [s, x]) {
+    if (r.status !== "fulfilled") continue;
+    const leg = tradedLeg(r.value as Record<string, unknown>);
+    if (leg) best = Math.max(best, rateOf(leg));
+  }
+  if (!(best > 0)) return null;
+  await cacheSet(k, best, REF_TTL_MS).catch(() => {});
+  return best;
+}
+
+/**
+ * Price impact (%) of a quote: how much worse its rate is than the market's
+ * small-trade rate on the same venues, both with Seidar's integrator fees put
+ * back, so the number is the trade moving the price and nothing else (pool
+ * fees cancel out: the small trade pays them too). Providers' own figures are
+ * not used: XOXNO's counts its referral fee, and Soroswap's SDEX figure counts
+ * its partner fee and is sometimes nonsense ("300.94").
+ *
+ * Without a reference (quote services busy, unknown token), it falls back to
+ * the value lost against USD prices; null when that is unknown too.
+ */
+async function setImpact(quote: Record<string, unknown>, ref: Promise<number | null> | number | null) {
+  quote.priceImpactPct = null;
+  const leg = tradedLeg(quote);
+  if (!leg) return;
+  const market = await Promise.resolve(ref).catch(() => null);
+  if (market != null && market > 0) {
+    quote.priceImpactPct = Math.max(0, (1 - rateOf(leg) / market) * 100).toFixed(2);
+    return;
+  }
+  try {
+    if (isTestnet()) return;
+    const assetIn = String(quote.assetIn ?? "");
+    const assetOut = String(quote.assetOut ?? "");
     const metas = await tokenMetas([assetIn, assetOut]);
     const mi = metas[assetIn];
     const mo = metas[assetOut];
@@ -267,8 +370,8 @@ async function sanitizeImpact(quote: Record<string, unknown>, assetIn: string, a
     const pi = prices[mi.code.toUpperCase()];
     const po = prices[mo.code.toUpperCase()];
     if (!(pi != null && pi > 0 && po != null && po > 0)) return;
-    const inUsd = (Number(amountIn) / 10 ** mi.decimals) * pi;
-    const outUsd = (Number(amountOut) / 10 ** mo.decimals) * po;
+    const inUsd = (Number(leg.inp) / 10 ** mi.decimals) * pi;
+    const outUsd = (Number(leg.out) / 10 ** mo.decimals) * po;
     if (!(inUsd > 0)) return;
     quote.priceImpactPct = Math.max(0, (1 - outUsd / inUsd) * 100).toFixed(2);
   } catch {
@@ -366,6 +469,11 @@ export async function quoteSwap(body: {
 
   try {
     const load = async () => {
+      // The market's small-trade rate, fetched alongside the quotes (EXACT_IN:
+      // the trade size is known up front; EXACT_OUT waits for the quote's input).
+      const refFor = (size: bigint) =>
+        marketRate({ assetIn, assetOut, size, protocols, soro: !!key, xoxno: xoxnoEligible, referralId }).catch(() => null);
+      const earlyRef = tradeType === "EXACT_IN" ? refFor(BigInt(amount)) : null;
       const soroLoad = (async () => {
         if (!key) throw Object.assign(new Error("no-api-key"), { status: 409 });
         if (soroCooldownUntil > Date.now())
@@ -397,7 +505,6 @@ export async function quoteSwap(body: {
             amountOutMinNet: net(q.rawTrade?.amountOutMin),
           };
         }
-        await sanitizeImpact(quote, assetIn, assetOut);
         return quote;
       })();
       const xoxnoLoad = xoxnoEligible
@@ -424,6 +531,8 @@ export async function quoteSwap(body: {
         if (xoxnoEligible && xoxnoErr) throw xoxnoErr;
         throw soroErr ?? xoxnoErr ?? new Error("No route found for this pair/amount.");
       }
+      const size = big(chosen.amountIn);
+      await setImpact(chosen, earlyRef ?? (size ? refFor(size) : null));
       await cacheSet(quoteKey, chosen, QUOTE_TTL_MS).catch(() => {});
       return chosen;
     };
