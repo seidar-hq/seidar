@@ -13,6 +13,7 @@ import { useActivity } from "@/components/transactions/useActivity";
 import { useWallet } from "@/wallet/WalletContext";
 import PairChart from "./PairChart";
 import Perps from "./Perps";
+import Bridge from "@/components/bridge/Bridge";
 import { MarketLocked } from "./TradeLocked";
 
 function SwapHistory() {
@@ -68,17 +69,20 @@ function SwapTab() {
 
 const TABS: TabItem[] = [
   { id: "dex", label: "Swap", path: "/trade-swap/dex" },
+  { id: "bridge", label: "Bridge", path: "/trade-swap/bridge" },
   { id: "perps", label: "Perps", path: "/trade-swap/perps" },
 ];
 
+const tabOf = (path: string) => (path.startsWith("/trade-swap/perps") ? "perps" : path.startsWith("/trade-swap/bridge") ? "bridge" : "dex");
+
 export default function TradeSwap() {
   const pathname = usePathname();
-  const [active, setActive] = useState(() => (pathname.startsWith("/trade-swap/perps") ? "perps" : "dex"));
-  useEffect(() => setActive(pathname.startsWith("/trade-swap/perps") ? "perps" : "dex"), [pathname]);
+  const [active, setActive] = useState(() => tabOf(pathname));
+  useEffect(() => setActive(tabOf(pathname)), [pathname]);
   return (
     <>
       <Tabs tabs={TABS} activeTab={active} setActiveTab={setActive} />
-      <Box sx={{ mt: "1rem" }}>{active === "perps" ? <Perps /> : <SwapTab />}</Box>
+      <Box sx={{ mt: "1rem" }}>{active === "perps" ? <Perps /> : active === "bridge" ? <Bridge /> : <SwapTab />}</Box>
     </>
   );
 }

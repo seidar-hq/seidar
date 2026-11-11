@@ -1,5 +1,11 @@
-import Bridge from "@/components/bridge/Bridge";
+"use client";
 
+import { useEffect } from "react";
+
+// Bridge now lives under Trade (Swap · Bridge · Perps). Old links and bookmarks land there.
 export default function Page() {
-  return <Bridge />;
+  useEffect(() => {
+    window.location.replace("/trade-swap/bridge" + window.location.search);
+  }, []);
+  return null;
 }

@@ -35,11 +35,13 @@ export const themeAssets = (t: Theme, all: MarketAsset[]) =>
 
 const TILE = 223;
 
-function Tile({ t, change, onOpen }: { t: Theme; change: number | null; onOpen: () => void }) {
+function Tile({ t, change, cap, onOpen }: { t: Theme; change: number | null; cap: number | null; onOpen: () => void }) {
+  // No price history yet (new listings such as deJAAA): show the theme's size instead of an empty change.
+  const noChange = change == null && cap != null && cap > 0;
   return (
     <ButtonBase
       onClick={onOpen}
-      aria-label={`${t.words.join(" ")}, ${changeText(change)} 7-day change`}
+      aria-label={noChange ? `${t.words.join(" ")}, ${compactUsd(cap)} market cap` : `${t.words.join(" ")}, ${changeText(change)} 7-day change`}
       sx={{
         position: "relative",
         top: 0,
@@ -128,7 +130,18 @@ function Tile({ t, change, onOpen }: { t: Theme; change: number | null; onOpen: 
           ))}
         </Box>
         <Box sx={{ position: "absolute", left: "16px", top: "139px", zIndex: 1 }}>
-          <ReturnLines value={change} caption="7-day change" />
+          {noChange ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              <Box component="span" sx={{ fontSize: "1.07rem", lineHeight: 0.79, color: "#fff", opacity: 0.95 }}>
+                {compactUsd(cap)}
+              </Box>
+              <Box component="span" sx={{ fontSize: "0.86rem", lineHeight: 0.79, color: "#fff", opacity: 0.8 }}>
+                Market cap
+              </Box>
+            </Box>
+          ) : (
+            <ReturnLines value={change} caption="7-day change" />
+          )}
         </Box>
       </Box>
     </ButtonBase>
@@ -197,8 +210,10 @@ export function ThemeDialog({ t, assets, onClose }: { t: Theme | null; assets: M
 export default function ThemeTiles() {
   const { assets, loading } = useMarketAssets();
   const [open, setOpen] = useState<Theme | null>(null);
-  // A theme shows once at least one of its assets has a 7-day change to report.
-  const shown = loading ? THEMES : THEMES.filter((t) => weightedChange(themeAssets(t, assets)) != null);
+  // Every theme with at least one listed asset stays on the grid (a theme hidden after loading left a
+  // hole in the last row); one without price history yet shows its market cap.
+  const capOf = (t: Theme) => themeAssets(t, assets).reduce((s, a) => s + (a.marketCap ?? 0), 0) || null;
+  const shown = loading ? THEMES : THEMES.filter((t) => themeAssets(t, assets).length > 0);
   return (
     <>
       <Measured loading={loading} id="explore-themes">
@@ -208,7 +223,7 @@ export default function ThemeTiles() {
           sx={{ display: "grid", gap: "13px", gridTemplateColumns: `repeat(auto-fill, minmax(${TILE}px, 1fr))`, mb: "2.5rem" }}
         >
           {shown.map((t) => (
-            <Tile key={t.id} t={t} change={loading ? 1.23 : weightedChange(themeAssets(t, assets))} onOpen={() => setOpen(t)} />
+            <Tile key={t.id} t={t} change={loading ? 1.23 : weightedChange(themeAssets(t, assets))} cap={loading ? null : capOf(t)} onOpen={() => setOpen(t)} />
           ))}
         </Box>
       </Measured>

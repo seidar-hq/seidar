@@ -7,8 +7,6 @@ import Shimmer from "@/components/common/Shimmer";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useTheme } from "@mui/material/styles";
-import { ThemeIcon, type IconKind } from "@/components/common/ChromeIcons";
-import { LOOK } from "@/theme/exploreLook";
 import { KpiCard, KpiFooterRow, KpiHeader, KpiSection, KpiTop, KpiValueRow } from "@/components/common/SectionCard";
 import PortfolioSelect from "@/components/wallet/PortfolioSelect";
 import { formatAmount, formatUsd } from "@/lib/format";
@@ -65,7 +63,6 @@ export default function PortfolioKpis() {
   const perfBusy = ((totalsLoading || changesLoading) && !base) || totalsBusy;
   const utilisation = t.assetsUsd + t.utilisedUsd > 0 ? (t.utilisedUsd / (t.assetsUsd + t.utilisedUsd)) * 100 : 0;
 
-  const KPI_ICON: Record<string, IconKind> = { "Total Balance": "coins", "Performance %": "growth", "Total Utilised": "cube", "Total Rewards": "star" };
   const kpis: Kpi[] = [
     {
       heading: "Total Balance",
@@ -100,21 +97,13 @@ export default function PortfolioKpis() {
 
   return (
     <KpiSection>
-      {/* Phones only: from sm up the picker lives in the navbar. */}
-      <KpiHeader sx={{ justifyContent: "space-between", display: { xs: "flex", sm: "none" } }}>
+      {/* The portfolio picker sits on the card at every size (the navbar no longer carries one). */}
+      <KpiHeader sx={{ justifyContent: "space-between", display: "flex" }}>
         <PortfolioSelect />
       </KpiHeader>
       <Grid size={12} spacing="1rem" container>
         {kpis.map((k) => (
           <KpiCard key={k.heading} size={{ xs: 12, sm: 6, md: 3 }}>
-            {/* Chrome object in the corner, shown only with the Explore look (Portfolio). */}
-            <Box
-              className="look-decor"
-              aria-hidden
-              sx={{ display: "none", position: "absolute", right: "-2.25rem", bottom: "-2.25rem", width: "7rem", height: "7rem", opacity: 0.55, pointerEvents: "none", [LOOK]: { display: "block" } }}
-            >
-              <ThemeIcon kind={KPI_ICON[k.heading] ?? "coins"} size="100%" />
-            </Box>
             <KpiTop>
               <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
                 <Typography variant={small}>{k.heading}</Typography>

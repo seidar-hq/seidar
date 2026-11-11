@@ -7,7 +7,6 @@ import AccordionSummary from "@mui/material/AccordionSummary";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
-import { LOOK, TINT, lookPanel } from "@/theme/exploreLook";
 import { styled } from "@mui/material/styles";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
@@ -22,7 +21,6 @@ export const SwapAccordion = styled(Accordion)(({ theme }) => ({
   borderRadius: "1.5rem !important",
   overflow: "hidden",
   "&:before": { display: "none" },
-  [LOOK]: { ...lookPanel(TINT.violet), borderRadius: "1.75rem !important" },
 }));
 
 export const SwapSummary = styled(AccordionSummary)({

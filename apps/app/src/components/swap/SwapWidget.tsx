@@ -10,7 +10,6 @@ import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { LOOK, TINT, lookInset, lookPanel } from "@/theme/exploreLook";
 import { styled } from "@mui/material/styles";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
@@ -55,7 +54,6 @@ const Root = styled(Box)(({ theme }) => ({
   borderRadius: "1.5rem",
   backgroundColor: theme.palette.surfaceBg.section,
   overflow: "hidden",
-  [LOOK]: lookPanel(TINT.violet),
 }));
 
 const Panel = styled(Box)(({ theme }) => {
@@ -69,7 +67,6 @@ const Panel = styled(Box)(({ theme }) => {
     borderRadius: "0.75rem",
     backgroundColor: dark ? theme.palette.surfaceBg.softInset : theme.palette.grey[400],
     border: `0.0625rem solid ${dark ? theme.palette.surfaceBg.softInsetStrong : theme.palette.border.main600}`,
-    [LOOK]: lookInset,
   };
 });
 

@@ -1,7 +1,6 @@
 import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import { styled } from "@mui/material/styles";
-import { LOOK, lookCard, lookInset, lookTile } from "@/theme/exploreLook";
 
 // Shared card shells used by the dashboard widgets.
 
@@ -16,7 +15,6 @@ export const SectionCard = styled(Grid)(({ theme }) => {
     display: "flex",
     flexDirection: "column",
     gap: "1rem",
-    [LOOK]: lookCard,
   };
 });
 
@@ -28,7 +26,6 @@ export const InsetCard = styled(Box)(({ theme }) => {
     padding: "1rem",
     borderRadius: dark ? "0.75rem" : "0.5rem",
     ...(dark && { display: "flex", flexDirection: "column", gap: "1rem" }),
-    [LOOK]: lookInset,
   };
 });
 
@@ -74,7 +71,6 @@ export const KpiCard = styled(Grid)(({ theme }) => {
     justifyContent: "space-between",
     gap: "1rem",
     overflow: "hidden",
-    [LOOK]: lookTile,
   };
 });
 
@@ -105,12 +101,10 @@ export const PlainCard = styled(Grid)(({ theme }) => ({
   backgroundColor: theme.palette.surfaceBg.section,
   border: `0.0625rem solid ${theme.palette.border.main1000}`,
   borderRadius: "1.5rem",
-  [LOOK]: lookCard,
 }));
 
 // Hairline border for the dashboard's portfolio cards (solid; it used to fade out towards the bottom).
 export const fadedBorder = (theme: import("@mui/material/styles").Theme) => ({
   position: "relative" as const,
   border: `0.0625rem solid ${theme.palette.border.main1000}`,
-  [LOOK]: { border: "0.0625rem solid rgba(255,255,255,0.10)" },
 });

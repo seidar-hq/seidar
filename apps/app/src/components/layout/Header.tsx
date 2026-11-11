@@ -12,7 +12,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { styled, useTheme, type Theme } from "@mui/material/styles";
+import { styled, useTheme, type SxProps, type Theme } from "@mui/material/styles";
 import type { SvgIconComponent } from "@mui/icons-material";
 import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
 import WaterOutlinedIcon from "@mui/icons-material/WaterOutlined";
@@ -28,10 +28,8 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import HeaderWallet from "@/components/wallet/HeaderWallet";
-import AgentPill from "@/components/agent/AgentPill";
 import { DerivativesDropdownIcon, SearchIcon, SwapDropdownIcon } from "@/components/icons/HeaderIcons";
 import { useThemeMode } from "@/theme/ThemeModeContext";
-import HeaderPortfolio from "./HeaderPortfolio";
 import NotificationButton from "./NotificationButton";
 import FeedbackDialog from "./FeedbackDialog";
 import SearchDialog from "./SearchDialog";
@@ -182,7 +180,14 @@ const MobileDrawerList = styled(Box)(({ theme }) => ({
 }));
 
 type NavEntry = { title: string; value: string; lightIcon: string; darkIcon: string; IconComponent?: SvgIconComponent };
-type SubEntry = { title: string; subtitle: string; path: string; Icon: SvgIconComponent | typeof SwapDropdownIcon };
+type SubEntry = { title: string; subtitle: string; path: string; Icon: SvgIconComponent | typeof SwapDropdownIcon | typeof BridgeDropdownIcon };
+
+/** Bridge's own icon, the one it had as a top-level nav item (light artwork on dark, and vice versa). */
+function BridgeDropdownIcon({ sx }: { sx?: SxProps<Theme> }) {
+  const theme = useTheme();
+  const src = theme.palette.mode === "dark" ? "/assets/nav/bridgeIconLight.svg" : "/assets/nav/bridgeIconDark.svg";
+  return <Box component="img" src={src} alt="" sx={[{ width: "1.25rem", height: "1.25rem", flexShrink: 0, opacity: 0.85 }, ...(Array.isArray(sx) ? sx : [sx])]} />;
+}
 
 const ALL_NAV: NavEntry[] = [
   {
@@ -209,7 +214,6 @@ const ALL_NAV: NavEntry[] = [
   },
   { title: "Trade", value: "/trade-swap", lightIcon: "/assets/nav/tradeSwapLightIcon.svg", darkIcon: "/assets/nav/tradeSwapDarkIcon.svg" },
   { title: "Earn", value: "/earn", lightIcon: "/assets/nav/earnLightIcon.svg", darkIcon: "/assets/nav/earnDarkIcon.svg" },
-  { title: "Bridge", value: "/bridge", lightIcon: "/assets/nav/bridgeIconLight.svg", darkIcon: "/assets/nav/bridgeIconDark.svg" },
   { title: "History", value: "/transactions", lightIcon: "/assets/nav/transactionsIcon.svg", darkIcon: "/assets/nav/transactionsDarkIcon.svg" },
   {
     title: "Settings",
@@ -225,6 +229,7 @@ const NAV = ALL_NAV.filter((n) => (HOME_ENABLED || n.value !== "/") && (DISCOVER
 
 const TRADE_ITEMS: SubEntry[] = [
   { title: "Swap", subtitle: "Best route across Stellar DEXs", path: "/trade-swap/dex", Icon: SwapDropdownIcon },
+  { title: "Bridge", subtitle: "Bring funds from other chains", path: "/trade-swap/bridge", Icon: BridgeDropdownIcon },
   { title: "Perps", subtitle: "Perpetual futures on Zenex", path: "/trade-swap/perps", Icon: DerivativesDropdownIcon },
 ];
 
@@ -495,11 +500,7 @@ export default function Header() {
             </CircleIconButton>
           </Tooltip>
           <NotificationButton />
-          <Box sx={{ display: { xs: "none", sm: "flex" } }}>
-            <HeaderPortfolio />
-          </Box>
           <HeaderWallet />
-          <AgentPill />
         </RightCluster>
 
 

@@ -37,21 +37,24 @@ function Banner() {
         overflow: "hidden",
         borderRadius: "1.25rem",
         textDecoration: "none",
-        background:
-          "radial-gradient(120% 180% at 15% 0%, rgba(120,90,255,0.35) 0%, rgba(0,0,0,0) 55%), radial-gradient(100% 160% at 90% 100%, rgba(255,170,90,0.25) 0%, rgba(0,0,0,0) 60%), #17110b",
-        "&:hover .logos": { transform: "scale(1.02)" },
+        bgcolor: "#17110b",
+        // As on the reference: the backdrop grows slowly on hover, the logos stay put.
+        "&:hover .banner-bg, &:focus-visible .banner-bg": { transform: "scale(1.02)" },
       }}
     >
       <Box
         aria-hidden
+        className="banner-bg"
         sx={{
           position: "absolute",
           inset: 0,
           zIndex: -1,
-          backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0 2px, rgba(255,255,255,0) 2px 26px)",
+          background:
+            "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0 2px, rgba(255,255,255,0) 2px 26px), radial-gradient(120% 180% at 15% 0%, rgba(120,90,255,0.35) 0%, rgba(0,0,0,0) 55%), radial-gradient(100% 160% at 90% 100%, rgba(255,170,90,0.25) 0%, rgba(0,0,0,0) 60%), #17110b",
+          transition: "transform .7s ease-out",
         }}
       />
-      <Box className="logos" sx={{ display: "flex", alignItems: "center", gap: { xs: "1rem", sm: "2.25rem" }, transition: "transform .7s ease-out" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: { xs: "1rem", sm: "2.25rem" } }}>
         {Object.values(VAULT_PROTOCOLS).map((p) => (
           <Box key={p.name} sx={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#fff", fontSize: { xs: "1rem", sm: "1.5rem" }, letterSpacing: "-0.04em" }}>
             <Box component="img" src={p.logo} alt="" sx={{ width: { xs: "1.25rem", sm: "1.75rem" }, height: { xs: "1.25rem", sm: "1.75rem" }, borderRadius: "50%", objectFit: "contain" }} />

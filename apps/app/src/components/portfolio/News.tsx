@@ -5,11 +5,11 @@ import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import { Measured } from "@/components/common/Skeleton";
 import Typography from "@mui/material/Typography";
-import { LOOK, TINT, lookPanel } from "@/theme/exploreLook";
 import { styled } from "@mui/material/styles";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { NEWS_FEED_URL } from "@/lib/links";
@@ -31,7 +31,6 @@ const NewsAccordion = styled(Accordion)(({ theme }) => ({
   borderRadius: "1.5rem !important",
   overflow: "hidden",
   "&:before": { display: "none" },
-  [LOOK]: { ...lookPanel(TINT.teal), borderRadius: "1.75rem !important" },
 }));
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -46,39 +45,52 @@ const formatDate = (raw?: string) => {
   return `${DAYS[d.getDay()]}, ${String(d.getDate()).padStart(2, "0")} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+/** Waits before the 2nd and 3rd tries: a dropped request on a flaky network shouldn't empty the card. */
+const RETRY_MS = [1500, 4000];
+
 function useNews() {
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setFailed(false);
     (async () => {
-      try {
-        const res = await fetch(NEWS_FEED_URL);
-        const json = await res.json();
-        const list: NewsItem[] = (json?.items ?? []).map((i: NewsItem) => ({
-          title: i.title,
-          link: i.link,
-          pubDate: i.pubDate,
-        }));
-        if (!cancelled) setItems(list);
-      } catch {
-        if (!cancelled) setItems([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+      for (let i = 0; i <= RETRY_MS.length && !cancelled; i++) {
+        try {
+          const res = await fetch(NEWS_FEED_URL, { cache: "no-store" });
+          if (!res.ok) throw new Error(`news ${res.status}`);
+          const json = await res.json();
+          const list: NewsItem[] = (json?.items ?? []).map((n: NewsItem) => ({ title: n.title, link: n.link, pubDate: n.pubDate }));
+          if (!cancelled) {
+            setItems(list);
+            setLoading(false);
+          }
+          return;
+        } catch {
+          if (i < RETRY_MS.length) await new Promise((r) => setTimeout(r, RETRY_MS[i]));
+        }
+      }
+      // Every try failed: say so (with a retry) rather than claiming there is no news.
+      if (!cancelled) {
+        setFailed(true);
+        setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
-  return { items, loading };
+  return { items, loading, failed, retry: () => setAttempt((n) => n + 1) };
 }
 
 export default function News() {
   const { isConnected } = useWallet();
-  const { items, loading } = useNews();
+  const { items, loading, failed, retry } = useNews();
 
   return (
     <Grid container borderRadius={2} mt="1rem">
@@ -116,6 +128,15 @@ export default function News() {
                 ))}
               </Box>
             </Measured>
+          ) : failed ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", padding: "4rem 0" }}>
+              <Typography variant="subtitle1" sx={{ color: "grey.200", textAlign: "center" }}>
+                Couldn&apos;t load news
+              </Typography>
+              <Button variant="outlined" size="small" onClick={retry}>
+                Retry
+              </Button>
+            </Box>
           ) : (
             <Typography variant="subtitle1" sx={{ color: "grey.200", textAlign: "center", padding: "4rem 0" }}>
               No news found

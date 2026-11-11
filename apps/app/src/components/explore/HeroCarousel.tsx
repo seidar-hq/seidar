@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import Link from "next/link";
@@ -14,56 +14,131 @@ type Slide = {
   href: string;
   title: [string, string];
   sub: React.ReactNode;
-  words: string[];
+  /** Two columns of giant faded words that scroll vertically behind the title. */
+  words: [string[], string[]];
+  /** Scroll direction of this banner's word columns (alternates between banners, as on the reference). */
+  drift: "up" | "down";
+  /** Light or dark banner: sets the grain strength, as the reference does per banner. */
+  tone: "light" | "dark";
+  /** Dark banners: bottom, middle, top colours painted under the grain (see Grain). */
+  grainBase?: [string, string, string];
   bg: string;
   wordColor: string;
   spheres: { src?: string | null; color: string; size: string; left?: string; right?: string; top?: string; bottom?: string }[];
 };
 
-/** Faded giant words filling the banner behind the title, two columns of three lines. */
-function Words({ words, color }: { words: string[]; color: string }) {
-  const col = (list: string[], side: "left" | "right") => (
-    <Box
-      sx={{
-        position: "absolute",
-        top: "-1.5rem",
-        [side]: "1rem",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: side === "left" ? "flex-start" : "flex-end",
-        fontSize: { xs: "4.5rem", md: "7.5rem" },
-        lineHeight: 0.79,
-        letterSpacing: "-0.06em",
-        fontWeight: 600,
-        color,
-        whiteSpace: "nowrap",
-        userSelect: "none",
-      }}
-    >
-      {list.map((w, i) => (
-        <span key={i}>{w}</span>
-      ))}
-    </Box>
-  );
+/**
+ * A column of faded giant words scrolling forever. The list is rendered twice and moved by exactly
+ * one copy (50%), so the loop has no visible seam.
+ */
+function WordColumn({ list, side, color, drift, seconds }: { list: string[]; side: "left" | "right"; color: string; drift: "up" | "down"; seconds: number }) {
   return (
-    <Box aria-hidden sx={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-      {col(words.slice(0, 3), "left")}
-      {col(words.slice(3, 6), "right")}
+    <Box sx={{ position: "absolute", top: "-22%", bottom: 0, [side]: 0, width: { xs: "45%", md: "34%" }, overflow: "hidden" }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: side === "left" ? "flex-start" : "flex-end",
+          px: "0.75rem",
+          fontSize: { xs: "3rem", sm: "4.5rem", md: "6.5rem" },
+          lineHeight: 0.79,
+          letterSpacing: "-0.06em",
+          fontWeight: 600,
+          color,
+          whiteSpace: "nowrap",
+          userSelect: "none",
+          willChange: "transform",
+          animation: `explore-words-${drift} ${seconds}s linear infinite`,
+          "@keyframes explore-words-up": { from: { transform: "translateY(0)" }, to: { transform: "translateY(-50%)" } },
+          "@keyframes explore-words-down": { from: { transform: "translateY(-50%)" }, to: { transform: "translateY(0)" } },
+          "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+        }}
+      >
+        {[...list, ...list].map((w, i) => (
+          <span key={i}>{w}</span>
+        ))}
+      </Box>
     </Box>
   );
 }
 
-function SlideView({ s }: { s: Slide }) {
+/**
+ * Film grain over a banner, the reference's own recipe and strength (measured against it): fine
+ * fractal noise (frequency 5, 3 octaves) cut to on/off specks on about half the pixels, tinted dark,
+ * the layer at about a third opacity. Light banners use 15% specks at 0.34, dark ones 18% at 0.32,
+ * as on the reference. Dark specks barely show on near-black, which is how the reference looks too.
+ */
+function Grain({ tone, base }: { tone: "light" | "dark"; base?: [string, string, string] }) {
+  const id = useId().replace(/:/g, "");
+  const table = Array.from({ length: 100 }, (_, i) => (i < 51 ? 1 : 0)).join(" ");
+  const [alpha, opacity] = tone === "dark" ? [0.18, 0.32] : [0.15, 0.34];
+  return (
+    <Box
+      component="svg"
+      aria-hidden
+      viewBox="0 0 1320 265"
+      preserveAspectRatio="none"
+      sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity }}
+    >
+      <defs>
+        {/* Dark banners: like the reference, the specks sit on a bottom-lit gradient painted in the same
+            layer, which lifts the middle a little and makes the grain readable there. */}
+        {base && (
+          <linearGradient id={`${id}-g`} gradientUnits="userSpaceOnUse" x1="660" x2="660" y1="265" y2="0">
+            <stop stopColor={base[0]} />
+            <stop offset="0.45" stopColor={base[1]} />
+            <stop offset="1" stopColor={base[2]} />
+          </linearGradient>
+        )}
+        <filter id={id} x="0" y="0" width="1320" height="265" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="5 5" numOctaves={3} seed={873} stitchTiles="stitch" result="noise" />
+          <feColorMatrix in="noise" type="luminanceToAlpha" result="alphaNoise" />
+          <feComponentTransfer in="alphaNoise" result="mask">
+            <feFuncA type="discrete" tableValues={table} />
+          </feComponentTransfer>
+          <feFlood floodColor={`rgba(0,0,0,${alpha})`} result="tint" />
+          <feComposite in="tint" in2="mask" operator="in" result="specks" />
+          <feMerge>
+            {base && <feMergeNode in="SourceGraphic" />}
+            <feMergeNode in="specks" />
+          </feMerge>
+        </filter>
+      </defs>
+      <rect width="1320" height="265" fill={base ? `url(#${id}-g)` : "#000"} filter={`url(#${id})`} />
+    </Box>
+  );
+}
+
+function SlideView({ s, active }: { s: Slide; active: boolean }) {
   return (
     <Box
       component={Link}
       href={s.href}
-      sx={{ position: "absolute", inset: 0, display: "block", background: s.bg, textDecoration: "none", overflow: "hidden" }}
+      tabIndex={active ? 0 : -1}
+      sx={{
+        position: "relative",
+        display: "block",
+        height: "100%",
+        background: s.bg,
+        textDecoration: "none",
+        overflow: "hidden",
+        // Hover: the artwork (words and spheres) grows a touch, slowly; the title stays still.
+        "&:hover .slide-art, &:focus-visible .slide-art": { transform: "scale(1.03)" },
+      }}
     >
-      <Words words={s.words} color={s.wordColor} />
-      {s.spheres.map((p, i) => (
-        <Sphere key={i} src={p.src} color={p.color} size={p.size} sx={{ left: p.left, right: p.right, top: p.top, bottom: p.bottom, display: { xs: "none", md: "grid" } }} />
-      ))}
+      <Box
+        aria-hidden
+        className="slide-art"
+        sx={{ position: "absolute", inset: 0, transition: "transform .7s ease-out", "@media (prefers-reduced-motion: reduce)": { transition: "none" } }}
+      >
+        {/* Under the words and spheres, as on the reference: the grain textures the backdrop only. */}
+        <Grain tone={s.tone} base={s.grainBase} />
+        <WordColumn list={s.words[0]} side="left" color={s.wordColor} drift={s.drift} seconds={24} />
+        <WordColumn list={s.words[1]} side="right" color={s.wordColor} drift={s.drift} seconds={28} />
+        {s.spheres.map((p, i) => (
+          <Sphere key={i} src={p.src} color={p.color} size={p.size} sx={{ left: p.left, right: p.right, top: p.top, bottom: p.bottom, display: { xs: "none", md: "grid" } }} />
+        ))}
+      </Box>
       <Box
         sx={{
           position: "absolute",
@@ -76,6 +151,7 @@ function SlideView({ s }: { s: Slide }) {
           px: "1rem",
           gap: { xs: "0.6rem", md: "0.9rem" },
           zIndex: 1,
+          pointerEvents: "none",
         }}
       >
         <Box
@@ -118,7 +194,6 @@ function SlideView({ s }: { s: Slide }) {
 export default function HeroCarousel() {
   const { overview } = useMarketOverview();
   const { assets } = useMarketAssets();
-  const [i, setI] = useState(0);
 
   const rwa = assets.filter((a) => a.cats.includes("rwa"));
   const rwaCap = rwa.reduce((s, a) => s + (a.marketCap ?? 0), 0);
@@ -137,7 +212,12 @@ export default function HeroCarousel() {
           Lend, swap, provide liquidity and earn from one wallet.
         </>
       ),
-      words: ["BLEND", "AQUARIUS", "SOROSWAP", "DEFINDEX", "ZENEX", "PHOENIX"],
+      words: [
+        ["BLEND", "AQUARIUS", "SOROSWAP", "DEFINDEX", "ZENEX", "PHOENIX", "SDEX", "XOXNO"],
+        ["SENTORA", "UPSHIFT", "FXDAO", "SUSHI", "COMET", "ETHERFUSE", "REFLECTOR", "ALLBRIDGE"],
+      ],
+      drift: "up",
+      tone: "light",
       bg: "linear-gradient(0deg, #e9e3cf 0%, #6f6a58 52%, #2a2822 100%)",
       wordColor: "rgba(255,255,255,0.09)",
       spheres: [
@@ -157,7 +237,13 @@ export default function HeroCarousel() {
           Swap into them from any Stellar asset.
         </>
       ),
-      words: ["USDY", "USTRY", "CETES", "deJTRSY", "TESOURO", "deJAAA"],
+      words: [
+        ["USDY", "USTRY", "CETES", "TESOURO", "BENJI", "deJTRSY", "deJAAA"],
+        ["T-BILLS", "BONDS", "CREDIT", "FUNDS", "YIELD", "GOLD", "PESOS"],
+      ],
+      drift: "down",
+      tone: "dark",
+      grainBase: ["#E5E5E5", "#4E4E4E", "#111111"],
       bg: "linear-gradient(180deg, #111 0%, #151515 48%, #e5e5e5 100%)",
       wordColor: "rgba(255,255,255,0.07)",
       spheres: topRwa.slice(0, 5).map((a, k) => ({
@@ -179,7 +265,13 @@ export default function HeroCarousel() {
           Take profit and stop loss on every position.
         </>
       ),
-      words: ["XLM", "LONG", "SHORT", "XLM", "20×", "USDC"],
+      words: [
+        ["XLM", "LONG", "SHORT", "20×", "PERPS", "LEVERAGE"],
+        ["USDC", "TAKE PROFIT", "STOP LOSS", "FUNDING", "MARGIN", "ZENEX"],
+      ],
+      drift: "up",
+      tone: "dark",
+      grainBase: ["#c9d3e0", "#3a4a66", "#1b2230"],
       bg: "linear-gradient(180deg, #1b2230 0%, #2c3a52 55%, #c9d3e0 100%)",
       wordColor: "rgba(255,255,255,0.08)",
       spheres: [
@@ -189,44 +281,82 @@ export default function HeroCarousel() {
     },
   ];
 
+  // Track position. One extra copy of the first banner sits at the end, so the last banner slides on
+  // to "the first" in the same direction; when that slide finishes the track jumps back to 0 unseen.
+  const n = slides.length;
+  const [pos, setPos] = useState(0);
+  const [instant, setInstant] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const active = pos % n;
+
+  const go = (k: number) => {
+    setInstant(false);
+    setPos(k);
+  };
+  const next = () => go(pos + 1);
+  const onSlid = () => {
+    if (pos === n) {
+      setInstant(true);
+      setPos(0);
+    }
+  };
+  // Re-enable the slide transition after an unseen jump has been painted.
   useEffect(() => {
-    const t = setTimeout(() => setI((n) => (n + 1) % slides.length), SLIDE_MS);
-    return () => clearTimeout(t);
-  }, [i, slides.length]);
+    if (!instant) return;
+    const f = requestAnimationFrame(() => requestAnimationFrame(() => setInstant(false)));
+    return () => cancelAnimationFrame(f);
+  }, [instant]);
+
+  const track = [...slides, slides[0]];
 
   return (
     <Box>
-      <Box sx={{ position: "relative", borderRadius: "1.25rem", overflow: "hidden", height: { xs: "13.75rem", md: "16rem" }, bgcolor: "#111" }}>
-        {slides.map((s, k) => (
-          <Box
-            key={s.key}
-            aria-hidden={k !== i}
-            sx={{ position: "absolute", inset: 0, opacity: k === i ? 1 : 0, transition: "opacity .6s ease", pointerEvents: k === i ? "auto" : "none" }}
-          >
-            <SlideView s={s} />
-          </Box>
-        ))}
+      <Box
+        // Hovering (or tabbing into) the banner stops it; the active dot's progress stops with it.
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
+        sx={{ position: "relative", borderRadius: "1.25rem", overflow: "hidden", height: { xs: "13.75rem", md: "16rem" }, bgcolor: "#111" }}
+      >
+        <Box
+          onTransitionEnd={(e) => e.target === e.currentTarget && onSlid()}
+          sx={{
+            display: "flex",
+            height: "100%",
+            transform: `translate3d(${-pos * 100}%, 0, 0)`,
+            transition: instant ? "none" : "transform .7s cubic-bezier(.22,.61,.36,1)",
+          }}
+        >
+          {track.map((s, k) => (
+            <Box key={s.key + k} aria-hidden={k % n !== active || k === n} sx={{ flex: "0 0 100%", minWidth: 0, height: "100%" }}>
+              <SlideView s={s} active={k === pos && k < n} />
+            </Box>
+          ))}
+        </Box>
       </Box>
       <Box sx={{ display: "flex", justifyContent: "center", gap: "0.5rem", pt: "0.75rem" }}>
         {slides.map((s, k) => (
           <ButtonBase
             key={s.key}
             aria-label={`Go to slide ${k + 1}`}
-            aria-current={k === i}
-            onClick={() => setI(k)}
+            aria-current={k === active}
+            onClick={() => go(k)}
             sx={{
               position: "relative",
               height: "0.5rem",
-              width: k === i ? "2.5rem" : "0.5rem",
+              width: k === active ? "2.5rem" : "0.5rem",
               borderRadius: "9999px",
               overflow: "hidden",
               bgcolor: "rgba(250,250,250,0.2)",
               transition: "width .3s",
             }}
           >
-            {k === i && (
+            {k === active && (
               <Box
-                key={i}
+                key={active}
+                // The fill is the timer: when it completes the banner advances, and pausing it pauses the carousel.
+                onAnimationEnd={next}
                 sx={{
                   position: "absolute",
                   inset: 0,
@@ -234,6 +364,7 @@ export default function HeroCarousel() {
                   borderRadius: "9999px",
                   transformOrigin: "left",
                   animation: `explore-dot ${SLIDE_MS}ms linear forwards`,
+                  animationPlayState: paused ? "paused" : "running",
                   "@keyframes explore-dot": { from: { transform: "scaleX(0)" }, to: { transform: "scaleX(1)" } },
                 }}
               />

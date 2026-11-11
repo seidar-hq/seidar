@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
@@ -11,7 +10,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { styled, useTheme, type Theme } from "@mui/material/styles";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import PowerSettingsNewRoundedIcon from "@mui/icons-material/PowerSettingsNewRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import ConnectWalletButton from "@/components/common/ConnectWalletButton";
 import { formatUsd, shortAddress } from "@/lib/format";
@@ -32,6 +31,7 @@ const WalletPill = styled(ButtonBase)(({ theme }) => {
     gap: "0.375rem",
     height: "2.75rem",
     padding: "0 0.625rem 0 0.375rem",
+    maxWidth: "100%",
     borderRadius: "999rem",
     backgroundColor: theme.palette.mode === "dark" ? theme.palette.overlay.white08 : theme.palette.grey[800],
     borderTop: `0.0625rem solid ${line}`,
@@ -52,12 +52,17 @@ export default function HeaderWallet() {
   if (!activeWallet) return <ConnectWalletButton />;
 
   const bal = byAddress[activeWallet.address];
+  const dark = theme.palette.mode === "dark";
   const meta = displayMeta(activeWallet.walletId, activeWallet.peer);
 
   return (
     <>
       <WalletPill onClick={(e) => setAnchor(e.currentTarget)} aria-label="Wallet menu">
         <WalletAvatar walletId={activeWallet.walletId} peer={activeWallet.peer} size="2rem" status="active" />
+        {/* A peek at the address (first and last four), so it's clear which wallet is active. */}
+        <Typography variant="body2" noWrap sx={{ color: "sidebar.heading", fontSize: "0.875rem", fontVariantNumeric: "tabular-nums", letterSpacing: "0.01em", ml: "0.125rem" }}>
+          {shortAddress(activeWallet.address, 4, 4).replace("...", "…")}
+        </Typography>
         <KeyboardArrowDownRoundedIcon
           sx={{
             fontSize: "1.125rem",
@@ -122,18 +127,27 @@ export default function HeaderWallet() {
             {bal && !bal.loading ? formatUsd(bal.usd) : "—"}
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          color="cancel"
-          size="small"
-          startIcon={<LogoutRoundedIcon />}
+        {/* Full-width dark pill: red power icon, white label, a faint lit top edge. */}
+        <ButtonBase
           onClick={() => {
             setAnchor(null);
             disconnect(activeWallet.address);
           }}
+          sx={{
+            width: "100%",
+            height: "2.75rem",
+            gap: "0.625rem",
+            borderRadius: "999rem",
+            backgroundColor: dark ? "#2a2a2a" : theme.palette.grey[800],
+            border: `0.0625rem solid ${dark ? "rgba(255,255,255,0.06)" : theme.palette.border.main600}`,
+            boxShadow: dark ? "inset 0 0.0625rem 0 rgba(255,255,255,0.08), 0 0.25rem 0.75rem rgba(0,0,0,0.25)" : "none",
+            transition: "background-color .15s",
+            "&:hover": { backgroundColor: dark ? "#333333" : theme.palette.grey[300] },
+          }}
         >
-          Disconnect
-        </Button>
+          <PowerSettingsNewRoundedIcon sx={{ fontSize: "1.25rem", color: "#ef4444" }} />
+          <Typography sx={{ fontSize: "1rem", fontWeight: 500, color: dark ? "#ffffff" : "common.black" }}>Disconnect</Typography>
+        </ButtonBase>
       </Menu>
 
       <AccountModal

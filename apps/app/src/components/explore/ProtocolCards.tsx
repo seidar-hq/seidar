@@ -51,11 +51,20 @@ function Card({ p }: { p: Protocol }) {
         height: "14.3rem",
         overflow: "hidden",
         borderRadius: "0.625rem",
-        background: C.card,
+        // The reference's gradient (C.card). Its #101010 start blends into our darker page, so a faint
+        // corner sheen, a hairline edge and a top highlight give the card its outline; the soft shadow
+        // seats it on the page.
+        background:
+          `radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 60%), ${C.card}`,
+        boxShadow:
+          "inset 0 0 0 0.0625rem rgba(255,255,255,0.08), inset 0 0.0625rem 0 rgba(255,255,255,0.12), 0 0.5rem 1.5rem rgba(0,0,0,0.35)",
         color: "#fff",
         textDecoration: "none",
-        transition: "top .2s",
-        "&:hover": { top: "-2px" },
+        transition: "top .2s, box-shadow .2s",
+        "&:hover": {
+          top: "-2px",
+          boxShadow: "inset 0 0 0 0.0625rem rgba(255,255,255,0.14), inset 0 0.0625rem 0 rgba(255,255,255,0.16), 0 0.75rem 1.75rem rgba(0,0,0,0.45)",
+        },
       }}
     >
       {logo && (
