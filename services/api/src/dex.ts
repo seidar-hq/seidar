@@ -11,7 +11,7 @@ import { tokenMetas } from "./token-meta.js";
 import { pricesByContract } from "./contract-price.js";
 import { fetchSoroswap, fetchSushi } from "./dex-onchain.js";
 import { refreshActivity, registerPools, venueActivity } from "./dex-activity.js";
-import { poolIndexApys, recordPoolIndexes } from "./pool-apy.js";
+import { poolIndexApys, recordPoolIndexes, recordSushiGrowth, sushiGrowthApys } from "./pool-apy.js";
 
 
 export const DEX_PROTOCOLS = ["aqua", "phoenix", "soroswap", "sushi"] as const;
@@ -441,12 +441,24 @@ export async function getDexPools(protocol: DexProtocol): Promise<{
   // Soroswap / Phoenix: the realised fee APY, from the hourly growth of each pool's invariant
   // per LP share (pool-apy.ts). It measures what LPs actually earned, so it wins over the
   // volume estimate wherever a pool has enough history.
+  // Sushi (concentrated): the realised fee APY from the pool's own fee-growth accounting.
   const indexed = protocol === "soroswap" || protocol === "phoenix" ? protocol : null;
   if (indexed) runInBackground(recordPoolIndexes(indexed, v.rows, sorobanView));
-  const [act, realised] = await Promise.all([
-    venueActivity(protocol),
-    indexed ? poolIndexApys(indexed).catch(() => new Map<string, { apyPct: number; spanDays: number }>()) : Promise.resolve(new Map<string, { apyPct: number; spanDays: number }>()),
-  ]);
+  if (protocol === "sushi") runInBackground(recordSushiGrowth(v.rows, sorobanView));
+  const none = () => new Map<string, { apyPct: number; spanDays: number }>();
+  const realisedFor = async () => {
+    if (indexed) return poolIndexApys(indexed);
+    if (protocol !== "sushi") return none();
+    const contracts = [...new Set(v.rows.flatMap((r) => r.assets.map((a) => a.contract)))];
+    const { prices } = await pricesByContract(contracts);
+    const byAddr = new Map(v.rows.map((r) => [r.address, r]));
+    return sushiGrowthApys((addr) => {
+      const r = byAddr.get(addr);
+      if (!r || !r.reserves) return null;
+      return { tvlUsd: r.tvlUsd, tokens: r.assets.map((a, k) => ({ decimals: r.reserves?.[k]?.decimals ?? 7, priceUsd: prices[a.contract] ?? null })) };
+    });
+  };
+  const [act, realised] = await Promise.all([venueActivity(protocol), realisedFor().catch(none)]);
   const rows = v.rows.map((r) => {
     const a = act.ready ? (act.byPool.get(r.address) ?? { trades7d: 0, volume7dUsd: 0 }) : null;
     const real = realised.get(r.address);
