@@ -4,13 +4,14 @@
 // Sushi V3 via their factories / pool lens (./dex-onchain.ts). Per-leg
 // shared cache (10min, SWR).
 
-import { withCache, KEYS, TTL_MS } from "@seidar/cache";
+import { runInBackground, withCache, KEYS, TTL_MS } from "@seidar/cache";
 import { livePrices } from "./prices.js";
 import { sorobanView as sharedView } from "./rpc.js";
 import { tokenMetas } from "./token-meta.js";
 import { pricesByContract } from "./contract-price.js";
 import { fetchSoroswap, fetchSushi } from "./dex-onchain.js";
 import { refreshActivity, registerPools, venueActivity } from "./dex-activity.js";
+import { poolIndexApys, recordPoolIndexes } from "./pool-apy.js";
 
 
 export const DEX_PROTOCOLS = ["aqua", "phoenix", "soroswap", "sushi"] as const;
@@ -46,6 +47,10 @@ export interface DexPoolRow {
   volume7dUsd?: number | null;
   /** The swap scan hasn't finished since the API started (numbers soon). */
   activityPending?: boolean;
+  /** Where apyPct comes from: "realised" = growth of the pool's invariant per LP share over
+   *  apyWindowDays (pool-apy.ts, what LPs actually earned); "volume" = 7d volume x fee / TVL. */
+  apySource?: "realised" | "volume" | null;
+  apyWindowDays?: number;
   updatedAt: number;
 }
 
@@ -433,16 +438,33 @@ export async function getDexPools(protocol: DexProtocol): Promise<{
   // fee APY from their own swap events (dex-activity.ts).
   registerPools(v.rows);
   refreshActivity(protocol);
-  const act = await venueActivity(protocol);
-  const rows = act.ready
-    ? v.rows.map((r) => {
-        const a = act.byPool.get(r.address) ?? { trades7d: 0, volume7dUsd: 0 };
-        const feeApy =
-          a.volume7dUsd != null && r.feeBps != null && r.tvlUsd != null && r.tvlUsd > 0
-            ? (((a.volume7dUsd / 7) * (r.feeBps / 10_000) * 365) / r.tvlUsd) * 100
-            : null;
-        return { ...r, trades7d: a.trades7d, volume7dUsd: a.volume7dUsd, apyPct: feeApy, feeApyPct: feeApy, rewardsApyPct: null };
-      })
-    : v.rows.map((r) => ({ ...r, activityPending: true }));
+  // Soroswap / Phoenix: the realised fee APY, from the hourly growth of each pool's invariant
+  // per LP share (pool-apy.ts). It measures what LPs actually earned, so it wins over the
+  // volume estimate wherever a pool has enough history.
+  const indexed = protocol === "soroswap" || protocol === "phoenix" ? protocol : null;
+  if (indexed) runInBackground(recordPoolIndexes(indexed, v.rows, sorobanView));
+  const [act, realised] = await Promise.all([
+    venueActivity(protocol),
+    indexed ? poolIndexApys(indexed).catch(() => new Map<string, { apyPct: number; spanDays: number }>()) : Promise.resolve(new Map<string, { apyPct: number; spanDays: number }>()),
+  ]);
+  const rows = v.rows.map((r) => {
+    const a = act.ready ? (act.byPool.get(r.address) ?? { trades7d: 0, volume7dUsd: 0 }) : null;
+    const real = realised.get(r.address);
+    const estimate =
+      a && a.volume7dUsd != null && r.feeBps != null && r.tvlUsd != null && r.tvlUsd > 0
+        ? (((a.volume7dUsd / 7) * (r.feeBps / 10_000) * 365) / r.tvlUsd) * 100
+        : null;
+    const apy = real ? real.apyPct : estimate;
+    return {
+      ...r,
+      ...(a ? { trades7d: a.trades7d, volume7dUsd: a.volume7dUsd } : {}),
+      apyPct: apy,
+      feeApyPct: apy,
+      rewardsApyPct: null,
+      apySource: real ? ("realised" as const) : estimate != null ? ("volume" as const) : null,
+      ...(real ? { apyWindowDays: Math.round(real.spanDays * 10) / 10 } : {}),
+      ...(!a && !real ? { activityPending: true } : {}),
+    };
+  });
   return { ...v, rows, cached: out.cached, stale: out.stale || undefined };
 }
