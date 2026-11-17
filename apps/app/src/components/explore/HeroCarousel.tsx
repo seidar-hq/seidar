@@ -257,7 +257,7 @@ export default function HeroCarousel() {
     {
       key: "perps",
       href: "/trade-swap/perps",
-      title: ["Long or short XLM", "up to 20×"],
+      title: ["Long or short XLM", "up to 25×"],
       sub: (
         <>
           Perpetual futures on Zenex, settled in USDC.
@@ -266,7 +266,7 @@ export default function HeroCarousel() {
         </>
       ),
       words: [
-        ["XLM", "LONG", "SHORT", "20×", "PERPS", "LEVERAGE"],
+        ["XLM", "LONG", "SHORT", "25×", "PERPS", "LEVERAGE"],
         ["USDC", "TAKE PROFIT", "STOP LOSS", "FUNDING", "MARGIN", "ZENEX"],
       ],
       drift: "up",

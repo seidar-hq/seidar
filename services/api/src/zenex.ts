@@ -13,7 +13,7 @@
 import { withCache } from "@seidar/cache";
 import { buildInvoke, sorobanView } from "./rpc.js";
 
-const API = "https://api.zenex.trade";
+const API = "https://api-v4.zenex.trade";
 const SCALAR = 10n ** 18n;
 const FULL_CLOSE = 2n ** 127n - 1n;
 const isAddr = (v: string) => /^[GC][A-Z2-7]{55}$/.test(v);
@@ -42,7 +42,7 @@ async function getJson<T>(path: string, ms = 15_000): Promise<T> {
 }
 
 export async function zenexConfig(): Promise<{ markets: MarketCfg[]; contracts: { router: string } }> {
-  const out = await withCache("zenex:config", 10 * 60_000, () => getJson<{ markets: MarketCfg[]; contracts: { router: string } }>("/v1/config"), { swr: true });
+  const out = await withCache("zenex:config:v4", 10 * 60_000, () => getJson<{ markets: MarketCfg[]; contracts: { router: string } }>("/v1/config"), { swr: true });
   if (!out.value) throw new Error("Zenex configuration is unavailable");
   return out.value;
 }

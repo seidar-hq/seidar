@@ -137,7 +137,7 @@ async function coverage(): Promise<Coverage> {
   const [lend, vaults, zenex, ...dex] = await Promise.all([
     cacheGet<Lend>("lend-markets-v5").catch(() => null),
     cacheGet<Rows>(KEYS.vaultsRows).catch(() => null),
-    cacheGet<{ markets?: unknown[] }>("zenex:config").catch(() => null),
+    cacheGet<{ markets?: unknown[] }>("zenex:config:v4").catch(() => null),
     ...["soroswap", "aqua", "phoenix", "sushi"].map((p) => cacheGet<Rows>(KEYS.pool(`dex-${p}-v5`)).catch(() => null)),
   ]);
   const live = lend?.filter((g) => !g.retired) ?? null;
